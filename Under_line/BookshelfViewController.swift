@@ -233,54 +233,43 @@ final class BookshelfViewController: UIViewController {
         }
     }
 
-    // MARK: - FAB Glass (Ffv8R 스펙)
+    // MARK: - FAB Glass Style
 
-    /// 디자인 스펙 Ffv8R 기준:
-    /// fill → #832C11 14% 솔리드 + 상단 화이트 그라데이션 + 하단 워밍 그라데이션
-    /// blur → systemUltraThinMaterial (backdrop blur ≈ radius 48)
-    /// shadow → black 9% y=6 blur=16
-    /// stroke → 그라데이션 테두리 #FFFFFF70→#FFFFFF25→#FFFFFF10 inside 1pt
     private func applyFabGlassStyle(to button: UIButton, cornerRadius: CGFloat) {
         guard let superview = button.superview else { return }
 
-        // 그림자 뷰 — clipsToBounds 없이 cornerRadius만 적용, 배경색 필요 (그림자 렌더링 전제)
         let shadowView = UIView()
         shadowView.isUserInteractionEnabled = false
         shadowView.layer.cornerRadius = cornerRadius
         shadowView.backgroundColor = .white
         shadowView.layer.shadowColor   = UIColor.black.cgColor
-        shadowView.layer.shadowOpacity = Float(CGFloat(0x18) / 255)  // ≈ 9.4%
-        shadowView.layer.shadowRadius  = 8                            // blur 16 → radius 8
+        shadowView.layer.shadowOpacity = Float(CGFloat(0x18) / 255)
+        shadowView.layer.shadowRadius  = 8
         shadowView.layer.shadowOffset  = CGSize(width: 0, height: 6)
         superview.insertSubview(shadowView, belowSubview: button)
         shadowView.snp.makeConstraints { $0.edges.equalTo(button) }
 
-        // 글래스 컨테이너 — blur + fill 레이어를 clip
         let glassContainer = UIView()
         glassContainer.isUserInteractionEnabled = false
         glassContainer.layer.cornerRadius = cornerRadius
         glassContainer.clipsToBounds = true
-        // 그라데이션 테두리 근사: 상단 컬러(#FFFFFF70)로 솔리드 적용
         glassContainer.layer.borderWidth = 1
         glassContainer.layer.borderColor = UIColor(white: 1, alpha: CGFloat(0x70) / 255).cgColor
         superview.insertSubview(glassContainer, belowSubview: button)
         glassContainer.snp.makeConstraints { $0.edges.equalTo(button) }
         superview.insertSubview(shadowView, belowSubview: glassContainer)
 
-        // Blur
         let blurView = UIVisualEffectView(effect: UIBlurEffect(style: .systemUltraThinMaterial))
         blurView.isUserInteractionEnabled = false
         glassContainer.addSubview(blurView)
         blurView.snp.makeConstraints { $0.edges.equalToSuperview() }
 
-        // 솔리드 틴트: #832C11 @ 0x24/255 ≈ 14%
         let solidTint = UIView()
         solidTint.isUserInteractionEnabled = false
         solidTint.backgroundColor = UIColor(hex: "#832C11", alpha: CGFloat(0x24) / 255)
         blurView.contentView.addSubview(solidTint)
         solidTint.snp.makeConstraints { $0.edges.equalToSuperview() }
 
-        // 상단 스페큘러 그라데이션: #FFFFFF50 → #FFFFFF10 → clear
         let topSpecular = UIView()
         topSpecular.isUserInteractionEnabled = false
         blurView.contentView.addSubview(topSpecular)
@@ -291,13 +280,12 @@ final class BookshelfViewController: UIViewController {
             UIColor(white: 1, alpha: CGFloat(0x10) / 255).cgColor,
             UIColor.clear.cgColor,
         ]
-        topGrad.locations = [0, 0.45, 1.0]
+        topGrad.locations  = [0, 0.45, 1.0]
         topGrad.startPoint = CGPoint(x: 0.5, y: 0)
         topGrad.endPoint   = CGPoint(x: 0.5, y: 1)
         topSpecular.layer.addSublayer(topGrad)
         highlightLayers.append((topSpecular, topGrad))
 
-        // 하단 워밍 그라데이션: #832C1120 → #832C110C → clear (아래→위)
         let bottomWarm = UIView()
         bottomWarm.isUserInteractionEnabled = false
         blurView.contentView.addSubview(bottomWarm)
@@ -308,7 +296,7 @@ final class BookshelfViewController: UIViewController {
             UIColor(hex: "#832C11", alpha: CGFloat(0x0C) / 255).cgColor,
             UIColor.clear.cgColor,
         ]
-        bottomGrad.locations = [0, 0.5, 1.0]
+        bottomGrad.locations  = [0, 0.5, 1.0]
         bottomGrad.startPoint = CGPoint(x: 0.5, y: 1)
         bottomGrad.endPoint   = CGPoint(x: 0.5, y: 0)
         bottomWarm.layer.addSublayer(bottomGrad)
@@ -349,6 +337,17 @@ final class BookshelfViewController: UIViewController {
                     sheet.preferredCornerRadius  = 24
                 }
                 self.present(vc, animated: true)
+            })
+            .disposed(by: disposeBag)
+
+        // 책장 탭 → 상세 화면 push
+        let bookTap = UITapGestureRecognizer()
+        bookshelfScrollView.addGestureRecognizer(bookTap)
+        bookTap.rx.event
+            .subscribe(onNext: { [weak self] _ in
+                guard let self else { return }
+                let vc = BookDetailViewController()
+                self.navigationController?.pushViewController(vc, animated: true)
             })
             .disposed(by: disposeBag)
 
