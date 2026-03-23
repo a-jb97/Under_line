@@ -28,7 +28,7 @@ final class DirectRegisterViewController: UIViewController {
         l.text = "도서 등록"
         l.font = UIFont(name: "GowunBatang-Bold", size: 22)
             ?? .systemFont(ofSize: 22, weight: .semibold)
-        l.textColor = UIColor(hex: "#190e0b")
+        l.textColor = .accent
         return l
     }()
 
@@ -171,7 +171,7 @@ private final class FormFieldView: UIView {
         let l = UILabel()
         l.font = UIFont(name: "GoyangIlsan R", size: 14)
             ?? .systemFont(ofSize: 14, weight: .semibold)
-        l.textColor = UIColor(hex: "#190e0b")
+        l.textColor = .accent
         return l
     }()
 
@@ -187,7 +187,7 @@ private final class FormFieldView: UIView {
         let tf = UITextField()
         tf.font = UIFont(name: "GoyangIlsan R", size: 14)
             ?? .systemFont(ofSize: 14)
-        tf.textColor = UIColor(hex: "#190e0b")
+        tf.textColor = .accent
         tf.backgroundColor = .clear
         return tf
     }()
@@ -270,7 +270,7 @@ private final class FormDescriptionFieldView: UIView {
         let l = UILabel()
         l.font = UIFont(name: "GoyangIlsan R", size: 14)
             ?? .systemFont(ofSize: 14, weight: .semibold)
-        l.textColor = UIColor(hex: "#190e0b")
+        l.textColor = .accent
         return l
     }()
 
@@ -286,7 +286,7 @@ private final class FormDescriptionFieldView: UIView {
         let tv = UITextView()
         tv.font = UIFont(name: "GoyangIlsan R", size: 14)
             ?? .systemFont(ofSize: 14)
-        tv.textColor = UIColor(hex: "#190e0b")
+        tv.textColor = .accent
         tv.backgroundColor = .clear
         tv.isScrollEnabled = false
         return tv
