@@ -20,9 +20,11 @@ final class MainTabBarController: UITabBarController {
             image: UIImage(systemName: "house"),
             selectedImage: UIImage(systemName: "house.fill")
         )
+        let booksNav = UINavigationController(rootViewController: booksVC)
+        booksNav.setNavigationBarHidden(true, animated: false)
+        booksNav.tabBarItem = booksVC.tabBarItem
 
-        let statsVC = UIViewController()
-        statsVC.view.backgroundColor = UIColor.background
+        let statsVC = StatisticsViewController()
         statsVC.tabBarItem = UITabBarItem(
             title: "통계",
             image: UIImage(systemName: "chart.pie"),
@@ -37,7 +39,7 @@ final class MainTabBarController: UITabBarController {
             selectedImage: UIImage(systemName: "gearshape.fill")
         )
 
-        viewControllers = [booksVC, statsVC, settingsVC]
+        viewControllers = [booksNav, statsVC, settingsVC]
     }
 
     private func setupAppearance() {
