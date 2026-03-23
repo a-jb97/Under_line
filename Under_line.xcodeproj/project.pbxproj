@@ -6,8 +6,25 @@
 	objectVersion = 77;
 	objects = {
 
+/* Begin PBXBuildFile section */
+		9E562CC22F71119200B65177 /* SnapKit in Frameworks */ = {isa = PBXBuildFile; productRef = 9E562CC12F71119200B65177 /* SnapKit */; };
+		9E562CC52F71120100B65177 /* Kingfisher in Frameworks */ = {isa = PBXBuildFile; productRef = 9E562CC42F71120100B65177 /* Kingfisher */; };
+		9E562CC82F71125600B65177 /* Toast in Frameworks */ = {isa = PBXBuildFile; productRef = 9E562CC72F71125600B65177 /* Toast */; };
+		9E562CCB2F71126B00B65177 /* Alamofire in Frameworks */ = {isa = PBXBuildFile; productRef = 9E562CCA2F71126B00B65177 /* Alamofire */; };
+		9E562CCE2F71129C00B65177 /* RxCocoa in Frameworks */ = {isa = PBXBuildFile; productRef = 9E562CCD2F71129C00B65177 /* RxCocoa */; };
+		9E562CD02F71129C00B65177 /* RxSwift in Frameworks */ = {isa = PBXBuildFile; productRef = 9E562CCF2F71129C00B65177 /* RxSwift */; };
+		9E562CDB2F71299500B65177 /* 고양일산 L.TTF in Resources */ = {isa = PBXBuildFile; fileRef = 9E562CD92F71299500B65177 /* 고양일산 L.TTF */; };
+		9E562CDC2F71299500B65177 /* 고양일산 R.TTF in Resources */ = {isa = PBXBuildFile; fileRef = 9E562CDA2F71299500B65177 /* 고양일산 R.TTF */; };
+		9E562CDF2F7129A400B65177 /* GowunBatang-Bold.ttf in Resources */ = {isa = PBXBuildFile; fileRef = 9E562CDD2F7129A400B65177 /* GowunBatang-Bold.ttf */; };
+		9E562CE02F7129A400B65177 /* GowunBatang-Regular.ttf in Resources */ = {isa = PBXBuildFile; fileRef = 9E562CDE2F7129A400B65177 /* GowunBatang-Regular.ttf */; };
+/* End PBXBuildFile section */
+
 /* Begin PBXFileReference section */
 		9E562C092F710D0500B65177 /* Under_line.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Under_line.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		9E562CD92F71299500B65177 /* 고양일산 L.TTF */ = {isa = PBXFileReference; lastKnownFileType = file; path = "고양일산 L.TTF"; sourceTree = "<group>"; };
+		9E562CDA2F71299500B65177 /* 고양일산 R.TTF */ = {isa = PBXFileReference; lastKnownFileType = file; path = "고양일산 R.TTF"; sourceTree = "<group>"; };
+		9E562CDD2F7129A400B65177 /* GowunBatang-Bold.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "GowunBatang-Bold.ttf"; sourceTree = "<group>"; };
+		9E562CDE2F7129A400B65177 /* GowunBatang-Regular.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "GowunBatang-Regular.ttf"; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
@@ -36,6 +53,12 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				9E562CD02F71129C00B65177 /* RxSwift in Frameworks */,
+				9E562CC82F71125600B65177 /* Toast in Frameworks */,
+				9E562CCB2F71126B00B65177 /* Alamofire in Frameworks */,
+				9E562CCE2F71129C00B65177 /* RxCocoa in Frameworks */,
+				9E562CC52F71120100B65177 /* Kingfisher in Frameworks */,
+				9E562CC22F71119200B65177 /* SnapKit in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -47,6 +70,10 @@
 			children = (
 				9E562C0B2F710D0500B65177 /* Under_line */,
 				9E562C0A2F710D0500B65177 /* Products */,
+				9E562CD92F71299500B65177 /* 고양일산 L.TTF */,
+				9E562CDA2F71299500B65177 /* 고양일산 R.TTF */,
+				9E562CDD2F7129A400B65177 /* GowunBatang-Bold.ttf */,
+				9E562CDE2F7129A400B65177 /* GowunBatang-Regular.ttf */,
 			);
 			sourceTree = "<group>";
 		};
@@ -78,6 +105,12 @@
 			);
 			name = Under_line;
 			packageProductDependencies = (
+				9E562CC12F71119200B65177 /* SnapKit */,
+				9E562CC42F71120100B65177 /* Kingfisher */,
+				9E562CC72F71125600B65177 /* Toast */,
+				9E562CCA2F71126B00B65177 /* Alamofire */,
+				9E562CCD2F71129C00B65177 /* RxCocoa */,
+				9E562CCF2F71129C00B65177 /* RxSwift */,
 			);
 			productName = Under_line;
 			productReference = 9E562C092F710D0500B65177 /* Under_line.app */;
@@ -107,6 +140,13 @@
 			);
 			mainGroup = 9E562C002F710D0500B65177;
 			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				9E562CC02F71119200B65177 /* XCRemoteSwiftPackageReference "SnapKit" */,
+				9E562CC32F71120100B65177 /* XCRemoteSwiftPackageReference "Kingfisher" */,
+				9E562CC62F71125600B65177 /* XCRemoteSwiftPackageReference "Toast-Swift" */,
+				9E562CC92F71126B00B65177 /* XCRemoteSwiftPackageReference "Alamofire" */,
+				9E562CCC2F71129C00B65177 /* XCRemoteSwiftPackageReference "RxSwift" */,
+			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 9E562C0A2F710D0500B65177 /* Products */;
 			projectDirPath = "";
@@ -122,6 +162,10 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				9E562CDB2F71299500B65177 /* 고양일산 L.TTF in Resources */,
+				9E562CDF2F7129A400B65177 /* GowunBatang-Bold.ttf in Resources */,
+				9E562CE02F7129A400B65177 /* GowunBatang-Regular.ttf in Resources */,
+				9E562CDC2F71299500B65177 /* 고양일산 R.TTF in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -148,11 +192,14 @@
 				DEVELOPMENT_TEAM = ACJMUH34H4;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = Under_line/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = "밑줄";
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.books";
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchStoryboardName = LaunchScreen;
-				INFOPLIST_KEY_UIMainStoryboardFile = Main;
-				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
-				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				INFOPLIST_KEY_UIStatusBarStyle = UIStatusBarStyleLightContent;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations = UIInterfaceOrientationPortrait;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown";
+				IPHONEOS_DEPLOYMENT_TARGET = 17.6;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
@@ -161,6 +208,10 @@
 				PRODUCT_BUNDLE_IDENTIFIER = "com.jade.Under-line";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SUPPORTS_MACCATALYST = NO;
+				SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD = NO;
+				SUPPORTS_XR_DESIGNED_FOR_IPHONE_IPAD = NO;
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
 				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
 				SWIFT_EMIT_LOC_STRINGS = YES;
@@ -180,11 +231,14 @@
 				DEVELOPMENT_TEAM = ACJMUH34H4;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = Under_line/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = "밑줄";
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.books";
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchStoryboardName = LaunchScreen;
-				INFOPLIST_KEY_UIMainStoryboardFile = Main;
-				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
-				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				INFOPLIST_KEY_UIStatusBarStyle = UIStatusBarStyleLightContent;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations = UIInterfaceOrientationPortrait;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown";
+				IPHONEOS_DEPLOYMENT_TARGET = 17.6;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
@@ -193,6 +247,10 @@
 				PRODUCT_BUNDLE_IDENTIFIER = "com.jade.Under-line";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SUPPORTS_MACCATALYST = NO;
+				SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD = NO;
+				SUPPORTS_XR_DESIGNED_FOR_IPHONE_IPAD = NO;
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
 				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
 				SWIFT_EMIT_LOC_STRINGS = YES;
@@ -345,6 +403,82 @@
 			defaultConfigurationName = Release;
 		};
 /* End XCConfigurationList section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		9E562CC02F71119200B65177 /* XCRemoteSwiftPackageReference "SnapKit" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/SnapKit/SnapKit.git";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 5.7.1;
+			};
+		};
+		9E562CC32F71120100B65177 /* XCRemoteSwiftPackageReference "Kingfisher" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/onevcat/Kingfisher";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 8.8.0;
+			};
+		};
+		9E562CC62F71125600B65177 /* XCRemoteSwiftPackageReference "Toast-Swift" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/scalessec/Toast-Swift.git";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 5.1.1;
+			};
+		};
+		9E562CC92F71126B00B65177 /* XCRemoteSwiftPackageReference "Alamofire" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/Alamofire/Alamofire";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 5.11.1;
+			};
+		};
+		9E562CCC2F71129C00B65177 /* XCRemoteSwiftPackageReference "RxSwift" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/ReactiveX/RxSwift.git";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 6.10.2;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		9E562CC12F71119200B65177 /* SnapKit */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 9E562CC02F71119200B65177 /* XCRemoteSwiftPackageReference "SnapKit" */;
+			productName = SnapKit;
+		};
+		9E562CC42F71120100B65177 /* Kingfisher */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 9E562CC32F71120100B65177 /* XCRemoteSwiftPackageReference "Kingfisher" */;
+			productName = Kingfisher;
+		};
+		9E562CC72F71125600B65177 /* Toast */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 9E562CC62F71125600B65177 /* XCRemoteSwiftPackageReference "Toast-Swift" */;
+			productName = Toast;
+		};
+		9E562CCA2F71126B00B65177 /* Alamofire */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 9E562CC92F71126B00B65177 /* XCRemoteSwiftPackageReference "Alamofire" */;
+			productName = Alamofire;
+		};
+		9E562CCD2F71129C00B65177 /* RxCocoa */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 9E562CCC2F71129C00B65177 /* XCRemoteSwiftPackageReference "RxSwift" */;
+			productName = RxCocoa;
+		};
+		9E562CCF2F71129C00B65177 /* RxSwift */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 9E562CCC2F71129C00B65177 /* XCRemoteSwiftPackageReference "RxSwift" */;
+			productName = RxSwift;
+		};
+/* End XCSwiftPackageProductDependency section */
 	};
 	rootObject = 9E562C012F710D0500B65177 /* Project object */;
 }
