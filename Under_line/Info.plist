@@ -9,6 +9,8 @@
 		<string>고양일산 L.TTF</string>
 		<string>고양일산 R.TTF</string>
 	</array>
+	<key>NSCameraUsageDescription</key>
+	<string>책의 밑줄 부분을 촬영하여 문장을 수집합니다.</string>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>
