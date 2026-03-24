@@ -126,10 +126,7 @@ final class BookSearchViewModel {
                 guard let self else { return .empty() }
                 isLoadingMore.accept(true)
                 return self.repository.searchBooks(query: query, page: nextPage)
-                    .do(
-                        onSuccess: { _ in isLoadingMore.accept(false) },
-                        onError:   { _ in isLoadingMore.accept(false) }
-                    )
+                    .do(onError: { _ in isLoadingMore.accept(false) })
                     .catch { error in
                         errorMessage.accept(error.localizedDescription)
                         return .just([])
@@ -137,12 +134,17 @@ final class BookSearchViewModel {
                     .map { (query, nextPage, $0) }
                     .asObservable()
             }
+            .observe(on: MainScheduler.instance)
             .subscribe(onNext: { query, nextPage, fetched in
                 // 검색어가 바뀐 경우 무시 (스테일 응답 방어)
-                guard latestQuery.value == query else { return }
+                guard latestQuery.value == query else {
+                    isLoadingMore.accept(false)
+                    return
+                }
                 currentPage.accept(nextPage)
                 books.accept(books.value + fetched)
                 if fetched.count < 50 { hasMorePages.accept(false) }
+                isLoadingMore.accept(false)
             })
             .disposed(by: disposeBag)
 

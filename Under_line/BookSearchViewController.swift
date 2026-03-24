@@ -94,7 +94,6 @@ final class BookSearchViewController: UIViewController {
         tv.rowHeight                     = UITableView.automaticDimension
         tv.estimatedRowHeight            = 104
         tv.register(BookRowCell.self, forCellReuseIdentifier: BookRowCell.reuseID)
-        tv.contentInset = UIEdgeInsets(top: 16, left: 0, bottom: 0, right: 0)
         return tv
     }()
 
@@ -109,6 +108,15 @@ final class BookSearchViewController: UIViewController {
         let v = UIView()
         v.backgroundColor = UIColor.background
         return v
+    }()
+
+    private let bestsellerLabel: UILabel = {
+        let l = UILabel()
+        l.text            = "베스트셀러 50"
+        l.font            = UIFont(name: "GowunBatang-Bold", size: 14) ?? .systemFont(ofSize: 14)
+        l.textColor       = UIColor.primary
+        l.backgroundColor = UIColor.background
+        return l
     }()
 
     private let loadMoreIndicator: UIActivityIndicatorView = {
@@ -144,6 +152,20 @@ final class BookSearchViewController: UIViewController {
         searchBarView.addSubview(searchIconView)
         searchBarView.addSubview(searchTextField)
         view.addSubview(searchBarView)
+        setupTableHeader()
+    }
+
+    private func setupTableHeader() {
+        let container = UIView()
+        container.backgroundColor = .clear
+        container.addSubview(bestsellerLabel)
+        bestsellerLabel.snp.makeConstraints { make in
+            make.leading.equalToSuperview()
+            make.top.equalToSuperview().offset(10)
+            make.bottom.equalToSuperview().inset(6)
+        }
+        container.frame = CGRect(x: 0, y: 0, width: 0, height: 36)
+        tableView.tableHeaderView = container
     }
 
     private func setupConstraints() {
@@ -235,7 +257,9 @@ final class BookSearchViewController: UIViewController {
 
         output.errorMessage
             .emit(onNext: { [weak self] message in
-                self?.view.makeToast(message)
+                var style = ToastStyle()
+                style.backgroundColor = UIColor.primary
+                self?.view.makeToast(message, position: .center, style: style)
             })
             .disposed(by: disposeBag)
 
@@ -253,6 +277,17 @@ final class BookSearchViewController: UIViewController {
             }
             .map { _ in }
             .bind(to: loadNextPageRelay)
+            .disposed(by: disposeBag)
+
+        // 검색 버튼 탭 시 헤더 영구 숨김 (dismiss 전까지 복원 안 함)
+        searchTextField.rx.controlEvent(.editingDidEndOnExit)
+            .take(1)
+            .subscribe(onNext: { [weak self] in
+                guard let self, let header = self.tableView.tableHeaderView else { return }
+                self.bestsellerLabel.isHidden = true
+                header.frame.size.height = 0
+                self.tableView.tableHeaderView = header
+            })
             .disposed(by: disposeBag)
 
         // 스크롤 시 키보드 내리기
