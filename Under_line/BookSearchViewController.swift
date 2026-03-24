@@ -9,20 +9,17 @@ import UIKit
 import SnapKit
 import RxSwift
 import RxCocoa
+import Kingfisher
+import Toast
 
 final class BookSearchViewController: UIViewController {
 
+    // MARK: - Properties
+
     private let disposeBag = DisposeBag()
-
-    // MARK: - Placeholder Data (추후 ViewModel / BookRepository로 교체)
-
-    private let placeholderBooks: [(rank: Int, title: String, author: String)] = [
-        (1, "데미안",             "헤르만 헤세"),
-        (2, "나미야 잡화점의 기적", "히가시노 게이고"),
-        (3, "어린 왕자",           "생텍쥐페리"),
-        (4, "1984",               "조지 오웰"),
-        (5, "코스모스",            "칼 세이건"),
-    ]
+    private let viewModel  = BookSearchViewModel(repository: AppContainer.shared.bookRepository)
+    private let loadNextPageRelay  = PublishRelay<Void>()
+    private let registerBookRelay  = PublishRelay<Book>()
 
     // MARK: - UI Components
 
@@ -46,8 +43,8 @@ final class BookSearchViewController: UIViewController {
         let v = UIView()
         v.backgroundColor = UIColor.background
         v.layer.cornerRadius = 10
-        v.layer.borderWidth = 1
-        v.layer.borderColor = UIColor.walnut.cgColor
+        v.layer.borderWidth  = 1
+        v.layer.borderColor  = UIColor.walnut.cgColor
         return v
     }()
 
@@ -55,8 +52,8 @@ final class BookSearchViewController: UIViewController {
         let iv = UIImageView()
         let cfg = UIImage.SymbolConfiguration(pointSize: 16, weight: .regular)
         iv.image = UIImage(systemName: "magnifyingglass", withConfiguration: cfg)
-        iv.tintColor = UIColor.walnut
-        iv.contentMode = .scaleAspectFit
+        iv.tintColor    = UIColor.walnut
+        iv.contentMode  = .scaleAspectFit
         return iv
     }()
 
@@ -71,10 +68,10 @@ final class BookSearchViewController: UIViewController {
                 .foregroundColor: UIColor(hex: "#190e0b").withAlphaComponent(0.5),
             ]
         )
-        tf.font      = placeholderFont
-        tf.textColor = UIColor(hex: "#190e0b")
-        tf.backgroundColor  = .clear
-        tf.returnKeyType    = .search
+        tf.font            = placeholderFont
+        tf.textColor       = UIColor(hex: "#190e0b")
+        tf.backgroundColor = .clear
+        tf.returnKeyType   = .search
         return tf
     }()
 
@@ -84,22 +81,42 @@ final class BookSearchViewController: UIViewController {
         btn.titleLabel?.font = UIFont(name: "GoyangIlsan R", size: 14)
             ?? .systemFont(ofSize: 14)
         btn.setTitleColor(UIColor.walnut, for: .normal)
-        btn.contentEdgeInsets  = UIEdgeInsets(top: 6, left: 12, bottom: 6, right: 12)
+        btn.contentEdgeInsets = UIEdgeInsets(top: 6, left: 12, bottom: 6, right: 12)
         return btn
     }()
 
-    private let resultsScrollView: UIScrollView = {
-        let sv = UIScrollView()
-        sv.showsVerticalScrollIndicator = false
-        sv.alwaysBounceVertical = true
-        return sv
+    private let tableView: UITableView = {
+        let tv = UITableView()
+        tv.backgroundColor               = .clear
+        tv.separatorStyle                = .none
+        tv.showsVerticalScrollIndicator  = false
+        tv.clipsToBounds                 = false
+        tv.rowHeight                     = UITableView.automaticDimension
+        tv.estimatedRowHeight            = 104
+        tv.register(BookRowCell.self, forCellReuseIdentifier: BookRowCell.reuseID)
+        tv.contentInset = UIEdgeInsets(top: 16, left: 0, bottom: 0, right: 0)
+        return tv
     }()
 
-    private let resultsStackView: UIStackView = {
-        let sv = UIStackView()
-        sv.axis    = .vertical
-        sv.spacing = 12
-        return sv
+    private let activityIndicator: UIActivityIndicatorView = {
+        let ai = UIActivityIndicatorView(style: .medium)
+        ai.color = UIColor.walnut
+        ai.hidesWhenStopped = true
+        return ai
+    }()
+
+    private let headerBackground: UIView = {
+        let v = UIView()
+        v.backgroundColor = UIColor.background
+        return v
+    }()
+
+    private let loadMoreIndicator: UIActivityIndicatorView = {
+        let ai = UIActivityIndicatorView(style: .medium)
+        ai.color = UIColor.walnut
+        ai.frame = CGRect(x: 0, y: 0, width: UIScreen.main.bounds.width, height: 48)
+        ai.startAnimating()
+        return ai
     }()
 
     // MARK: - Lifecycle
@@ -108,14 +125,17 @@ final class BookSearchViewController: UIViewController {
         super.viewDidLoad()
         setupUI()
         setupConstraints()
-        setupBookRows()
-        bindActions()
+        bindViewModel()
     }
 
     // MARK: - Setup
 
     private func setupUI() {
         view.backgroundColor = UIColor.background
+
+        view.addSubview(tableView)
+        view.addSubview(activityIndicator)
+        view.addSubview(headerBackground)   // tableView 위, 헤더 뷰 아래 → 오버플로 셀 차단
 
         view.addSubview(handleBar)
         view.addSubview(sheetTitleLabel)
@@ -124,13 +144,9 @@ final class BookSearchViewController: UIViewController {
         searchBarView.addSubview(searchIconView)
         searchBarView.addSubview(searchTextField)
         view.addSubview(searchBarView)
-
-        resultsScrollView.addSubview(resultsStackView)
-        view.addSubview(resultsScrollView)
     }
 
     private func setupConstraints() {
-        // Drag handle (Design: 36×5, top=12, centerX)
         handleBar.snp.makeConstraints { make in
             make.top.equalToSuperview().offset(12)
             make.centerX.equalToSuperview()
@@ -138,7 +154,6 @@ final class BookSearchViewController: UIViewController {
             make.height.equalTo(5)
         }
 
-        // Sheet Header (Design: height=52, padding leading=24)
         sheetTitleLabel.snp.makeConstraints { make in
             make.top.equalTo(handleBar.snp.bottom).offset(11)
             make.leading.equalToSuperview().inset(24)
@@ -151,7 +166,6 @@ final class BookSearchViewController: UIViewController {
             make.centerY.equalTo(sheetTitleLabel)
         }
 
-        // Search Area (Design: padding=[0,24,16,24])
         searchBarView.snp.makeConstraints { make in
             make.top.equalTo(sheetTitleLabel.snp.bottom)
             make.leading.trailing.equalToSuperview().inset(24)
@@ -170,45 +184,90 @@ final class BookSearchViewController: UIViewController {
             make.centerY.equalToSuperview()
         }
 
-        // Results scroll (Design: padding=[0,24], gap=12)
-        resultsScrollView.snp.makeConstraints { make in
-            make.top.equalTo(searchBarView.snp.bottom).offset(16)
-            make.leading.trailing.equalToSuperview()
+        tableView.snp.makeConstraints { make in
+            make.top.equalTo(searchBarView.snp.bottom)
+            make.leading.trailing.equalToSuperview().inset(24)
             make.bottom.equalTo(view.safeAreaLayoutGuide)
         }
 
-        resultsStackView.snp.makeConstraints { make in
-            make.top.equalToSuperview()
-            make.bottom.equalToSuperview().inset(12)
-            make.leading.trailing.equalToSuperview().inset(24)
-            make.width.equalTo(resultsScrollView).offset(-48)
+        activityIndicator.snp.makeConstraints { make in
+            make.center.equalTo(tableView)
         }
-    }
 
-    private func setupBookRows() {
-        for book in placeholderBooks {
-            resultsStackView.addArrangedSubview(
-                BookRowView(rank: book.rank, title: book.title, author: book.author)
-            )
+        headerBackground.snp.makeConstraints { make in
+            make.top.leading.trailing.equalToSuperview()
+            make.bottom.equalTo(searchBarView.snp.bottom)
         }
     }
 
     // MARK: - Bindings
 
-    private func bindActions() {
-        // 키보드 return → 검색 실행 (TODO: ViewModel 연결)
-        searchTextField.rx.controlEvent(.editingDidEndOnExit)
-            .subscribe(onNext: { [weak self] in
-                self?.searchTextField.resignFirstResponder()
+    private func bindViewModel() {
+        let input = BookSearchViewModel.Input(
+            viewDidLoad:   .just(()),
+            searchQuery:   searchTextField.rx.text.orEmpty.asObservable(),
+            searchTrigger: searchTextField.rx.controlEvent(.editingDidEndOnExit).asObservable(),
+            loadNextPage:  loadNextPageRelay.asObservable(),
+            registerBook:  registerBookRelay.asObservable()
+        )
+
+        let output = viewModel.transform(input: input)
+
+        output.books
+            .drive(tableView.rx.items(cellIdentifier: BookRowCell.reuseID, cellType: BookRowCell.self)) { [weak self] _, book, cell in
+                cell.configure(book: book)
+                cell.onRegister = { [weak self] registeredBook in
+                    self?.registerBookRelay.accept(registeredBook)
+                }
+            }
+            .disposed(by: disposeBag)
+
+        output.isLoading
+            .drive(activityIndicator.rx.isAnimating)
+            .disposed(by: disposeBag)
+
+        output.isLoadingMore
+            .drive(onNext: { [weak self] loading in
+                guard let self else { return }
+                self.tableView.tableFooterView = loading ? self.loadMoreIndicator : UIView()
             })
             .disposed(by: disposeBag)
 
-        // 직접 등록 버튼 → DirectRegisterViewController 표시
+        output.errorMessage
+            .emit(onNext: { [weak self] message in
+                self?.view.makeToast(message)
+            })
+            .disposed(by: disposeBag)
+
+        output.registerCompleted
+            .emit(onNext: { [weak self] in
+                self?.dismiss(animated: true)
+            })
+            .disposed(by: disposeBag)
+
+        // 마지막 셀이 표시될 때 다음 페이지 요청
+        tableView.rx.willDisplayCell
+            .filter { [weak self] _, indexPath in
+                guard let self else { return false }
+                return indexPath.row == self.tableView.numberOfRows(inSection: 0) - 1
+            }
+            .map { _ in }
+            .bind(to: loadNextPageRelay)
+            .disposed(by: disposeBag)
+
+        // 스크롤 시 키보드 내리기
+        tableView.rx.didScroll
+            .subscribe(onNext: { [weak self] in
+                self?.view.endEditing(false)
+            })
+            .disposed(by: disposeBag)
+
+        // 직접 등록 버튼
         directRegisterButton.rx.tap
             .subscribe(onNext: { [weak self] in
                 let vc = DirectRegisterViewController()
                 if let sheet = vc.sheetPresentationController {
-                    sheet.detents = [.large()]
+                    sheet.detents              = [.large()]
                     sheet.prefersGrabberVisible = false
                     sheet.preferredCornerRadius = 24
                 }
@@ -218,38 +277,56 @@ final class BookSearchViewController: UIViewController {
     }
 }
 
-// MARK: - BookRowView
+// MARK: - BookRowCell
 
-private final class BookRowView: UIView {
+private final class BookRowCell: UITableViewCell {
+
+    static let reuseID = "BookRowCell"
+
+    // MARK: - UI
+
+    private let cardView: UIView = {
+        let v = UIView()
+        v.backgroundColor     = UIColor.background
+        v.layer.cornerRadius  = 16
+        v.layer.masksToBounds = false
+        v.layer.shadowColor   = UIColor(hex: "#5d4037").cgColor
+        v.layer.shadowOpacity = Float(CGFloat(0x30) / 255)
+        v.layer.shadowRadius  = 4
+        v.layer.shadowOffset  = CGSize(width: 4, height: 4)
+        return v
+    }()
 
     private let rankLabel: UILabel = {
         let l = UILabel()
-        l.font = UIFont(name: "GoyangIlsan L", size: 18) ?? .boldSystemFont(ofSize: 18)
-        l.textColor = UIColor(hex: "#190e0b")
+        l.font          = UIFont(name: "GoyangIlsan L", size: 18) ?? .boldSystemFont(ofSize: 18)
+        l.textColor     = UIColor(hex: "#190e0b")
         l.textAlignment = .center
         l.setContentHuggingPriority(.required, for: .horizontal)
         return l
     }()
 
-    private let thumbnailView: UIView = {
-        let v = UIView()
-        v.backgroundColor = UIColor.walnut
-        v.layer.cornerRadius = 4
-        return v
+    private let thumbnailImageView: UIImageView = {
+        let iv = UIImageView()
+        iv.backgroundColor    = UIColor.walnut
+        iv.layer.cornerRadius = 4
+        iv.clipsToBounds      = true
+        iv.contentMode        = .scaleAspectFill
+        return iv
     }()
 
     private let titleLabel: UILabel = {
         let l = UILabel()
-        l.font = UIFont(name: "GowunBatang-Regular", size: 16)
+        l.font          = UIFont(name: "GowunBatang-Regular", size: 16)
             ?? .systemFont(ofSize: 16, weight: .medium)
-        l.textColor = UIColor(hex: "#190e0b")
+        l.textColor     = UIColor(hex: "#190e0b")
         l.numberOfLines = 2
         return l
     }()
 
     private let authorLabel: UILabel = {
         let l = UILabel()
-        l.font = UIFont(name: "GowunBatang-Regular", size: 13)
+        l.font      = UIFont(name: "GowunBatang-Regular", size: 13)
             ?? .systemFont(ofSize: 13)
         l.textColor = UIColor.walnut
         return l
@@ -266,39 +343,48 @@ private final class BookRowView: UIView {
         btn.layer.borderColor  = UIColor.walnut.cgColor
         btn.contentEdgeInsets  = UIEdgeInsets(top: 7, left: 14, bottom: 7, right: 14)
         btn.setContentHuggingPriority(.required, for: .horizontal)
+        btn.setContentCompressionResistancePriority(.required, for: .horizontal)
         return btn
     }()
 
-    init(rank: Int, title: String, author: String) {
-        super.init(frame: .zero)
-        rankLabel.text  = "\(rank)"
-        titleLabel.text = title
-        authorLabel.text = author
-        setupView()
+    var onRegister: ((Book) -> Void)?
+    private var currentBook: Book?
+
+    /// nil = 아직 미설정 (첫 configure 시 반드시 레이아웃 업데이트)
+    private var rankVisible: Bool?
+
+    // MARK: - Init
+
+    override init(style: UITableViewCell.CellStyle, reuseIdentifier: String?) {
+        super.init(style: style, reuseIdentifier: reuseIdentifier)
+        setupCell()
     }
 
     required init?(coder: NSCoder) { fatalError() }
 
-    private func setupView() {
-        backgroundColor = UIColor.background
-        layer.cornerRadius  = 16
-        layer.masksToBounds = false
+    // MARK: - Setup
 
-        // Neumorphic — dark shadow (bottom-right): #5d4037 @0x30 ≈ 19%, blur=8, offset=(4,4)
-        layer.shadowColor   = UIColor(hex: "#5d4037").cgColor
-        layer.shadowOpacity = Float(CGFloat(0x30) / 255)
-        layer.shadowRadius  = 4
-        layer.shadowOffset  = CGSize(width: 4, height: 4)
+    private func setupCell() {
+        selectionStyle              = .none
+        backgroundColor             = .clear
+        contentView.backgroundColor = .clear
+        contentView.clipsToBounds   = false
+
+        contentView.addSubview(cardView)
 
         let textStack = UIStackView(arrangedSubviews: [titleLabel, authorLabel])
         textStack.axis    = .vertical
         textStack.spacing = 3
 
-        [rankLabel, thumbnailView, textStack, registerButton].forEach { addSubview($0) }
+        [rankLabel, thumbnailImageView, textStack, registerButton].forEach {
+            cardView.addSubview($0)
+        }
 
-        // Row minimum height: thumbnail(64) + top/bottom padding(14×2) = 92
-        snp.makeConstraints { make in
-            make.height.greaterThanOrEqualTo(92)
+        cardView.snp.makeConstraints { make in
+            make.top.equalToSuperview().offset(6)
+            make.bottom.equalToSuperview().inset(6)
+            make.leading.trailing.equalToSuperview()
+            make.height.greaterThanOrEqualTo(80)
         }
 
         rankLabel.snp.makeConstraints { make in
@@ -307,7 +393,8 @@ private final class BookRowView: UIView {
             make.width.equalTo(20)
         }
 
-        thumbnailView.snp.makeConstraints { make in
+        // thumbnailImageView 초기 constraints — rank 표시 모드 (configure에서 remakeConstraints)
+        thumbnailImageView.snp.makeConstraints { make in
             make.leading.equalTo(rankLabel.snp.trailing).offset(14)
             make.centerY.equalToSuperview()
             make.width.equalTo(48)
@@ -315,7 +402,7 @@ private final class BookRowView: UIView {
         }
 
         textStack.snp.makeConstraints { make in
-            make.leading.equalTo(thumbnailView.snp.trailing).offset(14)
+            make.leading.equalTo(thumbnailImageView.snp.trailing).offset(14)
             make.trailing.lessThanOrEqualTo(registerButton.snp.leading).offset(-14)
             make.centerY.equalToSuperview()
         }
@@ -323,6 +410,42 @@ private final class BookRowView: UIView {
         registerButton.snp.makeConstraints { make in
             make.trailing.equalToSuperview().inset(16)
             make.centerY.equalToSuperview()
+        }
+
+        registerButton.addTarget(self, action: #selector(registerTapped), for: .touchUpInside)
+    }
+
+    @objc private func registerTapped() {
+        guard let book = currentBook else { return }
+        onRegister?(book)
+    }
+
+    // MARK: - Configure
+
+    func configure(book: Book) {
+        currentBook      = book
+        rankLabel.text   = book.bestRank.map { "\($0)" }
+        titleLabel.text  = book.title
+        authorLabel.text = book.author
+        thumbnailImageView.kf.setImage(with: book.coverURL)
+
+        let showRank = book.bestRank != nil
+        guard showRank != rankVisible else { return }
+        rankVisible        = showRank
+        rankLabel.isHidden = !showRank
+        updateThumbnailLeading(showRank: showRank)
+    }
+
+    private func updateThumbnailLeading(showRank: Bool) {
+        thumbnailImageView.snp.remakeConstraints { make in
+            if showRank {
+                make.leading.equalTo(rankLabel.snp.trailing).offset(14)
+            } else {
+                make.leading.equalToSuperview().offset(16)
+            }
+            make.centerY.equalToSuperview()
+            make.width.equalTo(48)
+            make.height.equalTo(64)
         }
     }
 }
