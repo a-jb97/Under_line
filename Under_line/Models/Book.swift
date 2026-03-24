@@ -13,6 +13,8 @@ struct Book {
     let isbn13: String
     let coverURL: URL?
     let publisher: String
-    let bestRank: Int?       // 베스트셀러 응답일 때만 값, 검색 결과는 nil
+    let publishDate: String?    // 출판일
+    let category: String?       // 도서 카테고리
+    let bestRank: Int?           // 베스트셀러 응답일 때만 값, 검색 결과는 nil
     let description: String
 }
