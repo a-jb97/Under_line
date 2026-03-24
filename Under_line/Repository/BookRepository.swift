@@ -56,9 +56,22 @@ final class BookRepository: BookRepositoryProtocol {
     func saveBook(_ book: Book) -> Completable {
         Completable.create { [weak self] (completable: @escaping (CompletableEvent) -> Void) -> Disposable in
             guard let self else { completable(.completed); return Disposables.create() }
-            let record = BookRecord(from: book)
-            self.modelContext.insert(record)
             do {
+                let isbn = book.isbn13
+                let duplicateDescriptor = FetchDescriptor<BookRecord>(
+                    predicate: #Predicate { $0.isbn13 == isbn }
+                )
+                let existing = try self.modelContext.fetch(duplicateDescriptor)
+                guard existing.isEmpty else {
+                    completable(.error(NSError(
+                        domain: "BookRepository",
+                        code: 409,
+                        userInfo: [NSLocalizedDescriptionKey: "이미 등록된 도서입니다."]
+                    )))
+                    return Disposables.create()
+                }
+                let record = BookRecord(from: book)
+                self.modelContext.insert(record)
                 try self.modelContext.save()
                 self.refreshRelay()
                 completable(.completed)
