@@ -13,29 +13,18 @@ import RxCocoa
 final class BookshelfViewController: UIViewController {
 
     private let disposeBag = DisposeBag()
-    private var pagesSetup = false
+    private var layoutReady = false
     private var highlightLayers: [(view: UIView, layer: CAGradientLayer)] = []
+    private var isEditMode = false
 
-    // MARK: - Shelf Page Data
+    // MARK: - Saved Books
 
-    /// 책장 3페이지 데이터 (추후 ViewModel / SwiftData로 교체)
-    private let shelfPageData: [[ShelfPageView.RowData]] = [
-        [
-            .init(books: [.dark,   .medium, .lightOutline]),
-            .init(books: [.lightDarkOutline, .dark, .medium]),
-            .init(books: [.medium, .lightOutline]),
-        ],
-        [
-            .init(books: [.medium, .dark,  .lightOutline]),
-            .init(books: [.dark,   .medium, .dark]),
-            .init(books: [.lightOutline, .medium, .dark]),
-        ],
-        [
-            .init(books: [.dark,  .lightOutline, .medium]),
-            .init(books: [.medium, .dark]),
-            .init(books: [.lightOutline, .dark, .medium]),
-        ],
-    ]
+    private var savedBooks: [Book] = [] {
+        didSet {
+            guard layoutReady else { return }
+            rebuildShelfPages()
+        }
+    }
 
     // MARK: - UI Components
 
@@ -81,8 +70,8 @@ final class BookshelfViewController: UIViewController {
     // 페이지 컨트롤 (점 인디케이터)
     private let pageControl: UIPageControl = {
         let pc = UIPageControl()
-        pc.numberOfPages = 3
-        pc.currentPage = 0
+        pc.numberOfPages = 1
+        pc.currentPage   = 0
         pc.currentPageIndicatorTintColor = UIColor.primary
         pc.pageIndicatorTintColor        = UIColor.primary.withAlphaComponent(0.3)
         pc.transform = CGAffineTransform(scaleX: 0.75, y: 0.75)
@@ -94,6 +83,17 @@ final class BookshelfViewController: UIViewController {
         let btn = UIButton(type: .system)
         let cfg = UIImage.SymbolConfiguration(pointSize: 20, weight: .medium)
         btn.setImage(UIImage(systemName: "plus", withConfiguration: cfg), for: .normal)
+        btn.tintColor = UIColor.walnut
+        btn.layer.cornerRadius = 26
+        btn.clipsToBounds = true
+        return btn
+    }()
+
+    // 편집 버튼
+    private lazy var editButton: UIButton = {
+        let btn = UIButton(type: .system)
+        let cfg = UIImage.SymbolConfiguration(pointSize: 20, weight: .medium)
+        btn.setImage(UIImage(systemName: "square.and.pencil", withConfiguration: cfg), for: .normal)
         btn.tintColor = UIColor.walnut
         btn.layer.cornerRadius = 26
         btn.clipsToBounds = true
@@ -117,9 +117,10 @@ final class BookshelfViewController: UIViewController {
             gradient.frame = view.bounds
         }
 
-        guard !pagesSetup, bookshelfScrollView.bounds.width > 0 else { return }
-        pagesSetup = true
-        setupShelfPages()
+        if !layoutReady, bookshelfScrollView.bounds.width > 0 {
+            layoutReady = true
+            rebuildShelfPages()
+        }
     }
 
     override var preferredStatusBarStyle: UIStatusBarStyle { .darkContent }
@@ -138,8 +139,11 @@ final class BookshelfViewController: UIViewController {
         view.addSubview(pageControl)
         view.addSubview(fabButton)
 
+        view.addSubview(editButton)
+
         applyFabGlassStyle(to: filterButton, cornerRadius: 20)
         applyFabGlassStyle(to: fabButton,    cornerRadius: 26)
+        applyFabGlassStyle(to: editButton,   cornerRadius: 26)
     }
 
     private func setupConstraints() {
@@ -165,6 +169,12 @@ final class BookshelfViewController: UIViewController {
             make.size.equalTo(52)
         }
 
+        editButton.snp.makeConstraints { make in
+            make.leading.equalToSuperview().inset(24)
+            make.centerY.equalTo(fabButton)
+            make.size.equalTo(52)
+        }
+
         pageControl.snp.makeConstraints { make in
             make.centerX.equalToSuperview()
             make.bottom.equalTo(view.safeAreaLayoutGuide).inset(16)
@@ -181,21 +191,45 @@ final class BookshelfViewController: UIViewController {
         }
     }
 
-    /// 책장 페이지들을 스크롤뷰에 배치 (실제 bounds 확정 후 호출)
-    private func setupShelfPages() {
+    // MARK: - Shelf Pages
+
+    private func rebuildShelfPages() {
         let pageWidth  = bookshelfScrollView.bounds.width
         let pageHeight = bookshelfScrollView.bounds.height
+        guard pageWidth > 0 else { return }
+
+        // 기존 페이지 및 선반 오버레이 제거
+        bookshelfScrollView.subviews.forEach { $0.removeFromSuperview() }
+        shelfOverlayView.subviews.forEach    { $0.removeFromSuperview() }
+
+        let booksPerRow  = 3
+        let rowsPerPage  = 3
+        let booksPerPage = booksPerRow * rowsPerPage
+        let pageCount    = max(1, Int(ceil(Double(savedBooks.count) / Double(booksPerPage))))
+
+        pageControl.numberOfPages = pageCount
 
         bookshelfScrollView.contentSize = CGSize(
-            width:  pageWidth * CGFloat(shelfPageData.count),
+            width:  pageWidth * CGFloat(pageCount),
             height: pageHeight
         )
 
-        for (i, rowData) in shelfPageData.enumerated() {
-            let pageView = ShelfPageView(rows: rowData)
+        for pageIdx in 0..<pageCount {
+            var rows: [ShelfPageView.RowData] = []
+            for rowIdx in 0..<rowsPerPage {
+                let start = pageIdx * booksPerPage + rowIdx * booksPerRow
+                var rowBooks: [Book?] = start < savedBooks.count
+                    ? (start..<min(start + booksPerRow, savedBooks.count)).map { savedBooks[$0] as Book? }
+                    : []
+                while rowBooks.count < booksPerRow { rowBooks.append(nil) }
+                rows.append(ShelfPageView.RowData(books: rowBooks))
+            }
+            let pageView = ShelfPageView(rows: rows, isEditing: isEditMode, onDelete: { [weak self] book in
+                self?.deleteBook(book)
+            })
             bookshelfScrollView.addSubview(pageView)
             pageView.frame = CGRect(
-                x:      pageWidth * CGFloat(i),
+                x:      pageWidth * CGFloat(pageIdx),
                 y:      0,
                 width:  pageWidth,
                 height: pageHeight
@@ -221,7 +255,7 @@ final class BookshelfViewController: UIViewController {
             let shelfY   = rowMinY + 127
 
             let board = UIView()
-            board.backgroundColor = .walnut
+            board.backgroundColor    = .walnut
             board.layer.cornerRadius = 5
             shelfOverlayView.addSubview(board)
             board.frame = CGRect(
@@ -231,6 +265,32 @@ final class BookshelfViewController: UIViewController {
                 height: 22
             )
         }
+    }
+
+    // MARK: - Edit Mode
+
+    private func setEditMode(_ editing: Bool) {
+        isEditMode = editing
+        if editing {
+            editButton.setImage(nil, for: .normal)
+            editButton.setTitle("완료", for: .normal)
+            editButton.setTitleColor(UIColor.walnut, for: .normal)
+            editButton.titleLabel?.font = .systemFont(ofSize: 15, weight: .semibold)
+        } else {
+            let cfg = UIImage.SymbolConfiguration(pointSize: 20, weight: .medium)
+            editButton.setImage(UIImage(systemName: "square.and.pencil", withConfiguration: cfg), for: .normal)
+            editButton.setTitle(nil, for: .normal)
+        }
+        if layoutReady { rebuildShelfPages() }
+    }
+
+    private func deleteBook(_ book: Book) {
+        AppContainer.shared.bookRepository.deleteBook(book)
+            .observe(on: MainScheduler.instance)
+            .subscribe(onCompleted: { }, onError: { error in
+                print("삭제 실패: \(error)")
+            })
+            .disposed(by: disposeBag)
     }
 
     // MARK: - FAB Glass Style
@@ -308,6 +368,14 @@ final class BookshelfViewController: UIViewController {
     // MARK: - Bindings
 
     private func bindActions() {
+        // 저장된 도서 스트림 구독 → 책장 자동 업데이트
+        AppContainer.shared.bookRepository.fetchSavedBooks()
+            .observe(on: MainScheduler.instance)
+            .subscribe(onNext: { [weak self] books in
+                self?.savedBooks = books
+            })
+            .disposed(by: disposeBag)
+
         // 스크롤 → 페이지 컨트롤 동기화
         bookshelfScrollView.rx.contentOffset
             .map { [weak self] offset -> Int in
@@ -330,22 +398,30 @@ final class BookshelfViewController: UIViewController {
                 let vc = BookSearchViewController()
                 vc.modalPresentationStyle = .pageSheet
                 if let sheet = vc.sheetPresentationController {
-                    sheet.detents = [.large()]
-                    sheet.prefersGrabberVisible  = false   // 커스텀 핸들바 사용
-                    sheet.preferredCornerRadius  = 24
+                    sheet.detents               = [.large()]
+                    sheet.prefersGrabberVisible = false   // 커스텀 핸들바 사용
+                    sheet.preferredCornerRadius = 24
                 }
                 self.present(vc, animated: true)
             })
             .disposed(by: disposeBag)
 
-        // 책장 탭 → 상세 화면 push
+        // 책장 탭 → 상세 화면 push (편집 모드일 때는 비활성)
         let bookTap = UITapGestureRecognizer()
         bookshelfScrollView.addGestureRecognizer(bookTap)
         bookTap.rx.event
             .subscribe(onNext: { [weak self] _ in
-                guard let self else { return }
+                guard let self, !self.isEditMode else { return }
                 let vc = BookDetailViewController()
                 self.navigationController?.pushViewController(vc, animated: true)
+            })
+            .disposed(by: disposeBag)
+
+        // 편집 버튼
+        editButton.rx.tap
+            .subscribe(onNext: { [weak self] in
+                guard let self else { return }
+                self.setEditMode(!self.isEditMode)
             })
             .disposed(by: disposeBag)
 
