@@ -9,7 +9,7 @@
 //  nonisolated init(from:)을 명시적으로 구현함
 //
 
-import Foundation
+import UIKit
 
 // MARK: - Response Wrapper
 
@@ -65,15 +65,30 @@ extension AladinBookItem {
     /// DTO → 도메인 모델 변환의 유일한 지점
     func toDomain() -> Book {
         Book(
-            title:       title,
+            title:       title.htmlDecoded,
             author:      author,
             isbn13:      isbn13,
             coverURL:    URL(string: cover),
             publisher:   publisher,
             publishDate: pubDate,
-            category:    categoryName,
+            category:    categoryName?.split(separator: ">").last.map(String.init),
             bestRank:    bestRank,
-            description: description
+            description: description.htmlDecoded
         )
+    }
+}
+
+// MARK: - Private Helpers
+
+private extension String {
+    var htmlDecoded: String {
+        guard contains("&") else { return self }
+        let data = Data(utf8)
+        let opts: [NSAttributedString.DocumentReadingOptionKey: Any] = [
+            .documentType: NSAttributedString.DocumentType.html,
+            .characterEncoding: String.Encoding.utf8.rawValue,
+        ]
+        return (try? NSAttributedString(data: data, options: opts, documentAttributes: nil))?
+            .string ?? self
     }
 }

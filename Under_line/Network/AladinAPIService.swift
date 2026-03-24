@@ -34,6 +34,7 @@ final class AladinAPIService: AladinAPIServiceProtocol {
             "MaxResults":   50,
             "start":        1,
             "SearchTarget": "Book",
+            "Cover":        "Big",
             "output":       "js",
             "Version":      "20131101"
         ]
@@ -48,6 +49,7 @@ final class AladinAPIService: AladinAPIServiceProtocol {
             "MaxResults":   maxResults,
             "start":        (page - 1) * maxResults + 1,
             "SearchTarget": "Book",
+            "Cover":        "Big",
             "output":       "js",
             "Version":      "20131101"
         ]
