@@ -21,14 +21,14 @@ final class DirectCollectViewController: UIViewController {
     enum Emotion: Int, CaseIterable {
         case joy, calm, sad, touched, pensive, tense
 
-        var emoji: String {
+        var emoji: UIImage {
             switch self {
-            case .joy:     return "😊"
-            case .calm:    return "😌"
-            case .sad:     return "😢"
-            case .touched: return "😍"
-            case .pensive: return "🤔"
-            case .tense:   return "😤"
+            case .joy:     return .happy
+            case .calm:    return .calm
+            case .sad:     return .sad
+            case .touched: return .moved
+            case .pensive: return .meditation
+            case .tense:   return .nervous
             }
         }
 
@@ -230,16 +230,7 @@ final class DirectCollectViewController: UIViewController {
 
     private func configureSheet() {
         guard let sheet = sheetPresentationController else { return }
-        if #available(iOS 16.0, *) {
-            let custom = UISheetPresentationController.Detent.custom(
-                identifier: .init("directCollect")
-            ) { context in
-                context.maximumDetentValue * 0.88
-            }
-            sheet.detents = [custom]
-        } else {
-            sheet.detents = [.large()]
-        }
+        sheet.detents = [.large()]
         sheet.prefersGrabberVisible = false
         sheet.preferredCornerRadius = 24
     }
@@ -448,11 +439,10 @@ private final class NeumorphicChipButton: UIControl {
     // MARK: Content
 
     private func setupContent(emotion: DirectCollectViewController.Emotion) {
-        let emojiLabel = UILabel()
-        emojiLabel.text = emotion.emoji
-        emojiLabel.font = .systemFont(ofSize: 22)
-        emojiLabel.textAlignment = .center
-        emojiLabel.isUserInteractionEnabled = false
+        let emojiImageView = UIImageView(image: emotion.emoji)
+        emojiImageView.contentMode = .scaleAspectFit
+        emojiImageView.isUserInteractionEnabled = false
+        emojiImageView.snp.makeConstraints { make in make.size.equalTo(28) }
 
         let nameLabel = UILabel()
         nameLabel.text = emotion.label
@@ -461,7 +451,7 @@ private final class NeumorphicChipButton: UIControl {
         nameLabel.textAlignment = .center
         nameLabel.isUserInteractionEnabled = false
 
-        let stack = UIStackView(arrangedSubviews: [emojiLabel, nameLabel])
+        let stack = UIStackView(arrangedSubviews: [emojiImageView, nameLabel])
         stack.axis = .vertical
         stack.spacing = 4
         stack.alignment = .center
