@@ -545,9 +545,16 @@ final class BookDetailViewController: UIViewController {
             .disposed(by: disposeBag)
 
         fabButton.rx.tap
-            .subscribe(onNext: {
-                // TODO: 문장 추가 기능 연결
-                print("밑줄 추가 탭")
+            .subscribe(onNext: { [weak self] in
+                guard let self else { return }
+                let cameraVC = CameraCollectionViewController()
+                cameraVC.modalPresentationStyle = .fullScreen
+                cameraVC.onDirectCollect = { [weak self] in
+                    let directVC = DirectCollectViewController()
+                    directVC.modalPresentationStyle = .pageSheet
+                    self?.present(directVC, animated: true)
+                }
+                self.present(cameraVC, animated: true)
             })
             .disposed(by: disposeBag)
 
