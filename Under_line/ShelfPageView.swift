@@ -7,63 +7,26 @@
 
 import UIKit
 import SnapKit
-
-// MARK: - BookCover
-
-/// 책 커버 스타일 (디자인 토큰 기반)
-enum BookCover {
-    case dark           // $accent  #190e0b
-    case medium         // $primary #5d4037
-    case lightOutline   // $background + $primary border
-    case lightDarkOutline // $background + $accent border
-
-    var backgroundColor: UIColor {
-        switch self {
-        case .dark:             return UIColor.accent
-        case .medium:           return UIColor.primary
-        case .lightOutline:     return UIColor.background
-        case .lightDarkOutline: return UIColor.background
-        }
-    }
-
-    var borderColor: UIColor? {
-        switch self {
-        case .lightOutline:     return UIColor.primary
-        case .lightDarkOutline: return UIColor.accent
-        default:                return nil
-        }
-    }
-}
+import Kingfisher
 
 // MARK: - ShelfRowView
 
 /// 책 + 책장 보드 1행
 final class ShelfRowView: UIView {
 
-    init(books: [BookCover]) {
+    init(books: [Book?], isEditing: Bool = false, onDelete: ((Book) -> Void)? = nil) {
         super.init(frame: .zero)
-        setupBooks(books)
+        setupBooks(books, isEditing: isEditing, onDelete: onDelete)
     }
 
     required init?(coder: NSCoder) { fatalError() }
 
-    private func setupBooks(_ covers: [BookCover]) {
-        // 책 뷰 생성
-        let bookViews: [UIView] = covers.map { cover in
-            let v = UIView()
-            v.backgroundColor = cover.backgroundColor
-            v.layer.cornerRadius = 5
-            if let borderColor = cover.borderColor {
-                v.layer.borderWidth = 1
-                v.layer.borderColor = borderColor.cgColor
-            }
-            return v
-        }
+    private func setupBooks(_ books: [Book?], isEditing: Bool, onDelete: ((Book) -> Void)?) {
+        let bookViews: [UIView] = books.map { makeBookView($0, isEditing: isEditing, onDelete: onDelete) }
 
-        // 책 수평 스택
         let booksStack = UIStackView(arrangedSubviews: bookViews)
-        booksStack.axis = .horizontal
-        booksStack.spacing = 20
+        booksStack.axis      = .horizontal
+        booksStack.spacing   = 20
         booksStack.alignment = .bottom
 
         bookViews.forEach { $0.snp.makeConstraints { make in
@@ -76,8 +39,54 @@ final class ShelfRowView: UIView {
         booksStack.snp.makeConstraints { make in
             make.centerX.equalToSuperview()
             make.top.equalToSuperview().inset(10)
-            make.bottom.equalToSuperview().inset(22)  // 선반 보드 높이만큼 여백 (고정 오버레이로 대체)
+            make.bottom.equalToSuperview().inset(22)  // 선반 보드 높이만큼 여백
         }
+    }
+
+    private func makeBookView(_ book: Book?, isEditing: Bool, onDelete: ((Book) -> Void)?) -> UIView {
+        let wrapper = UIView()
+
+        let container = UIView()
+        container.layer.cornerRadius = 5
+        container.clipsToBounds      = true
+        wrapper.addSubview(container)
+        container.snp.makeConstraints { $0.edges.equalToSuperview() }
+
+        guard let book else {
+            container.backgroundColor = .clear
+            return wrapper
+        }
+
+        if let coverURL = book.coverURL {
+            container.backgroundColor = UIColor.primary
+            let iv = UIImageView()
+            iv.contentMode = .scaleAspectFill
+            iv.clipsToBounds = true
+            iv.kf.setImage(with: coverURL)
+            container.addSubview(iv)
+            iv.snp.makeConstraints { $0.edges.equalToSuperview() }
+        } else {
+            container.backgroundColor = UIColor.primary
+        }
+
+        if isEditing {
+            let deleteButton = UIButton(type: .system)
+            deleteButton.backgroundColor = .systemRed
+            deleteButton.layer.cornerRadius = 11
+            deleteButton.clipsToBounds = true
+            let cfg = UIImage.SymbolConfiguration(pointSize: 10, weight: .bold)
+            deleteButton.setImage(UIImage(systemName: "minus", withConfiguration: cfg), for: .normal)
+            deleteButton.tintColor = .white
+            wrapper.addSubview(deleteButton)
+            deleteButton.snp.makeConstraints { make in
+                make.top.equalToSuperview().offset(-6)
+                make.trailing.equalToSuperview().offset(6)
+                make.size.equalTo(22)
+            }
+            deleteButton.addAction(UIAction { _ in onDelete?(book) }, for: .touchUpInside)
+        }
+
+        return wrapper
     }
 }
 
@@ -87,23 +96,23 @@ final class ShelfRowView: UIView {
 final class ShelfPageView: UIView {
 
     struct RowData {
-        let books: [BookCover]
+        let books: [Book?]
     }
 
-    init(rows: [RowData]) {
+    init(rows: [RowData], isEditing: Bool = false, onDelete: ((Book) -> Void)? = nil) {
         super.init(frame: .zero)
-        setupRows(rows)
+        setupRows(rows, isEditing: isEditing, onDelete: onDelete)
     }
 
     required init?(coder: NSCoder) { fatalError() }
 
-    private func setupRows(_ rows: [RowData]) {
+    private func setupRows(_ rows: [RowData], isEditing: Bool, onDelete: ((Book) -> Void)?) {
         let stack = UIStackView()
-        stack.axis = .vertical
+        stack.axis         = .vertical
         stack.distribution = .equalSpacing
 
         rows.forEach { rowData in
-            stack.addArrangedSubview(ShelfRowView(books: rowData.books))
+            stack.addArrangedSubview(ShelfRowView(books: rowData.books, isEditing: isEditing, onDelete: onDelete))
         }
 
         // 행 높이 합(top inset 10 + book 117 + shelf board 22) × 행 수
