@@ -14,15 +14,15 @@ import Kingfisher
 /// 책 + 책장 보드 1행
 final class ShelfRowView: UIView {
 
-    init(books: [Book?], isEditing: Bool = false, onDelete: ((Book) -> Void)? = nil) {
+    init(books: [Book?], isEditing: Bool = false, onDelete: ((Book) -> Void)? = nil, onTap: ((Book) -> Void)? = nil) {
         super.init(frame: .zero)
-        setupBooks(books, isEditing: isEditing, onDelete: onDelete)
+        setupBooks(books, isEditing: isEditing, onDelete: onDelete, onTap: onTap)
     }
 
     required init?(coder: NSCoder) { fatalError() }
 
-    private func setupBooks(_ books: [Book?], isEditing: Bool, onDelete: ((Book) -> Void)?) {
-        let bookViews: [UIView] = books.map { makeBookView($0, isEditing: isEditing, onDelete: onDelete) }
+    private func setupBooks(_ books: [Book?], isEditing: Bool, onDelete: ((Book) -> Void)?, onTap: ((Book) -> Void)?) {
+        let bookViews: [UIView] = books.map { makeBookView($0, isEditing: isEditing, onDelete: onDelete, onTap: onTap) }
 
         let booksStack = UIStackView(arrangedSubviews: bookViews)
         booksStack.axis      = .horizontal
@@ -43,7 +43,7 @@ final class ShelfRowView: UIView {
         }
     }
 
-    private func makeBookView(_ book: Book?, isEditing: Bool, onDelete: ((Book) -> Void)?) -> UIView {
+    private func makeBookView(_ book: Book?, isEditing: Bool, onDelete: ((Book) -> Void)?, onTap: ((Book) -> Void)?) -> UIView {
         let wrapper = UIView()
 
         let container = UIView()
@@ -84,6 +84,12 @@ final class ShelfRowView: UIView {
                 make.size.equalTo(22)
             }
             deleteButton.addAction(UIAction { _ in onDelete?(book) }, for: .touchUpInside)
+        } else {
+            let tapButton = UIButton(type: .system)
+            tapButton.backgroundColor = .clear
+            wrapper.addSubview(tapButton)
+            tapButton.snp.makeConstraints { $0.edges.equalToSuperview() }
+            tapButton.addAction(UIAction { _ in onTap?(book) }, for: .touchUpInside)
         }
 
         return wrapper
@@ -99,20 +105,20 @@ final class ShelfPageView: UIView {
         let books: [Book?]
     }
 
-    init(rows: [RowData], isEditing: Bool = false, onDelete: ((Book) -> Void)? = nil) {
+    init(rows: [RowData], isEditing: Bool = false, onDelete: ((Book) -> Void)? = nil, onTap: ((Book) -> Void)? = nil) {
         super.init(frame: .zero)
-        setupRows(rows, isEditing: isEditing, onDelete: onDelete)
+        setupRows(rows, isEditing: isEditing, onDelete: onDelete, onTap: onTap)
     }
 
     required init?(coder: NSCoder) { fatalError() }
 
-    private func setupRows(_ rows: [RowData], isEditing: Bool, onDelete: ((Book) -> Void)?) {
+    private func setupRows(_ rows: [RowData], isEditing: Bool, onDelete: ((Book) -> Void)?, onTap: ((Book) -> Void)?) {
         let stack = UIStackView()
         stack.axis         = .vertical
         stack.distribution = .equalSpacing
 
         rows.forEach { rowData in
-            stack.addArrangedSubview(ShelfRowView(books: rowData.books, isEditing: isEditing, onDelete: onDelete))
+            stack.addArrangedSubview(ShelfRowView(books: rowData.books, isEditing: isEditing, onDelete: onDelete, onTap: onTap))
         }
 
         // 행 높이 합(top inset 10 + book 117 + shelf board 22) × 행 수
