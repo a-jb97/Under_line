@@ -31,27 +31,31 @@ struct AladinListResponse: Decodable, Sendable {
 // MARK: - Item
 
 struct AladinBookItem: Decodable, Sendable {
-    let title:       String
-    let author:      String
-    let isbn13:      String
-    let cover:       String
-    let publisher:   String
-    let bestRank:    Int?
-    let description: String
+    let title:        String
+    let author:       String
+    let isbn13:       String
+    let cover:        String
+    let publisher:    String
+    let pubDate:      String?
+    let categoryName: String?
+    let bestRank:     Int?
+    let description:  String
 
     nonisolated init(from decoder: any Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
-        title       = try container.decode(String.self,        forKey: .title)
-        author      = try container.decode(String.self,        forKey: .author)
-        isbn13      = try container.decode(String.self,        forKey: .isbn13)
-        cover       = try container.decode(String.self,        forKey: .cover)
-        publisher   = try container.decode(String.self,        forKey: .publisher)
-        bestRank    = try container.decodeIfPresent(Int.self,  forKey: .bestRank)
-        description = try container.decode(String.self,        forKey: .description)
+        title        = try container.decode(String.self,          forKey: .title)
+        author       = try container.decode(String.self,          forKey: .author)
+        isbn13       = try container.decode(String.self,          forKey: .isbn13)
+        cover        = try container.decode(String.self,          forKey: .cover)
+        publisher    = try container.decode(String.self,          forKey: .publisher)
+        pubDate      = try container.decodeIfPresent(String.self, forKey: .pubDate)
+        categoryName = try container.decodeIfPresent(String.self, forKey: .categoryName)
+        bestRank     = try container.decodeIfPresent(Int.self,    forKey: .bestRank)
+        description  = try container.decode(String.self,          forKey: .description)
     }
 
     private enum CodingKeys: String, CodingKey {
-        case title, author, isbn13, cover, publisher, bestRank, description
+        case title, author, isbn13, cover, publisher, pubDate, categoryName, bestRank, description
     }
 }
 
@@ -66,6 +70,8 @@ extension AladinBookItem {
             isbn13:      isbn13,
             coverURL:    URL(string: cover),
             publisher:   publisher,
+            publishDate: pubDate,
+            category:    categoryName,
             bestRank:    bestRank,
             description: description
         )
