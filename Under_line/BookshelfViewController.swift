@@ -330,9 +330,7 @@ final class BookshelfViewController: UIViewController {
                 let vc = BookSearchViewController()
                 vc.modalPresentationStyle = .pageSheet
                 if let sheet = vc.sheetPresentationController {
-                    sheet.detents = [
-                        .custom { context in context.maximumDetentValue * 0.78 }
-                    ]
+                    sheet.detents = [.large()]
                     sheet.prefersGrabberVisible  = false   // 커스텀 핸들바 사용
                     sheet.preferredCornerRadius  = 24
                 }
