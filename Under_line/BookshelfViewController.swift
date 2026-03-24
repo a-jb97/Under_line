@@ -226,6 +226,10 @@ final class BookshelfViewController: UIViewController {
             }
             let pageView = ShelfPageView(rows: rows, isEditing: isEditMode, onDelete: { [weak self] book in
                 self?.deleteBook(book)
+            }, onTap: { [weak self] book in
+                guard let self else { return }
+                let vc = BookDetailViewController(book: book)
+                self.navigationController?.pushViewController(vc, animated: true)
             })
             bookshelfScrollView.addSubview(pageView)
             pageView.frame = CGRect(
@@ -411,17 +415,6 @@ final class BookshelfViewController: UIViewController {
                     sheet.preferredCornerRadius = 24
                 }
                 self.present(vc, animated: true)
-            })
-            .disposed(by: disposeBag)
-
-        // 책장 탭 → 상세 화면 push (편집 모드일 때는 비활성)
-        let bookTap = UITapGestureRecognizer()
-        bookshelfScrollView.addGestureRecognizer(bookTap)
-        bookTap.rx.event
-            .subscribe(onNext: { [weak self] _ in
-                guard let self, !self.isEditMode else { return }
-                let vc = BookDetailViewController()
-                self.navigationController?.pushViewController(vc, animated: true)
             })
             .disposed(by: disposeBag)
 

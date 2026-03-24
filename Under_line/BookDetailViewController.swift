@@ -9,11 +9,20 @@ import UIKit
 import SnapKit
 import RxSwift
 import RxCocoa
+import Kingfisher
 
 final class BookDetailViewController: UIViewController {
 
+    private let book: Book
     private let disposeBag = DisposeBag()
     private var highlightLayers: [(view: UIView, layer: CAGradientLayer)] = []
+
+    init(book: Book) {
+        self.book = book
+        super.init(nibName: nil, bundle: nil)
+    }
+
+    required init?(coder: NSCoder) { fatalError() }
 
     // MARK: - UI Components
 
@@ -110,11 +119,13 @@ final class BookDetailViewController: UIViewController {
         return v
     }()
 
-    private let bookCoverView: UIView = {
-        let v = UIView()
-        v.backgroundColor   = UIColor.primary
-        v.layer.cornerRadius = 6
-        return v
+    private let bookCoverView: UIImageView = {
+        let iv = UIImageView()
+        iv.backgroundColor   = UIColor.primary
+        iv.layer.cornerRadius = 6
+        iv.clipsToBounds      = true
+        iv.contentMode        = .scaleAspectFill
+        return iv
     }()
 
     private let bookTitleLabel: UILabel = {
@@ -168,6 +179,16 @@ final class BookDetailViewController: UIViewController {
         btn.setTitleColor(UIColor.primary.withAlphaComponent(0.7), for: .normal)
         btn.contentHorizontalAlignment = .right
         return btn
+    }()
+
+    private let descriptionLabel: UILabel = {
+        let l = UILabel()
+        l.numberOfLines = 0
+        l.font = UIFont(name: "GoyangIlsan R", size: 12)
+            ?? .systemFont(ofSize: 12)
+        l.textColor = UIColor.primary.withAlphaComponent(0.75)
+        l.isHidden = true
+        return l
     }()
 
     // Progress Section (neumorphic inner card)
@@ -256,6 +277,7 @@ final class BookDetailViewController: UIViewController {
         setupUI()
         setupConstraints()
         setupProgressGradient()
+        configureWithBook()
         bindActions()
     }
 
@@ -298,6 +320,7 @@ final class BookDetailViewController: UIViewController {
         bookInfoSection.addSubview(publisherLabel)
         bookInfoSection.addSubview(genreTagView)
         bookInfoSection.addSubview(moreButton)
+        bookInfoSection.addSubview(descriptionLabel)
 
         progressBarBg.addSubview(progressBarFill)
         progressSection.addSubview(progressHeaderLabel)
@@ -407,9 +430,15 @@ final class BookDetailViewController: UIViewController {
             make.centerY.equalTo(genreTagView)
         }
 
+        descriptionLabel.snp.makeConstraints { make in
+            make.leading.trailing.equalToSuperview().inset(16)
+            make.top.equalTo(genreTagView.snp.bottom).offset(10)
+        }
+
         // Progress Section (cornerRadius 12, padding [12,14])
+        // 초기에는 description이 숨겨진 상태이므로 genreTagView 기준
         progressSection.snp.makeConstraints { make in
-            make.top.equalTo(bookCoverView.snp.bottom).offset(20)
+            make.top.equalTo(genreTagView.snp.bottom).offset(16)
             make.leading.trailing.equalToSuperview().inset(16)
             make.bottom.equalToSuperview().inset(16)
         }
@@ -461,6 +490,47 @@ final class BookDetailViewController: UIViewController {
         gradLayer.cornerRadius = 4
         progressBarFill.layer.addSublayer(gradLayer)
         highlightLayers.append((progressBarFill, gradLayer))
+    }
+
+    // MARK: - Book Data
+
+    private func configureWithBook() {
+        bookTitleLabel.text  = book.title
+        bookAuthorLabel.text = book.author
+
+        var publisherStr = book.publisher
+        if let date = book.publishDate, !date.isEmpty {
+            publisherStr += " · \(date)"
+        }
+        publisherLabel.text = publisherStr
+
+        if let category = book.category, !category.isEmpty {
+            genreTagLabel.text    = category
+            genreTagView.isHidden = false
+        } else {
+            genreTagView.isHidden = true
+        }
+
+        if let coverURL = book.coverURL {
+            bookCoverView.kf.setImage(with: coverURL)
+        }
+
+        descriptionLabel.text = book.description
+        moreButton.isHidden = book.description.isEmpty
+
+        // 저장된 문장이 없으므로 플레이스홀더 표시
+        let style = NSMutableParagraphStyle()
+        style.lineHeightMultiple = 1.2
+        style.alignment = .center
+        quoteTextLabel.attributedText = NSAttributedString(
+            string: "첫 밑줄을 등록해보세요.",
+            attributes: [
+                .font:            UIFont(name: "GowunBatang-Regular", size: 18) ?? .systemFont(ofSize: 18),
+                .foregroundColor: UIColor.primary,
+                .paragraphStyle:  style,
+            ]
+        )
+        pageNumLabel.isHidden = true
     }
 
     // MARK: - FAB Glass Style (BookshelfViewController와 동일한 스펙)
@@ -562,6 +632,27 @@ final class BookDetailViewController: UIViewController {
             .subscribe(onNext: { [weak self] in
                 let vc = ReadingRecordViewController()
                 self?.navigationController?.pushViewController(vc, animated: true)
+            })
+            .disposed(by: disposeBag)
+
+        moreButton.rx.tap
+            .subscribe(onNext: { [weak self] in
+                guard let self else { return }
+                let isExpanded = !self.descriptionLabel.isHidden
+                self.descriptionLabel.isHidden = isExpanded
+                self.progressSection.snp.remakeConstraints { make in
+                    if isExpanded {
+                        make.top.equalTo(self.genreTagView.snp.bottom).offset(16)
+                    } else {
+                        make.top.equalTo(self.descriptionLabel.snp.bottom).offset(16)
+                    }
+                    make.leading.trailing.equalToSuperview().inset(16)
+                    make.bottom.equalToSuperview().inset(16)
+                }
+                UIView.animate(withDuration: 0.25) {
+                    self.view.layoutIfNeeded()
+                }
+                self.moreButton.setTitle(isExpanded ? "더 보기" : "가리기", for: .normal)
             })
             .disposed(by: disposeBag)
 
