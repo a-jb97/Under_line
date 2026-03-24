@@ -31,8 +31,7 @@ final class MainTabBarController: UITabBarController {
             selectedImage: UIImage(systemName: "chart.pie.fill")
         )
 
-        let settingsVC = UIViewController()
-        settingsVC.view.backgroundColor = UIColor.background
+        let settingsVC = SettingsViewController()
         settingsVC.tabBarItem = UITabBarItem(
             title: "설정",
             image: UIImage(systemName: "gearshape"),
