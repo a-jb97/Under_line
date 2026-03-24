@@ -177,13 +177,13 @@ final class BookshelfViewController: UIViewController {
 
         pageControl.snp.makeConstraints { make in
             make.centerX.equalToSuperview()
-            make.bottom.equalTo(view.safeAreaLayoutGuide).inset(16)
+            make.top.equalTo(shelfOverlayView)   // 초기 플레이스홀더, setupFixedShelfBoards에서 remakeConstraints
         }
 
         bookshelfScrollView.snp.makeConstraints { make in
             make.top.equalTo(headerView.snp.bottom).offset(16)
             make.leading.trailing.equalToSuperview().inset(24)
-            make.bottom.equalTo(pageControl.snp.top).offset(-12)
+            make.bottom.equalTo(fabButton.snp.top).offset(-16)
         }
 
         shelfOverlayView.snp.makeConstraints { make in
@@ -249,6 +249,7 @@ final class BookshelfViewController: UIViewController {
         let stackMinY   = (pageHeight - stackHeight) / 2
         let spacing     = rowCount > 1 ? (stackHeight - rowsHeight) / (rowCount - 1) : 0
 
+        var lastShelfMaxY: CGFloat = 0
         for i in 0..<Int(rowCount) {
             let rowMinY  = stackMinY + CGFloat(i) * (rowHeight + spacing)
             // 선반 보드 Y = 행 시작 + top inset(10) + 책 높이(117)
@@ -264,6 +265,13 @@ final class BookshelfViewController: UIViewController {
                 width:  shelfOverlayView.bounds.width,
                 height: 22
             )
+            lastShelfMaxY = shelfY + 22
+        }
+
+        // pageControl을 마지막 선반 하단에서 16pt 아래에 배치
+        pageControl.snp.remakeConstraints { make in
+            make.centerX.equalToSuperview()
+            make.top.equalTo(shelfOverlayView).offset(lastShelfMaxY + 16)
         }
     }
 
