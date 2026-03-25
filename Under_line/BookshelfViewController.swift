@@ -259,9 +259,11 @@ final class BookshelfViewController: UIViewController {
             // 선반 보드 Y = 행 시작 + top inset(10) + 책 높이(117)
             let shelfY   = rowMinY + 127
 
-            let board = UIView()
-            board.backgroundColor    = .walnut
+            let board = UIImageView()
+            board.image              = UIImage(named: "Bookshelf\(i + 1)")
+            board.contentMode        = .scaleToFill
             board.layer.cornerRadius = 5
+            board.clipsToBounds      = true
             shelfOverlayView.addSubview(board)
             board.frame = CGRect(
                 x:      0,
