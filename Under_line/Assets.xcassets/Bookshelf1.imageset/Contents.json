@@ -1,17 +1,17 @@
 {
   "images" : [
     {
-      "filename" : "Moved 2.png",
+      "filename" : "Bookshelf1.png",
       "idiom" : "universal",
       "scale" : "1x"
     },
     {
-      "filename" : "Moved.png",
+      "filename" : "Bookshelf1 1.png",
       "idiom" : "universal",
       "scale" : "2x"
     },
     {
-      "filename" : "Moved 1.png",
+      "filename" : "Bookshelf1 2.png",
       "idiom" : "universal",
       "scale" : "3x"
     }
