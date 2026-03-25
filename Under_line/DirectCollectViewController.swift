@@ -15,36 +15,21 @@ import RxCocoa
 final class DirectCollectViewController: UIViewController {
 
     private let disposeBag = DisposeBag()
+    private let bookISBN: String
+    private let initialSentence: String?
 
-    // MARK: - Emotion
+    var onSaved: (() -> Void)?
 
-    enum Emotion: Int, CaseIterable {
-        case joy, calm, sad, touched, pensive, tense
-
-        var emoji: UIImage {
-            switch self {
-            case .joy:     return .happy
-            case .calm:    return .calm
-            case .sad:     return .sad
-            case .touched: return .moved
-            case .pensive: return .meditation
-            case .tense:   return .nervous
-            }
-        }
-
-        var label: String {
-            switch self {
-            case .joy:     return "기쁨"
-            case .calm:    return "평온"
-            case .sad:     return "슬픔"
-            case .touched: return "감동"
-            case .pensive: return "사색"
-            case .tense:   return "긴장"
-            }
-        }
+    init(bookISBN: String, initialSentence: String? = nil) {
+        self.bookISBN        = bookISBN
+        self.initialSentence = initialSentence
+        super.init(nibName: nil, bundle: nil)
     }
 
+    required init?(coder: NSCoder) { fatalError() }
+
     private var selectedEmotion: Emotion?
+    private let selectedEmotionRelay = BehaviorRelay<Emotion?>(value: nil)
     private var emotionChips: [NeumorphicChipButton] = []
 
     // MARK: - Handle
@@ -224,6 +209,11 @@ final class DirectCollectViewController: UIViewController {
         setupUI()
         setupConstraints()
         bindActions()
+
+        if let text = initialSentence, !text.isEmpty {
+            sentenceTextView.text    = text
+            sentencePlaceholder.isHidden = true
+        }
     }
 
     // MARK: - Sheet
@@ -331,13 +321,80 @@ final class DirectCollectViewController: UIViewController {
     // MARK: - Bindings
 
     private func bindActions() {
+        let isFormValid = Observable.combineLatest(
+            sentenceTextView.rx.text.orEmpty,
+            pageTextField.rx.text.orEmpty,
+            selectedEmotionRelay
+        ) { sentence, page, emotion -> Bool in
+            let sentenceValid = !sentence.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            let pageNum = Int(page.trimmingCharacters(in: .whitespacesAndNewlines))
+            let pageValid = pageNum != nil && pageNum! > 0
+            return sentenceValid && pageValid && emotion != nil
+        }
+
+        isFormValid
+            .bind(to: registerButton.rx.isEnabled)
+            .disposed(by: disposeBag)
+
+        isFormValid
+            .map { $0 ? 1.0 : 0.4 }
+            .bind(to: registerButton.rx.alpha)
+            .disposed(by: disposeBag)
+
         registerButton.rx.tap
             .subscribe(onNext: { [weak self] in
-                // TODO: 문장 저장
-                print("추가하기 탭")
-                self?.dismiss(animated: true)
+                self?.saveSentence()
             })
             .disposed(by: disposeBag)
+    }
+
+    private func saveSentence() {
+        let sentenceText = sentenceTextView.text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !sentenceText.isEmpty else {
+            showAlert("밑줄 내용을 입력해주세요.")
+            return
+        }
+
+        let pageText = pageTextField.text?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        guard let page = Int(pageText), page > 0 else {
+            showAlert("올바른 페이지 번호를 입력해주세요.")
+            return
+        }
+
+        guard let localEmotion = selectedEmotion else {
+            showAlert("감정을 선택해주세요.")
+            return
+        }
+
+        let memoText   = memoTextView.text.trimmingCharacters(in: .whitespacesAndNewlines)
+        let newSentence = Sentence(
+            id:       UUID(),
+            bookISBN: bookISBN,
+            sentence: sentenceText,
+            page:     page,
+            emotion:  localEmotion,
+            memo:     memoText.isEmpty ? nil : memoText,
+            date:     Date()
+        )
+
+        AppContainer.shared.sentenceRepository
+            .saveSentence(newSentence)
+            .observe(on: MainScheduler.instance)
+            .subscribe(
+                onCompleted: { [weak self] in
+                    guard let self else { return }
+                    let onSaved = self.onSaved
+                    self.dismiss(animated: true) { onSaved?() }
+                },
+                onError:     { [weak self] _ in self?.showAlert("저장 중 오류가 발생했습니다.") }
+            )
+            .disposed(by: disposeBag)
+    }
+
+    private func showAlert(_ message: String) {
+        let alert = UIAlertController(title: nil, message: message, preferredStyle: .alert)
+        alert.addAction(UIAlertAction(title: "확인", style: .default))
+        present(alert, animated: true)
     }
 
     // MARK: - Chip Selection
@@ -346,6 +403,7 @@ final class DirectCollectViewController: UIViewController {
         guard let emotion = Emotion(rawValue: sender.tag) else { return }
         let tappingSelected = selectedEmotion == emotion
         selectedEmotion = tappingSelected ? nil : emotion
+        selectedEmotionRelay.accept(selectedEmotion)
         emotionChips.forEach { chip in
             chip.isSelected = !tappingSelected && chip.tag == emotion.rawValue
         }
@@ -391,7 +449,7 @@ private final class NeumorphicChipButton: UIControl {
         didSet { guard oldValue != isSelected else { return }; updateAppearance() }
     }
 
-    init(emotion: DirectCollectViewController.Emotion) {
+    init(emotion: Emotion) {
         super.init(frame: .zero)
         backgroundColor = UIColor.background
         layer.cornerRadius = 16
@@ -438,7 +496,7 @@ private final class NeumorphicChipButton: UIControl {
 
     // MARK: Content
 
-    private func setupContent(emotion: DirectCollectViewController.Emotion) {
+    private func setupContent(emotion: Emotion) {
         let emojiImageView = UIImageView(image: emotion.emoji)
         emojiImageView.contentMode = .scaleAspectFit
         emojiImageView.isUserInteractionEnabled = false
