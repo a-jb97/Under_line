@@ -20,9 +20,13 @@ final class CameraCollectionViewController: UIViewController {
     /// directCollectButton 탭 → dismiss 완료 후 호출
     var onDirectCollect: (() -> Void)?
 
+    /// OCR 텍스트 선택 완료 → dismiss 완료 후 추출된 텍스트 전달
+    var onOCRTextExtracted: ((String) -> Void)?
+
     // MARK: - AVFoundation
 
     private let captureSession = AVCaptureSession()
+    private let photoOutput    = AVCapturePhotoOutput()
     private var previewLayer: AVCaptureVideoPreviewLayer?
     private var currentDevice: AVCaptureDevice?
     private var currentInput: AVCaptureDeviceInput?
@@ -428,6 +432,10 @@ final class CameraCollectionViewController: UIViewController {
             currentInput  = deviceInput
         }
 
+        if captureSession.canAddOutput(photoOutput) {
+            captureSession.addOutput(photoOutput)
+        }
+
         captureSession.commitConfiguration()
 
         let preview = AVCaptureVideoPreviewLayer(session: captureSession)
@@ -482,9 +490,8 @@ final class CameraCollectionViewController: UIViewController {
             .disposed(by: disposeBag)
 
         captureButton.rx.tap
-            .subscribe(onNext: {
-                // TODO: 촬영 후 OCR → 문장 등록 연결
-                print("수집하기 탭")
+            .subscribe(onNext: { [weak self] in
+                self?.takePhoto()
             })
             .disposed(by: disposeBag)
 
@@ -498,6 +505,14 @@ final class CameraCollectionViewController: UIViewController {
                 self.dismiss(animated: true) { callback?() }
             })
             .disposed(by: disposeBag)
+    }
+
+    private func takePhoto() {
+        let settings = AVCapturePhotoSettings()
+        if let device = currentDevice, device.hasFlash {
+            settings.flashMode = isFlashOn ? .on : .off
+        }
+        photoOutput.capturePhoto(with: settings, delegate: self)
     }
 
     private func toggleFlash() {
@@ -536,6 +551,35 @@ final class CameraCollectionViewController: UIViewController {
 
         // 전면 카메라는 플래시 없으므로 끄기
         if usingFrontCamera && isFlashOn { toggleFlash() }
+    }
+}
+
+// MARK: - AVCapturePhotoCaptureDelegate
+
+extension CameraCollectionViewController: AVCapturePhotoCaptureDelegate {
+    func photoOutput(
+        _ output: AVCapturePhotoOutput,
+        didFinishProcessingPhoto photo: AVCapturePhoto,
+        error: Error?
+    ) {
+        guard error == nil,
+              let data  = photo.fileDataRepresentation(),
+              let image = UIImage(data: data)
+        else { return }
+
+        DispatchQueue.main.async { [weak self] in
+            guard let self else { return }
+            let markupVC = OCRMarkupViewController(image: image)
+            markupVC.onConfirm = { [weak self] extractedText in
+                guard let self else { return }
+                let callback = self.onOCRTextExtracted
+                DispatchQueue.global(qos: .userInitiated).async {
+                    self.captureSession.stopRunning()
+                }
+                self.dismiss(animated: true) { callback?(extractedText) }
+            }
+            self.present(markupVC, animated: true)
+        }
     }
 }
 
