@@ -9,6 +9,8 @@ import UIKit
 import SnapKit
 import RxSwift
 import RxCocoa
+import AVFoundation
+import AudioToolbox
 
 final class ReadingRecordViewController: UIViewController {
 
@@ -16,11 +18,15 @@ final class ReadingRecordViewController: UIViewController {
     private var gradientLayers: [(view: UIView, layer: CAGradientLayer)] = []
 
     // MARK: - Timer State
-    private var remainingSeconds = 15 * 60
+    private var setMinutes: Int = 0        // 다이얼로 설정한 분 (0, 5, 10, ..., 60)
+    private var remainingSeconds: Int = 0  // 카운트다운 중 남은 초
+    private let dialHaptic = UIImpactFeedbackGenerator(style: .light)
     private var isRunning = false
     private var countdownTimer: Timer?
+    private var timerEndDate: Date?        // 타이머 종료 예정 시각 (백그라운드 경과 계산용)
     private var didSetupDial = false
     private var didSetupChart = false
+    private var dialPreviousAngle: CGFloat?
 
     // MARK: - Scroll
     private let scrollView: UIScrollView = {
@@ -231,7 +237,7 @@ final class ReadingRecordViewController: UIViewController {
     // MARK: - Timer Text
     private let timerLabel: UILabel = {
         let l = UILabel()
-        l.text = "15 : 00"
+        l.text = "00 : 00"
         l.font = UIFont(name: "GoyangIlsan R", size: 24)
             ?? .systemFont(ofSize: 24, weight: .light)
         l.textColor   = UIColor.primary
@@ -398,6 +404,7 @@ final class ReadingRecordViewController: UIViewController {
         setupConstraints()
         setupProgressGradient()
         bindActions()
+        setupBackgroundObservers()
     }
 
     override func viewWillAppear(_ animated: Bool) {
@@ -440,7 +447,7 @@ final class ReadingRecordViewController: UIViewController {
         dialContainer.addSubview(innerCircleLightShadow)        // 2.5. 내부 원 밝은 뉴모픽 그림자
         dialContainer.addSubview(innerCircleView)               // 3. 흰 내부 원 (마킹 위를 덮음)
         dialContainer.layer.addSublayer(innerArcLayer)          // 4. 내부 갈색 호 (흰 원 위)
-        centerKnobView.addSubview(knobNeedleView)               // 5-1. 노브 인디케이터 (Node akjLM)
+        centerKnobView.addSubview(knobNeedleView)               // 5-1. 노브 인디케이터
         knobNeedleView.transform = CGAffineTransform(rotationAngle: -.pi / 2)
         dialContainer.addSubview(centerKnobSmallDarkShadow)     // 4.7a. 노브 작은 어두운 그림자
         dialContainer.addSubview(centerKnobSmallLightShadow)    // 4.7b. 노브 작은 밝은 그림자
@@ -552,7 +559,7 @@ final class ReadingRecordViewController: UIViewController {
             make.center.equalToSuperview()
             make.size.equalTo(CGFloat(31.2))
         }
-        // Node akjLM: 원 중심에 배치 (rotation -90° 적용 시 10.4×1.95 수평 바 → 원 안에 완전히 포함)
+        // Node akjLM: 노브 우측에 배치 — centerKnobView 회전 시 침이 함께 공전
         knobNeedleView.snp.makeConstraints { make in
             make.centerY.equalToSuperview()
             make.trailing.equalToSuperview().inset(4)
@@ -657,16 +664,25 @@ final class ReadingRecordViewController: UIViewController {
         guard !didSetupDial else { return }
         didSetupDial = true
 
-        updateDialArc(fraction: 1.0)  // 초기 상태: 15분 전체
+        updateDialArc(fraction: 0.0)  // 초기 상태: 0분 (arc 없음)
         addTickMarks()
         addDialLabels()
+        setupDialGesture()
+        updateNeedle(minutes: 0)      // 초기 위치: 12시
     }
 
     private func updateDialArc(fraction: CGFloat) {
         let center = CGPoint(x: 130, y: 130)
-        // 15분 타이머 → 60분 다이얼의 1/4만 사용 (π/2 = 90°)
-        let maxSweep: CGFloat = .pi / 2
+        // 전체 원 = 60분 (2π)
+        let maxSweep: CGFloat = 2 * .pi
         let endAngle = -.pi / 2 + fraction * maxSweep
+
+        // fraction == 0 → arc 없음
+        if fraction <= 0 {
+            outerWedgeLayer.path = nil
+            innerArcLayer.path   = nil
+            return
+        }
 
         // 외부 웨지 (radius 122.2)
         let outerPath = UIBezierPath()
@@ -685,6 +701,72 @@ final class ReadingRecordViewController: UIViewController {
         innerPath.close()
         innerArcLayer.path      = innerPath.cgPath
         innerArcLayer.fillColor = UIColor.primary.withAlphaComponent(0.9).cgColor
+    }
+
+    private func updateNeedle(minutes: Int) {
+        // 노브 우측(3시)이 기본 위치 → -π/2 오프셋으로 0분 = 12시 정렬
+        // centerKnobView를 회전시키면 내부 침이 노브 중심 기준으로 공전
+        let rotation = CGFloat(minutes) / 60.0 * 2 * .pi - .pi / 2
+        centerKnobView.transform = CGAffineTransform(rotationAngle: rotation)
+    }
+
+    private func setupDialGesture() {
+        dialHaptic.prepare()
+        let pan = UIPanGestureRecognizer(target: self, action: #selector(handleDialPan(_:)))
+        dialContainer.addGestureRecognizer(pan)
+    }
+
+    @objc private func handleDialPan(_ gesture: UIPanGestureRecognizer) {
+        guard !isRunning else { return }
+
+        let loc    = gesture.location(in: dialContainer)
+        let center = CGPoint(x: 130, y: 130)
+
+        // atan2(dy, dx) + π/2 → 12시 = 0, 시계 방향 증가
+        var angle = atan2(loc.y - center.y, loc.x - center.x) + .pi / 2
+        if angle < 0 { angle += 2 * .pi }
+
+        if gesture.state == .began {
+            dialPreviousAngle = angle
+            return
+        }
+
+        if gesture.state == .ended || gesture.state == .cancelled {
+            dialPreviousAngle = nil
+            return
+        }
+
+        guard let prevAngle = dialPreviousAngle else {
+            dialPreviousAngle = angle
+            return
+        }
+
+        // 짧은 각도 델타로 회전 방향 판별 (시계: delta > 0, 반시계: delta < 0)
+        var delta = angle - prevAngle
+        if delta >  .pi { delta -= 2 * .pi }
+        if delta < -.pi { delta += 2 * .pi }
+        dialPreviousAngle = angle
+
+        let isClockwise = delta > 0
+
+        // 시간이 0일 때 반시계 방향 이동 불가
+        if !isClockwise && setMinutes == 0 { return }
+
+        let rawMinutes = angle / (2 * .pi) * 60.0
+        let snapped    = Int((rawMinutes / 5.0).rounded()) * 5
+        let newMinutes = min(snapped, 60)
+
+        // 60분(한 바퀴) 초과하여 시계 방향 이동 불가
+        if isClockwise && setMinutes == 60 && newMinutes < setMinutes { return }
+
+        guard newMinutes != setMinutes else { return }
+        setMinutes = newMinutes
+        dialHaptic.impactOccurred()
+
+        remainingSeconds = setMinutes * 60
+        updateTimerDisplay()
+        updateDialArc(fraction: CGFloat(setMinutes) / 60.0)
+        updateNeedle(minutes: setMinutes)
     }
 
     private func addTickMarks() {
@@ -950,16 +1032,26 @@ final class ReadingRecordViewController: UIViewController {
     }
 
     private func startTimer() {
-        isRunning = true
+        guard setMinutes > 0 else { return }
+        isRunning    = true
+        timerEndDate = Date().addingTimeInterval(TimeInterval(remainingSeconds))
         let cfg = UIImage.SymbolConfiguration(pointSize: 18, weight: .medium)
         playButton.setImage(UIImage(systemName: "pause.fill", withConfiguration: cfg), for: .normal)
+        scheduleCountdownTimer()
+    }
+
+    private func scheduleCountdownTimer() {
+        countdownTimer?.invalidate()
         countdownTimer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in
             self?.tickTimer()
         }
+        // .common 모드: 스크롤 중에도 타이머가 동작하도록 RunLoop에 추가
+        RunLoop.current.add(countdownTimer!, forMode: .common)
     }
 
     private func pauseTimer() {
-        isRunning = false
+        isRunning    = false
+        timerEndDate = nil
         let cfg = UIImage.SymbolConfiguration(pointSize: 18, weight: .medium)
         playButton.setImage(UIImage(systemName: "play.fill", withConfiguration: cfg), for: .normal)
         countdownTimer?.invalidate()
@@ -973,23 +1065,86 @@ final class ReadingRecordViewController: UIViewController {
 
     private func resetTimer() {
         pauseTimer()
-        remainingSeconds = 15 * 60
+        setMinutes       = 0
+        remainingSeconds = 0
         updateTimerDisplay()
-        updateDialArc(fraction: 1.0)
+        updateDialArc(fraction: 0.0)
+        updateNeedle(minutes: 0)
     }
 
     private func tickTimer() {
-        guard remainingSeconds > 0 else { stopTimer(); return }
-        remainingSeconds -= 1
+        guard let endDate = timerEndDate else { stopTimer(); return }
+        let remaining = max(0, Int(endDate.timeIntervalSinceNow))
+        guard remaining > 0 else {
+            remainingSeconds = 0
+            updateTimerDisplay()
+            updateDialArc(fraction: 0)
+            updateNeedle(minutes: 0)
+            stopTimer()
+            playAlarm()
+            return
+        }
+        remainingSeconds = remaining
         updateTimerDisplay()
-        let fraction = CGFloat(remainingSeconds) / CGFloat(15 * 60)
+        let fraction = CGFloat(remaining) / 3600.0  // 3600 = 60분 기준 (다이얼 스케일과 동일)
         updateDialArc(fraction: fraction)
+        updateNeedle(minutes: Int((CGFloat(remaining) / 60.0).rounded()))
+    }
+
+    // MARK: - Background Handling
+
+    private func setupBackgroundObservers() {
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(appDidEnterBackground),
+            name: UIApplication.didEnterBackgroundNotification,
+            object: nil
+        )
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(appWillEnterForeground),
+            name: UIApplication.willEnterForegroundNotification,
+            object: nil
+        )
+    }
+
+    @objc private func appDidEnterBackground() {
+        guard isRunning else { return }
+        // timerEndDate는 유지 — 포그라운드 복귀 시 경과 시간 계산에 사용
+        countdownTimer?.invalidate()
+        countdownTimer = nil
+    }
+
+    @objc private func appWillEnterForeground() {
+        guard isRunning, let endDate = timerEndDate else { return }
+        let remaining = max(0, Int(endDate.timeIntervalSinceNow))
+        if remaining <= 0 {
+            remainingSeconds = 0
+            updateTimerDisplay()
+            updateDialArc(fraction: 0)
+            updateNeedle(minutes: 0)
+            stopTimer()
+            playAlarm()
+        } else {
+            remainingSeconds = remaining
+            updateTimerDisplay()
+            updateDialArc(fraction: CGFloat(remaining) / 3600.0)
+            updateNeedle(minutes: Int((CGFloat(remaining) / 60.0).rounded()))
+            scheduleCountdownTimer()
+        }
     }
 
     private func updateTimerDisplay() {
         let m = remainingSeconds / 60
         let s = remainingSeconds % 60
         timerLabel.text = String(format: "%02d : %02d", m, s)
+    }
+
+    private func playAlarm() {
+        try? AVAudioSession.sharedInstance().setCategory(.playback)
+        try? AVAudioSession.sharedInstance().setActive(true)
+        AudioServicesPlayAlertSound(SystemSoundID(1005))
+        UINotificationFeedbackGenerator().notificationOccurred(.warning)
     }
 
     // MARK: - Tab Switching
