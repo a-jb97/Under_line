@@ -15,7 +15,9 @@ final class BookDetailViewController: UIViewController {
 
     private let book: Book
     private let disposeBag = DisposeBag()
+    private var sentences: [Sentence] = []
     private var highlightLayers: [(view: UIView, layer: CAGradientLayer)] = []
+    private var isEditMode = false
 
     init(book: Book) {
         self.book = book
@@ -66,45 +68,21 @@ final class BookDetailViewController: UIViewController {
         return v
     }()
 
-    private let quoteTextLabel: UILabel = {
-        let l = UILabel()
-        l.numberOfLines = 0
-        l.textAlignment = .center
-        let style = NSMutableParagraphStyle()
-        style.lineHeightMultiple = 1.2
-        style.alignment = .center
-        l.attributedText = NSAttributedString(
-            string: "사람은 무엇으로 사는가. 사랑이다. \n사람은 사랑 없이는 살 수 없다.",
-            attributes: [
-                .font:            UIFont(name: "GowunBatang-Regular", size: 18) ?? .systemFont(ofSize: 18),
-                .foregroundColor: UIColor.primary,
-                .paragraphStyle:  style,
-            ]
-        )
-        return l
-    }()
-
-    private let pageNumLabel: UILabel = {
-        let l = UILabel()
-        l.text = "p.42"
-        l.font = UIFont(name: "GoyangIlsan R", size: 13)
-            ?? .systemFont(ofSize: 13)
-        l.textColor = UIColor.primary.withAlphaComponent(0.5)
-        l.textAlignment = .right
-        return l
-    }()
-
-    // Page Dots
-    private lazy var dot1: UIView = makeDot(alpha: 1.0)
-    private lazy var dot2: UIView = makeDot(alpha: 0.3)
-    private lazy var dot3: UIView = makeDot(alpha: 0.3)
-
-    private lazy var pageDotsStack: UIStackView = {
-        let sv = UIStackView(arrangedSubviews: [dot1, dot2, dot3])
-        sv.axis      = .horizontal
-        sv.spacing   = 8
-        sv.alignment = .center
+    private let quoteScrollView: UIScrollView = {
+        let sv = UIScrollView()
+        sv.isPagingEnabled = true
+        sv.showsHorizontalScrollIndicator = false
+        sv.clipsToBounds = true
         return sv
+    }()
+
+    // Page Control
+    private let pageControl: UIPageControl = {
+        let pc = UIPageControl()
+        pc.currentPageIndicatorTintColor = UIColor.primary
+        pc.pageIndicatorTintColor = UIColor.primary.withAlphaComponent(0.3)
+        pc.hidesForSinglePage = true
+        return pc
     }()
 
     // Book Info Section (neumorphic)
@@ -259,6 +237,17 @@ final class BookDetailViewController: UIViewController {
         return l
     }()
 
+    // 문장 편집 버튼 (BookshelfViewController의 editButton과 동일)
+    private lazy var sentenceEditButton: UIButton = {
+        let btn = UIButton(type: .system)
+        let cfg = UIImage.SymbolConfiguration(pointSize: 20, weight: .medium)
+        btn.setImage(UIImage(systemName: "square.and.pencil", withConfiguration: cfg), for: .normal)
+        btn.tintColor = UIColor.walnut
+        btn.layer.cornerRadius = 26
+        btn.clipsToBounds = true
+        return btn
+    }()
+
     // FAB
     private lazy var fabButton: UIButton = {
         let btn = UIButton(type: .system)
@@ -285,6 +274,7 @@ final class BookDetailViewController: UIViewController {
         super.viewWillAppear(animated)
         navigationController?.interactivePopGestureRecognizer?.delegate = nil
         navigationController?.interactivePopGestureRecognizer?.isEnabled = true
+        loadSentences()
     }
 
     override func viewDidLayoutSubviews() {
@@ -307,10 +297,10 @@ final class BookDetailViewController: UIViewController {
         view.addSubview(timerButton)
 
         // Quote Card
-        quoteCard.addSubview(quoteTextLabel)
-        quoteCard.addSubview(pageNumLabel)
+        quoteScrollView.delegate = self
+        quoteCard.addSubview(quoteScrollView)
         view.addSubview(quoteCard)
-        view.addSubview(pageDotsStack)
+        view.addSubview(pageControl)
 
         // Book Info Section
         genreTagView.addSubview(genreTagLabel)
@@ -333,9 +323,11 @@ final class BookDetailViewController: UIViewController {
 
         // FAB
         view.addSubview(fabButton)
+        view.addSubview(sentenceEditButton)
 
-        applyFabGlassStyle(to: timerButton, cornerRadius: 20)
-        applyFabGlassStyle(to: fabButton,   cornerRadius: 26)
+        applyFabGlassStyle(to: timerButton,        cornerRadius: 20)
+        applyFabGlassStyle(to: fabButton,          cornerRadius: 26)
+        applyFabGlassStyle(to: sentenceEditButton, cornerRadius: 26)
     }
 
     private func setupConstraints() {
@@ -364,29 +356,19 @@ final class BookDetailViewController: UIViewController {
             make.height.equalTo(266)
         }
 
-        quoteTextLabel.snp.makeConstraints { make in
-            make.leading.trailing.equalToSuperview().inset(24)
-            make.center.equalToSuperview()
+        quoteScrollView.snp.makeConstraints { make in
+            make.edges.equalToSuperview()
         }
 
-        pageNumLabel.snp.makeConstraints { make in
-            make.trailing.equalToSuperview().inset(24)
-            make.bottom.equalToSuperview().inset(20)
-        }
-
-        // Page Dots (gap: 8)
-        pageDotsStack.snp.makeConstraints { make in
+        // Page Control
+        pageControl.snp.makeConstraints { make in
             make.top.equalTo(quoteCard.snp.bottom).offset(16)
             make.centerX.equalToSuperview()
         }
 
-        dot1.snp.makeConstraints { make in make.size.equalTo(7) }
-        dot2.snp.makeConstraints { make in make.size.equalTo(7) }
-        dot3.snp.makeConstraints { make in make.size.equalTo(7) }
-
         // Book Info Section (cornerRadius 16, padding 16, gap 20)
         bookInfoSection.snp.makeConstraints { make in
-            make.top.equalTo(pageDotsStack.snp.bottom).offset(24)
+            make.top.equalTo(pageControl.snp.bottom).offset(24)
             make.leading.trailing.equalToSuperview().inset(24)
         }
 
@@ -477,6 +459,12 @@ final class BookDetailViewController: UIViewController {
             make.bottom.equalTo(view.safeAreaLayoutGuide).inset(16)
             make.size.equalTo(52)
         }
+
+        sentenceEditButton.snp.makeConstraints { make in
+            make.leading.equalToSuperview().inset(24)
+            make.centerY.equalTo(fabButton)
+            make.size.equalTo(52)
+        }
     }
 
     private func setupProgressGradient() {
@@ -517,12 +505,163 @@ final class BookDetailViewController: UIViewController {
 
         descriptionLabel.text = book.description
         moreButton.isHidden = book.description.isEmpty
+    }
 
-        // 저장된 문장이 없으므로 플레이스홀더 표시
+    // MARK: - Sentences
+
+    private func loadSentences() {
+        AppContainer.shared.sentenceRepository
+            .fetchSentences(for: book.isbn13)
+            .observe(on: MainScheduler.instance)
+            .subscribe(
+                onSuccess: { [weak self] sentences in
+                    self?.sentences = sentences
+                    self?.renderQuotePages()
+                },
+                onFailure: { _ in }
+            )
+            .disposed(by: disposeBag)
+    }
+
+    private func renderQuotePages() {
+        quoteScrollView.subviews.forEach { $0.removeFromSuperview() }
+
+        guard !sentences.isEmpty else {
+            let placeholder = makePlaceholderPage()
+            quoteScrollView.addSubview(placeholder)
+            placeholder.snp.makeConstraints { make in
+                make.edges.equalToSuperview()
+                make.width.height.equalTo(quoteScrollView)
+            }
+            pageControl.numberOfPages = 0
+            return
+        }
+
+        pageControl.numberOfPages = sentences.count
+        pageControl.currentPage = 0
+
+        var prev: UIView? = nil
+        for (i, sentence) in sentences.enumerated() {
+            let page = makePageView(for: sentence)
+            quoteScrollView.addSubview(page)
+            page.snp.makeConstraints { make in
+                make.top.bottom.equalToSuperview()
+                make.width.height.equalTo(quoteScrollView)
+                if let prev = prev {
+                    make.leading.equalTo(prev.snp.trailing)
+                } else {
+                    make.leading.equalToSuperview()
+                }
+                if i == sentences.count - 1 {
+                    make.trailing.equalToSuperview()
+                }
+            }
+            prev = page
+        }
+    }
+
+    private func setEditMode(_ editing: Bool) {
+        isEditMode = editing
+        if editing {
+            sentenceEditButton.setImage(nil, for: .normal)
+            sentenceEditButton.setTitle("완료", for: .normal)
+            sentenceEditButton.setTitleColor(UIColor.walnut, for: .normal)
+            sentenceEditButton.titleLabel?.font = .systemFont(ofSize: 15, weight: .semibold)
+        } else {
+            let cfg = UIImage.SymbolConfiguration(pointSize: 20, weight: .medium)
+            sentenceEditButton.setImage(UIImage(systemName: "square.and.pencil", withConfiguration: cfg), for: .normal)
+            sentenceEditButton.setTitle(nil, for: .normal)
+        }
+        renderQuotePages()
+    }
+
+    private func deleteSentence(_ sentence: Sentence) {
+        AppContainer.shared.sentenceRepository.deleteSentence(sentence)
+            .observe(on: MainScheduler.instance)
+            .subscribe(onCompleted: { [weak self] in
+                self?.loadSentences()
+            }, onError: { error in
+                print("문장 삭제 실패: \(error)")
+            })
+            .disposed(by: disposeBag)
+    }
+
+    private func makePageView(for sentence: Sentence) -> UIView {
+        let page = UIView()
         let style = NSMutableParagraphStyle()
         style.lineHeightMultiple = 1.2
         style.alignment = .center
-        quoteTextLabel.attributedText = NSAttributedString(
+
+        let textLabel = UILabel()
+        textLabel.numberOfLines = 0
+        textLabel.textAlignment = .center
+        textLabel.attributedText = NSAttributedString(
+            string: sentence.sentence,
+            attributes: [
+                .font:            UIFont(name: "GowunBatang-Regular", size: 18) ?? .systemFont(ofSize: 18),
+                .foregroundColor: UIColor.primary,
+                .paragraphStyle:  style,
+            ]
+        )
+
+        let pageLabel = UILabel()
+        pageLabel.text = "p.\(sentence.page)"
+        pageLabel.font = UIFont(name: "GoyangIlsan R", size: 13) ?? .systemFont(ofSize: 13)
+        pageLabel.textColor = UIColor.primary.withAlphaComponent(0.5)
+        pageLabel.textAlignment = .right
+
+        let emotionImageView = UIImageView(image: sentence.emotion.emoji)
+        emotionImageView.contentMode = .scaleAspectFit
+
+        page.addSubview(textLabel)
+        page.addSubview(pageLabel)
+        page.addSubview(emotionImageView)
+
+        textLabel.snp.makeConstraints { make in
+            make.leading.trailing.equalToSuperview().inset(24)
+            make.center.equalToSuperview()
+        }
+        pageLabel.snp.makeConstraints { make in
+            make.trailing.equalToSuperview().inset(24)
+            make.bottom.equalToSuperview().inset(20)
+        }
+        emotionImageView.snp.makeConstraints { make in
+            make.leading.equalToSuperview().inset(20)
+            make.bottom.equalToSuperview().inset(16)
+            make.size.equalTo(18)
+        }
+
+        if isEditMode {
+            let deleteButton = UIButton(type: .system)
+            let cfg = UIImage.SymbolConfiguration(pointSize: 14, weight: .medium)
+            deleteButton.setImage(UIImage(systemName: "minus.circle.fill", withConfiguration: cfg), for: .normal)
+            deleteButton.tintColor = .systemRed
+            page.addSubview(deleteButton)
+            deleteButton.snp.makeConstraints { make in
+                make.top.equalToSuperview().inset(12)
+                make.trailing.equalToSuperview().inset(12)
+                make.size.equalTo(28)
+            }
+            deleteButton.rx.tap
+                .subscribe(onNext: { [weak self] in
+                    self?.deleteSentence(sentence)
+                })
+                .disposed(by: disposeBag)
+        }
+
+        return page
+    }
+
+    private func makePlaceholderPage() -> UIView {
+        let page = UIView()
+        let style = NSMutableParagraphStyle()
+        style.lineHeightMultiple = 1.2
+        style.alignment = .center
+
+        let textLabel = UILabel()
+        textLabel.numberOfLines = 0
+        textLabel.textAlignment = .center
+        textLabel.attributedText = NSAttributedString(
             string: "첫 밑줄을 등록해보세요.",
             attributes: [
                 .font:            UIFont(name: "GowunBatang-Regular", size: 18) ?? .systemFont(ofSize: 18),
@@ -530,7 +669,12 @@ final class BookDetailViewController: UIViewController {
                 .paragraphStyle:  style,
             ]
         )
-        pageNumLabel.isHidden = true
+        page.addSubview(textLabel)
+        textLabel.snp.makeConstraints { make in
+            make.leading.trailing.equalToSuperview().inset(24)
+            make.center.equalToSuperview()
+        }
+        return page
     }
 
     // MARK: - FAB Glass Style (BookshelfViewController와 동일한 스펙)
@@ -619,11 +763,28 @@ final class BookDetailViewController: UIViewController {
                 guard let self else { return }
                 let cameraVC = CameraCollectionViewController()
                 cameraVC.modalPresentationStyle = .fullScreen
+
+                // 직접 수집 버튼 → OCR 없이 빈 폼으로 present
                 cameraVC.onDirectCollect = { [weak self] in
-                    let directVC = DirectCollectViewController()
+                    guard let self else { return }
+                    let directVC = DirectCollectViewController(bookISBN: self.book.isbn13)
                     directVC.modalPresentationStyle = .pageSheet
-                    self?.present(directVC, animated: true)
+                    directVC.onSaved = { [weak self] in self?.loadSentences() }
+                    self.present(directVC, animated: true)
                 }
+
+                // 수집하기(촬영) → OCR 텍스트 추출 후 pre-fill
+                cameraVC.onOCRTextExtracted = { [weak self] extractedText in
+                    guard let self else { return }
+                    let directVC = DirectCollectViewController(
+                        bookISBN:        self.book.isbn13,
+                        initialSentence: extractedText
+                    )
+                    directVC.modalPresentationStyle = .pageSheet
+                    directVC.onSaved = { [weak self] in self?.loadSentences() }
+                    self.present(directVC, animated: true)
+                }
+
                 self.present(cameraVC, animated: true)
             })
             .disposed(by: disposeBag)
@@ -662,15 +823,22 @@ final class BookDetailViewController: UIViewController {
                 print("편집 탭")
             })
             .disposed(by: disposeBag)
+
+        sentenceEditButton.rx.tap
+            .subscribe(onNext: { [weak self] in
+                guard let self else { return }
+                self.setEditMode(!self.isEditMode)
+            })
+            .disposed(by: disposeBag)
     }
 
-    // MARK: - Helpers
+}
 
-    private func makeDot(alpha: CGFloat) -> UIView {
-        let v = UIView()
-        v.backgroundColor = UIColor.primary
-        v.layer.cornerRadius = 3.5
-        v.alpha = alpha
-        return v
+// MARK: - UIScrollViewDelegate
+
+extension BookDetailViewController: UIScrollViewDelegate {
+    func scrollViewDidEndDecelerating(_ scrollView: UIScrollView) {
+        guard scrollView === quoteScrollView, scrollView.bounds.width > 0 else { return }
+        pageControl.currentPage = Int(scrollView.contentOffset.x / scrollView.bounds.width)
     }
 }
