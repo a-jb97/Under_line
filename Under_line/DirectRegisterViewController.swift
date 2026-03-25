@@ -51,12 +51,12 @@ final class DirectRegisterViewController: UIViewController {
     private let bookTitleField   = FormFieldView(label: "책 제목 *")
     private let authorField      = FormFieldView(label: "지은이")
     private let publisherField   = FormFieldView(label: "출판사")
-    private let publishDateField = FormFieldView(label: "출판일", isDateField: true)
+    private let publishDateField = FormFieldView(label: "출판일", keyboardType: .numberPad, placeholder: "예 : 20260101")
     private let isbnField        = FormFieldView(label: "ISBN 번호", keyboardType: .numberPad)
 
     // Section Bottom
-    private let coverURLField    = FormFieldView(label: "책 표지 이미지 URL", keyboardType: .URL)
-    private let categoryField    = FormFieldView(label: "도서 카테고리")
+    private let coverURLField    = FormFieldView(label: "책 표지 이미지 URL", keyboardType: .URL, placeholder: "https://")
+    private let categoryField    = FormFieldView(label: "도서 카테고리", placeholder: "예 : 소설, 에세이, 자기계발")
     private let descriptionField = FormDescriptionFieldView(label: "책 소개")
 
     private let registerButton: UIButton = {
@@ -195,51 +195,15 @@ private final class FormFieldView: UIView {
     // 날짜 필드용
     private var datePicker: UIDatePicker?
 
-    init(label: String, isDateField: Bool = false, keyboardType: UIKeyboardType = .default) {
+    init(label: String, keyboardType: UIKeyboardType = .default, placeholder: String = "") {
         super.init(frame: .zero)
         labelView.text = label
-        if isDateField {
-            configureDatePicker()
-        } else {
-            textField.keyboardType = keyboardType
-        }
+        textField.keyboardType = keyboardType
+        textField.attributedPlaceholder = NSAttributedString(string: placeholder, attributes: [NSAttributedString.Key.foregroundColor : UIColor.primary.withAlphaComponent(0.4)])
         setup()
     }
 
     required init?(coder: NSCoder) { fatalError() }
-
-    private func configureDatePicker() {
-        let picker = UIDatePicker()
-        picker.datePickerMode = .date
-        picker.preferredDatePickerStyle = .wheels
-        picker.locale = Locale(identifier: "ko_KR")
-        picker.addTarget(self, action: #selector(dateChanged(_:)), for: .valueChanged)
-        textField.inputView = picker
-        textField.tintColor = .clear   // 커서 숨김
-
-        let toolbar = UIToolbar()
-        toolbar.sizeToFit()
-        let done = UIBarButtonItem(title: "완료", style: .done, target: self, action: #selector(donePickingDate))
-        let flex  = UIBarButtonItem(barButtonSystemItem: .flexibleSpace, target: nil, action: nil)
-        toolbar.setItems([flex, done], animated: false)
-        textField.inputAccessoryView = toolbar
-
-        datePicker = picker
-    }
-
-    @objc private func dateChanged(_ picker: UIDatePicker) {
-        let fmt = DateFormatter()
-        fmt.locale = Locale(identifier: "ko_KR")
-        fmt.dateFormat = "yyyy년 MM월 dd일"
-        textField.text = fmt.string(from: picker.date)
-    }
-
-    @objc private func donePickingDate() {
-        if let picker = datePicker, textField.text?.isEmpty == true {
-            dateChanged(picker)  // 선택 없이 완료 시 현재 날짜 적용
-        }
-        textField.resignFirstResponder()
-    }
 
     private func setup() {
         inputContainer.addSubview(textField)
