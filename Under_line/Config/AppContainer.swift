@@ -12,12 +12,14 @@ final class AppContainer {
 
     let modelContainer: ModelContainer
     let bookRepository: BookRepository
+    let sentenceRepository: SentenceRepository
 
     private init() {
-        modelContainer = try! ModelContainer(for: BookRecord.self)
+        modelContainer = try! ModelContainer(for: BookRecord.self, SentenceRecord.self)
         bookRepository = BookRepository(
             apiService:   AladinAPIService(apiKey: AladinAPIKey.ttbKey),
             modelContext: modelContainer.mainContext
         )
+        sentenceRepository = SentenceRepository(modelContext: modelContainer.mainContext)
     }
 }
