@@ -47,7 +47,7 @@ final class ShelfRowView: UIView {
         let wrapper = UIView()
 
         let container = UIView()
-        container.layer.cornerRadius  = 5
+        container.layer.cornerRadius  = 3
         container.layer.maskedCorners = [.layerMinXMinYCorner, .layerMaxXMinYCorner]
         container.clipsToBounds       = true
         wrapper.addSubview(container)
@@ -63,12 +63,12 @@ final class ShelfRowView: UIView {
         wrapper.layer.shadowOpacity = 0.28
         wrapper.layer.shadowRadius  = 5
         wrapper.layer.shadowOffset  = CGSize(width: 3, height: 4)
-        wrapper.layer.cornerRadius   = 5
+        wrapper.layer.cornerRadius   = 3
         wrapper.layer.maskedCorners  = [.layerMinXMinYCorner, .layerMaxXMinYCorner]
         wrapper.layer.shadowPath     = UIBezierPath(
             roundedRect: CGRect(origin: .zero, size: CGSize(width: 88, height: 117)),
             byRoundingCorners: [.topLeft, .topRight],
-            cornerRadii: CGSize(width: 5, height: 5)
+            cornerRadii: CGSize(width: 3, height: 3)
         ).cgPath
 
         if let coverURL = book.coverURL {
@@ -81,6 +81,17 @@ final class ShelfRowView: UIView {
             iv.snp.makeConstraints { $0.edges.equalToSuperview() }
         } else {
             container.backgroundColor = UIColor.primary
+            let titleLabel = UILabel()
+            titleLabel.text          = book.title
+            titleLabel.font          = UIFont(name: "GowunBatang-Bold", size: 10) ?? .boldSystemFont(ofSize: 10)
+            titleLabel.textColor     = UIColor.background
+            titleLabel.textAlignment = .center
+            titleLabel.numberOfLines = 4
+            container.addSubview(titleLabel)
+            titleLabel.snp.makeConstraints { make in
+                make.top.equalToSuperview().inset(8)
+                make.leading.trailing.equalToSuperview().inset(4)
+            }
         }
 
         if isEditing {
