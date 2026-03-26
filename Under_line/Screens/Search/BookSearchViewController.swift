@@ -258,8 +258,9 @@ final class BookSearchViewController: UIViewController {
         output.errorMessage
             .emit(onNext: { [weak self] message in
                 var style = ToastStyle()
-                style.backgroundColor = UIColor.primary
-                self?.view.makeToast(message, position: .center, style: style)
+                style.backgroundColor = UIColor.primary.withAlphaComponent(0.9)
+                style.messageFont = UIFont(name: "GowunBatang-Regular", size: 14) ?? .systemFont(ofSize: 14)
+                self?.view.makeToast(message, duration: 1.2, position: .center, style: style)
             })
             .disposed(by: disposeBag)
 
@@ -344,7 +345,7 @@ private final class BookRowCell: UITableViewCell {
     private let thumbnailImageView: UIImageView = {
         let iv = UIImageView()
         iv.backgroundColor    = UIColor.walnut
-        iv.layer.cornerRadius = 4
+        iv.layer.cornerRadius = 3
         iv.clipsToBounds      = true
         iv.contentMode        = .scaleAspectFill
         return iv

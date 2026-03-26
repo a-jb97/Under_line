@@ -364,7 +364,7 @@ final class BookDetailViewController: UIViewController {
 
         // Scroll container
         scrollView.snp.makeConstraints { make in
-            make.top.equalTo(backButton.snp.bottom)
+            make.top.equalTo(titleLabel.snp.bottom).offset(8)
             make.leading.trailing.equalToSuperview()
             make.bottom.equalTo(view.safeAreaLayoutGuide)
         }
@@ -377,7 +377,7 @@ final class BookDetailViewController: UIViewController {
 
         // Quote Card (height: 266, padding: [24,24,20,24])
         quoteCard.snp.makeConstraints { make in
-            make.top.equalToSuperview().offset(32)
+            make.top.equalToSuperview().offset(12)
             make.leading.trailing.equalToSuperview().inset(24)
             make.height.equalTo(266)
         }
@@ -530,7 +530,16 @@ final class BookDetailViewController: UIViewController {
             bookCoverView.kf.setImage(with: coverURL)
         }
 
-        descriptionLabel.text = book.description
+        let descStyle = NSMutableParagraphStyle()
+        descStyle.lineHeightMultiple = 1.5
+        descriptionLabel.attributedText = NSAttributedString(
+            string: book.description,
+            attributes: [
+                .font:            UIFont(name: "GoyangIlsan R", size: 12) ?? .systemFont(ofSize: 12),
+                .foregroundColor: UIColor.primary.withAlphaComponent(0.75),
+                .paragraphStyle:  descStyle,
+            ]
+        )
         moreButton.isHidden = book.description.isEmpty
     }
 
