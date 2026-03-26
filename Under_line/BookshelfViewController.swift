@@ -208,6 +208,7 @@ final class BookshelfViewController: UIViewController {
         let pageCount    = max(1, Int(ceil(Double(savedBooks.count) / Double(booksPerPage))))
 
         pageControl.numberOfPages = pageCount
+        pageControl.isHidden = pageCount <= 1
 
         bookshelfScrollView.contentSize = CGSize(
             width:  pageWidth * CGFloat(pageCount),
@@ -259,18 +260,33 @@ final class BookshelfViewController: UIViewController {
             // 선반 보드 Y = 행 시작 + top inset(10) + 책 높이(117)
             let shelfY   = rowMinY + 127
 
+            let boardFrame = CGRect(
+                x:      0,
+                y:      shelfY,
+                width:  shelfOverlayView.bounds.width,
+                height: 22
+            )
+
+            // 좌상단 광원 그림자 전용 뷰 (clipsToBounds 없음)
+            let shadowView = UIView(frame: boardFrame)
+            shadowView.backgroundColor   = .clear
+            shadowView.layer.shadowColor   = UIColor.black.cgColor
+            shadowView.layer.shadowOpacity = 0.28
+            shadowView.layer.shadowRadius  = 4
+            shadowView.layer.shadowOffset  = CGSize(width: 2, height: 3)
+            shadowView.layer.shadowPath    = UIBezierPath(
+                roundedRect: CGRect(origin: .zero, size: boardFrame.size),
+                cornerRadius: 5
+            ).cgPath
+            shelfOverlayView.addSubview(shadowView)
+
             let board = UIImageView()
             board.image              = UIImage(named: "Bookshelf\(i + 1)")
             board.contentMode        = .scaleToFill
             board.layer.cornerRadius = 5
             board.clipsToBounds      = true
             shelfOverlayView.addSubview(board)
-            board.frame = CGRect(
-                x:      0,
-                y:      shelfY,
-                width:  shelfOverlayView.bounds.width,
-                height: 22
-            )
+            board.frame = boardFrame
             lastShelfMaxY = shelfY + 22
         }
 

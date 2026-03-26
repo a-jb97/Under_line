@@ -47,8 +47,9 @@ final class ShelfRowView: UIView {
         let wrapper = UIView()
 
         let container = UIView()
-        container.layer.cornerRadius = 5
-        container.clipsToBounds      = true
+        container.layer.cornerRadius  = 5
+        container.layer.maskedCorners = [.layerMinXMinYCorner, .layerMaxXMinYCorner]
+        container.clipsToBounds       = true
         wrapper.addSubview(container)
         container.snp.makeConstraints { $0.edges.equalToSuperview() }
 
@@ -56,6 +57,19 @@ final class ShelfRowView: UIView {
             container.backgroundColor = .clear
             return wrapper
         }
+
+        // 좌상단 광원 그림자 (wrapper는 clipsToBounds 없음)
+        wrapper.layer.shadowColor   = UIColor.black.cgColor
+        wrapper.layer.shadowOpacity = 0.28
+        wrapper.layer.shadowRadius  = 5
+        wrapper.layer.shadowOffset  = CGSize(width: 3, height: 4)
+        wrapper.layer.cornerRadius   = 5
+        wrapper.layer.maskedCorners  = [.layerMinXMinYCorner, .layerMaxXMinYCorner]
+        wrapper.layer.shadowPath     = UIBezierPath(
+            roundedRect: CGRect(origin: .zero, size: CGSize(width: 88, height: 117)),
+            byRoundingCorners: [.topLeft, .topRight],
+            cornerRadii: CGSize(width: 5, height: 5)
+        ).cgPath
 
         if let coverURL = book.coverURL {
             container.backgroundColor = UIColor.primary
