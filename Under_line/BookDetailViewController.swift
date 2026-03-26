@@ -19,6 +19,15 @@ final class BookDetailViewController: UIViewController {
     private var highlightLayers: [(view: UIView, layer: CAGradientLayer)] = []
     private var isEditMode = false
 
+    private let scrollView: UIScrollView = {
+        let sv = UIScrollView()
+        sv.showsVerticalScrollIndicator = false
+        sv.alwaysBounceVertical = true
+        return sv
+    }()
+
+    private let contentView = UIView()
+
     init(book: Book) {
         self.book = book
         super.init(nibName: nil, bundle: nil)
@@ -296,11 +305,15 @@ final class BookDetailViewController: UIViewController {
         view.addSubview(titleLabel)
         view.addSubview(timerButton)
 
+        // Scroll container
+        view.addSubview(scrollView)
+        scrollView.addSubview(contentView)
+
         // Quote Card
         quoteScrollView.delegate = self
         quoteCard.addSubview(quoteScrollView)
-        view.addSubview(quoteCard)
-        view.addSubview(pageControl)
+        contentView.addSubview(quoteCard)
+        contentView.addSubview(pageControl)
 
         // Book Info Section
         genreTagView.addSubview(genreTagLabel)
@@ -319,7 +332,7 @@ final class BookDetailViewController: UIViewController {
         progressSection.addSubview(progressDetailLabel)
 
         bookInfoSection.addSubview(progressSection)
-        view.addSubview(bookInfoSection)
+        contentView.addSubview(bookInfoSection)
 
         // FAB
         view.addSubview(fabButton)
@@ -349,9 +362,22 @@ final class BookDetailViewController: UIViewController {
             make.size.equalTo(40)
         }
 
+        // Scroll container
+        scrollView.snp.makeConstraints { make in
+            make.top.equalTo(backButton.snp.bottom)
+            make.leading.trailing.equalToSuperview()
+            make.bottom.equalTo(view.safeAreaLayoutGuide)
+        }
+        scrollView.contentInset.bottom = 80
+
+        contentView.snp.makeConstraints { make in
+            make.edges.equalToSuperview()
+            make.width.equalTo(scrollView)
+        }
+
         // Quote Card (height: 266, padding: [24,24,20,24])
         quoteCard.snp.makeConstraints { make in
-            make.top.equalTo(backButton.snp.bottom).offset(32)
+            make.top.equalToSuperview().offset(32)
             make.leading.trailing.equalToSuperview().inset(24)
             make.height.equalTo(266)
         }
@@ -370,6 +396,7 @@ final class BookDetailViewController: UIViewController {
         bookInfoSection.snp.makeConstraints { make in
             make.top.equalTo(pageControl.snp.bottom).offset(24)
             make.leading.trailing.equalToSuperview().inset(24)
+            make.bottom.equalToSuperview().inset(24)
         }
 
         // Book Cover (60×83)
