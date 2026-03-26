@@ -14,9 +14,13 @@ import RxCocoa
 
 final class DirectCollectViewController: UIViewController {
 
-    private let disposeBag = DisposeBag()
+    private let disposeBag      = DisposeBag()
     private let bookISBN: String
     private let initialSentence: String?
+    private lazy var viewModel  = DirectCollectViewModel(
+        bookISBN:   bookISBN,
+        repository: AppContainer.shared.sentenceRepository
+    )
 
     var onSaved: (() -> Void)?
 
@@ -186,18 +190,14 @@ final class DirectCollectViewController: UIViewController {
     // MARK: - Register Button
 
     private let registerButton: UIButton = {
-        var config = UIButton.Configuration.filled()
-        config.attributedTitle = AttributedString(
-            "추가하기",
-            attributes: AttributeContainer([
-                .font: UIFont(name: "GowunBatang-Bold", size: 18)
-                    ?? UIFont.systemFont(ofSize: 18, weight: .bold),
-            ])
-        )
-        config.baseForegroundColor = UIColor.background
-        config.baseBackgroundColor = UIColor.primary
-        config.background.cornerRadius = 12
-        return UIButton(configuration: config)
+        let btn = UIButton(type: .custom)
+        btn.setTitle("추가하기", for: .normal)
+        btn.titleLabel?.font = UIFont(name: "GowunBatang-Bold", size: 18)
+            ?? .boldSystemFont(ofSize: 18)
+        btn.setTitleColor(UIColor.background, for: .normal)
+        btn.backgroundColor = UIColor.walnut
+        btn.layer.cornerRadius = 12
+        return btn
     }()
 
     // MARK: - Lifecycle
@@ -321,80 +321,30 @@ final class DirectCollectViewController: UIViewController {
     // MARK: - Bindings
 
     private func bindActions() {
-        let isFormValid = Observable.combineLatest(
-            sentenceTextView.rx.text.orEmpty,
-            pageTextField.rx.text.orEmpty,
-            selectedEmotionRelay
-        ) { sentence, page, emotion -> Bool in
-            let sentenceValid = !sentence.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-            let pageNum = Int(page.trimmingCharacters(in: .whitespacesAndNewlines))
-            let pageValid = pageNum != nil && pageNum! > 0
-            return sentenceValid && pageValid && emotion != nil
-        }
+        let output = viewModel.transform(input: DirectCollectViewModel.Input(
+            sentence: sentenceTextView.rx.text.orEmpty.asObservable(),
+            page:     pageTextField.rx.text.orEmpty.asObservable(),
+            emotion:  selectedEmotionRelay.asObservable(),
+            memo:     memoTextView.rx.text.orEmpty.asObservable(),
+            saveTap:  registerButton.rx.tap.asObservable()
+        ))
 
-        isFormValid
-            .bind(to: registerButton.rx.isEnabled)
+        output.isFormValid
+            .drive(registerButton.rx.isEnabled)
             .disposed(by: disposeBag)
 
-        isFormValid
-            .map { $0 ? 1.0 : 0.4 }
-            .bind(to: registerButton.rx.alpha)
+        output.isFormValid
+            .map { $0 ? 1.0 as CGFloat : 0.4 }
+            .drive(registerButton.rx.alpha)
             .disposed(by: disposeBag)
 
-        registerButton.rx.tap
-            .subscribe(onNext: { [weak self] in
-                self?.saveSentence()
+        output.saveCompleted
+            .emit(onNext: { [weak self] in
+                guard let self else { return }
+                let onSaved = self.onSaved
+                self.dismiss(animated: true) { onSaved?() }
             })
             .disposed(by: disposeBag)
-    }
-
-    private func saveSentence() {
-        let sentenceText = sentenceTextView.text.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !sentenceText.isEmpty else {
-            showAlert("밑줄 내용을 입력해주세요.")
-            return
-        }
-
-        let pageText = pageTextField.text?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-        guard let page = Int(pageText), page > 0 else {
-            showAlert("올바른 페이지 번호를 입력해주세요.")
-            return
-        }
-
-        guard let localEmotion = selectedEmotion else {
-            showAlert("감정을 선택해주세요.")
-            return
-        }
-
-        let memoText   = memoTextView.text.trimmingCharacters(in: .whitespacesAndNewlines)
-        let newSentence = Sentence(
-            id:       UUID(),
-            bookISBN: bookISBN,
-            sentence: sentenceText,
-            page:     page,
-            emotion:  localEmotion,
-            memo:     memoText.isEmpty ? nil : memoText,
-            date:     Date()
-        )
-
-        AppContainer.shared.sentenceRepository
-            .saveSentence(newSentence)
-            .observe(on: MainScheduler.instance)
-            .subscribe(
-                onCompleted: { [weak self] in
-                    guard let self else { return }
-                    let onSaved = self.onSaved
-                    self.dismiss(animated: true) { onSaved?() }
-                },
-                onError:     { [weak self] _ in self?.showAlert("저장 중 오류가 발생했습니다.") }
-            )
-            .disposed(by: disposeBag)
-    }
-
-    private func showAlert(_ message: String) {
-        let alert = UIAlertController(title: nil, message: message, preferredStyle: .alert)
-        alert.addAction(UIAlertAction(title: "확인", style: .default))
-        present(alert, animated: true)
     }
 
     // MARK: - Chip Selection

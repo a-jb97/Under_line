@@ -11,8 +11,8 @@ final class AppContainer {
     static let shared = AppContainer()
 
     let modelContainer: ModelContainer
-    let bookRepository: BookRepository
-    let sentenceRepository: SentenceRepository
+    let bookRepository: BookRepositoryProtocol
+    let sentenceRepository: SentenceRepositoryProtocol
 
     private init() {
         modelContainer = try! ModelContainer(for: BookRecord.self, SentenceRecord.self)

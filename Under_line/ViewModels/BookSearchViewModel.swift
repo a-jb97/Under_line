@@ -43,13 +43,20 @@ final class BookSearchViewModel {
     // MARK: - Transform
 
     func transform(input: Input) -> Output {
-        let isLoading     = BehaviorRelay<Bool>(value: false)
-        let isLoadingMore = BehaviorRelay<Bool>(value: false)
-        let errorMessage  = PublishRelay<String>()
-        let latestQuery   = BehaviorRelay<String>(value: "")
-        let currentPage   = BehaviorRelay<Int>(value: 1)
-        let hasMorePages  = BehaviorRelay<Bool>(value: false)
-        let books         = BehaviorRelay<[Book]>(value: [])
+        let isLoading            = BehaviorRelay<Bool>(value: false)
+        let isLoadingMore        = BehaviorRelay<Bool>(value: false)
+        let errorMessage         = PublishRelay<String>()
+        let latestQuery          = BehaviorRelay<String>(value: "")
+        let currentPage          = BehaviorRelay<Int>(value: 1)
+        let hasMorePages         = BehaviorRelay<Bool>(value: false)
+        let books                = BehaviorRelay<[Book]>(value: [])
+        // 이미 요청을 보낸 가장 높은 페이지 번호 — 동기적으로 설정해 중복 요청 차단
+        let highestRequestedPage = BehaviorRelay<Int>(value: 0)
+        // 검색 결과의 totalResults 기반으로 계산한 실제 최대 페이지
+        // Aladin API 한계: 페이지당 50개, 총 최대 200개 → 최대 4페이지
+        let effectiveMaxPage     = BehaviorRelay<Int>(value: 4)
+        // 현재 검색어의 실제 결과 수 — 누적 시 이 수만큼 잘라 중복 방지
+        let totalResultCount     = BehaviorRelay<Int>(value: 0)
 
         // 검색어 최신값 유지
         input.searchQuery
@@ -85,9 +92,10 @@ final class BookSearchViewModel {
             .filter { !$0.trimmingCharacters(in: .whitespaces).isEmpty }
             .do(onNext: { _ in
                 currentPage.accept(1)
-                hasMorePages.accept(true)
+                highestRequestedPage.accept(0)
+                hasMorePages.accept(false)
             })
-            .flatMapLatest { [weak self] query -> Observable<[Book]> in
+            .flatMapLatest { [weak self] query -> Observable<(books: [Book], totalResults: Int)> in
                 guard let self else { return .empty() }
                 isLoading.accept(true)
                 return self.repository.searchBooks(query: query, page: 1)
@@ -97,41 +105,55 @@ final class BookSearchViewModel {
                     )
                     .catch { error in
                         errorMessage.accept(error.localizedDescription)
-                        return .just([])
+                        return .just((books: [], totalResults: 0))
                     }
                     .asObservable()
             }
-            .subscribe(onNext: { fetched in
-                books.accept(fetched)
-                // 50개 미만이면 마지막 페이지
-                if fetched.count < 50 { hasMorePages.accept(false) }
+            .subscribe(onNext: { result in
+                // totalResults 기반으로 실제 페이지 수 계산 (API 한계 200개 = 4페이지 상한)
+                let cappedTotal = min(result.totalResults, 200)
+                let pages = cappedTotal == 0 ? 1 : Int(ceil(Double(cappedTotal) / 50.0))
+                effectiveMaxPage.accept(pages)
+                totalResultCount.accept(cappedTotal)
+                books.accept(result.books)
+                hasMorePages.accept(result.totalResults > result.books.count)
             })
             .disposed(by: disposeBag)
 
-        // 다음 페이지 — 스크롤 하단 도달 시 (중복 요청 방지 + 쿼리 일치 확인)
+        // 다음 페이지 — 스크롤 하단 도달 시
+        // highestRequestedPage: 요청 시작 즉시(동기) 갱신 → Driver 비동기 UI 업데이트 후
+        // willDisplayCell이 재발동해도 같은 페이지를 중복 요청하지 않음
         input.loadNextPage
             .withLatestFrom(Observable.combineLatest(
-                isLoadingMore.asObservable(),
                 isLoading.asObservable(),
                 hasMorePages.asObservable(),
                 latestQuery.asObservable(),
-                currentPage.asObservable()
+                currentPage.asObservable(),
+                highestRequestedPage.asObservable(),
+                effectiveMaxPage.asObservable()
             ))
-            .filter { isMore, isLoad, hasMore, query, _ in
-                !isMore && !isLoad && hasMore
+            .filter { isLoad, hasMore, query, page, highReq, maxPg in
+                let nextPage = page + 1
+                return !isLoad && hasMore
                     && !query.trimmingCharacters(in: .whitespaces).isEmpty
+                    && nextPage > highReq
+                    && nextPage <= maxPg
             }
-            .map { _, _, _, query, page in (query, page + 1) }
+            .map { _, _, query, page, _, _ in (query, page + 1) }
+            .do(onNext: { _, nextPage in
+                // 동기적으로 선점 — 이후 중복 이벤트는 위 filter에서 차단됨
+                highestRequestedPage.accept(nextPage)
+                isLoadingMore.accept(true)
+            })
             .flatMap { [weak self] (query, nextPage) -> Observable<(String, Int, [Book])> in
                 guard let self else { return .empty() }
-                isLoadingMore.accept(true)
                 return self.repository.searchBooks(query: query, page: nextPage)
                     .do(onError: { _ in isLoadingMore.accept(false) })
                     .catch { error in
                         errorMessage.accept(error.localizedDescription)
-                        return .just([])
+                        return .just((books: [], totalResults: 0))
                     }
-                    .map { (query, nextPage, $0) }
+                    .map { (query, nextPage, $0.books) }
                     .asObservable()
             }
             .observe(on: MainScheduler.instance)
@@ -142,8 +164,16 @@ final class BookSearchViewModel {
                     return
                 }
                 currentPage.accept(nextPage)
-                books.accept(books.value + fetched)
-                if fetched.count < 50 { hasMorePages.accept(false) }
+                if !fetched.isEmpty {
+                    let combined = Array((books.value + fetched).prefix(totalResultCount.value))
+                    books.accept(combined)
+                    let reachedEnd = combined.count >= totalResultCount.value
+                        || fetched.count < 50
+                        || nextPage >= effectiveMaxPage.value
+                    if reachedEnd { hasMorePages.accept(false) }
+                } else {
+                    hasMorePages.accept(false)
+                }
                 isLoadingMore.accept(false)
             })
             .disposed(by: disposeBag)

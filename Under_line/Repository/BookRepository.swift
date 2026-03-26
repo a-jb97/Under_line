@@ -15,7 +15,7 @@ import RxCocoa
 protocol BookRepositoryProtocol {
     // Remote
     func fetchBestsellers() -> Single<[Book]>
-    func searchBooks(query: String, page: Int) -> Single<[Book]>
+    func searchBooks(query: String, page: Int) -> Single<(books: [Book], totalResults: Int)>
 
     // Local
     func fetchSavedBooks() -> Observable<[Book]>
@@ -43,7 +43,7 @@ final class BookRepository: BookRepositoryProtocol {
         apiService.fetchBestsellers()
     }
 
-    func searchBooks(query: String, page: Int) -> Single<[Book]> {
+    func searchBooks(query: String, page: Int) -> Single<(books: [Book], totalResults: Int)> {
         apiService.searchBooks(query: query, page: page)
     }
 

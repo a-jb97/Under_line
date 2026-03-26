@@ -12,7 +12,15 @@ import RxCocoa
 
 final class ReadingRecordViewController: UIViewController {
 
+    private let bookTitle: String
     private let disposeBag = DisposeBag()
+
+    init(bookTitle: String) {
+        self.bookTitle = bookTitle
+        super.init(nibName: nil, bundle: nil)
+    }
+
+    required init?(coder: NSCoder) { fatalError() }
     private var gradientLayers: [(view: UIView, layer: CAGradientLayer)] = []
     private var didSetupChart = false
 
@@ -48,7 +56,6 @@ final class ReadingRecordViewController: UIViewController {
     // MARK: - Book Title
     private let bookTitleLabel: UILabel = {
         let l = UILabel()
-        l.text          = "사랑의 기술"
         l.font          = UIFont(name: "GowunBatang-Bold", size: 20)
             ?? .systemFont(ofSize: 20, weight: .bold)
         l.textColor     = UIColor.accent
@@ -191,6 +198,7 @@ final class ReadingRecordViewController: UIViewController {
 
     private func setupUI() {
         view.backgroundColor = UIColor.background
+        bookTitleLabel.text = bookTitle
 
         view.addSubview(scrollView)
         scrollView.addSubview(contentView)

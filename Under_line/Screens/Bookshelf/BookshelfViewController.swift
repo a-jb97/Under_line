@@ -12,7 +12,10 @@ import RxCocoa
 
 final class BookshelfViewController: UIViewController {
 
-    private let disposeBag = DisposeBag()
+    private let disposeBag  = DisposeBag()
+    private let viewModel   = BookshelfViewModel(repository: AppContainer.shared.bookRepository)
+    private let deleteBookRelay = PublishRelay<Book>()
+
     private var layoutReady = false
     private var highlightLayers: [(view: UIView, layer: CAGradientLayer)] = []
     private var isEditMode = false
@@ -315,12 +318,7 @@ final class BookshelfViewController: UIViewController {
     }
 
     private func deleteBook(_ book: Book) {
-        AppContainer.shared.bookRepository.deleteBook(book)
-            .observe(on: MainScheduler.instance)
-            .subscribe(onCompleted: { }, onError: { error in
-                print("삭제 실패: \(error)")
-            })
-            .disposed(by: disposeBag)
+        deleteBookRelay.accept(book)
     }
 
     // MARK: - FAB Glass Style
@@ -398,10 +396,13 @@ final class BookshelfViewController: UIViewController {
     // MARK: - Bindings
 
     private func bindActions() {
-        // 저장된 도서 스트림 구독 → 책장 자동 업데이트
-        AppContainer.shared.bookRepository.fetchSavedBooks()
-            .observe(on: MainScheduler.instance)
-            .subscribe(onNext: { [weak self] books in
+        let output = viewModel.transform(input: BookshelfViewModel.Input(
+            deleteBook: deleteBookRelay.asObservable()
+        ))
+
+        // 저장된 도서 스트림 → 책장 자동 업데이트
+        output.books
+            .drive(onNext: { [weak self] books in
                 self?.savedBooks = books
             })
             .disposed(by: disposeBag)

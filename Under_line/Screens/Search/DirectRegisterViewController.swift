@@ -14,6 +14,7 @@ import Toast
 final class DirectRegisterViewController: UIViewController {
 
     private let disposeBag = DisposeBag()
+    private let viewModel  = DirectRegisterViewModel(repository: AppContainer.shared.bookRepository)
 
     // MARK: - UI Components
 
@@ -154,80 +155,39 @@ final class DirectRegisterViewController: UIViewController {
     // MARK: - Bindings
 
     private func bindActions() {
-        bindValidation()
+        let output = viewModel.transform(input: DirectRegisterViewModel.Input(
+            title:          bookTitleField.textField.rx.text.orEmpty.asObservable(),
+            author:         authorField.textField.rx.text.orEmpty.asObservable(),
+            publisher:      publisherField.textField.rx.text.orEmpty.asObservable(),
+            isbn:           isbnField.textField.rx.text.orEmpty.asObservable(),
+            publishDate:    publishDateField.textField.rx.text.orEmpty.asObservable(),
+            coverURLString: coverURLField.textField.rx.text.orEmpty.asObservable(),
+            category:       categoryField.textField.rx.text.orEmpty.asObservable(),
+            description:    descriptionField.textView.rx.text.orEmpty.asObservable(),
+            registerTap:    registerButton.rx.tap.asObservable()
+        ))
 
-        registerButton.rx.tap
-            .subscribe(onNext: { [weak self] in
-                self?.handleRegister()
+        output.isFormValid
+            .drive(onNext: { [weak self] isValid in
+                self?.registerButton.isEnabled = isValid
+                self?.registerButton.alpha = isValid ? 1.0 : 0.4
             })
             .disposed(by: disposeBag)
-    }
 
-    private func bindValidation() {
-        Observable.combineLatest(
-            bookTitleField.textField.rx.text.orEmpty,
-            authorField.textField.rx.text.orEmpty,
-            publisherField.textField.rx.text.orEmpty,
-            isbnField.textField.rx.text.orEmpty
-        ) { title, author, publisher, isbn in
-            !title.trimmingCharacters(in: .whitespaces).isEmpty &&
-            !author.trimmingCharacters(in: .whitespaces).isEmpty &&
-            !publisher.trimmingCharacters(in: .whitespaces).isEmpty &&
-            !isbn.trimmingCharacters(in: .whitespaces).isEmpty
-        }
-        .observe(on: MainScheduler.instance)
-        .subscribe(onNext: { [weak self] isValid in
-            self?.registerButton.isEnabled = isValid
-            self?.registerButton.alpha = isValid ? 1.0 : 0.4
-        })
-        .disposed(by: disposeBag)
-    }
+        output.registerCompleted
+            .emit(onNext: { [weak self] in
+                // BookSearchVC를 띄운 상위 VC에서 dismiss → 체인 전체 동시 해제
+                self?.presentingViewController?.presentingViewController?.dismiss(animated: true)
+            })
+            .disposed(by: disposeBag)
 
-    private func handleRegister() {
-        let title       = bookTitleField.textField.text?.trimmingCharacters(in: .whitespaces) ?? ""
-        let author      = authorField.textField.text?.trimmingCharacters(in: .whitespaces) ?? ""
-        let publisher   = publisherField.textField.text?.trimmingCharacters(in: .whitespaces) ?? ""
-        let isbn        = isbnField.textField.text?.trimmingCharacters(in: .whitespaces) ?? ""
-        let publishDate = publishDateField.textField.text?.trimmingCharacters(in: .whitespaces)
-        let coverURLStr = coverURLField.textField.text?.trimmingCharacters(in: .whitespaces)
-        let categoryRaw = categoryField.textField.text?.trimmingCharacters(in: .whitespaces)
-        let desc        = descriptionField.textView.text.trimmingCharacters(in: .whitespaces)
-
-        let category = (categoryRaw?.isEmpty ?? true) ? "미정" : categoryRaw
-        let coverURL  = coverURLStr.flatMap { $0.isEmpty ? nil : URL(string: $0) }
-
-        let formattedDate: String? = {
-            guard let raw = publishDate, raw.count == 8,
-                  raw.allSatisfy(\.isNumber) else { return publishDate?.isEmpty == true ? nil : publishDate }
-            return "\(raw.prefix(4))-\(raw.dropFirst(4).prefix(2))-\(raw.suffix(2))"
-        }()
-
-        let book = Book(
-            title:       title,
-            author:      author,
-            isbn13:      isbn,
-            coverURL:    coverURL,
-            publisher:   publisher,
-            publishDate: formattedDate,
-            category:    category,
-            bestRank:    nil,
-            description: desc
-        )
-
-        AppContainer.shared.bookRepository.saveBook(book)
-            .observe(on: MainScheduler.instance)
-            .subscribe(
-                onCompleted: { [weak self] in
-                    // BookSearchVC를 띄운 상위 VC에서 dismiss → 체인 전체 동시 해제
-                    self?.presentingViewController?.presentingViewController?.dismiss(animated: true)
-                },
-                onError: { [weak self] error in
-                    var style = ToastStyle()
-                    style.backgroundColor = UIColor.primary.withAlphaComponent(0.9)
-                    style.messageFont = UIFont(name: "GowunBatang-Regular", size: 14) ?? .systemFont(ofSize: 14)
-                    self?.view.makeToast(error.localizedDescription, duration: 1.5, position: .center, style: style)
-                }
-            )
+        output.errorMessage
+            .emit(onNext: { [weak self] message in
+                var style = ToastStyle()
+                style.backgroundColor = UIColor.primary.withAlphaComponent(0.9)
+                style.messageFont = UIFont(name: "GowunBatang-Regular", size: 14) ?? .systemFont(ofSize: 14)
+                self?.view.makeToast(message, duration: 1.5, position: .center, style: style)
+            })
             .disposed(by: disposeBag)
     }
 }

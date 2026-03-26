@@ -14,7 +14,14 @@ import Kingfisher
 final class BookDetailViewController: UIViewController {
 
     private let book: Book
-    private let disposeBag = DisposeBag()
+    private let disposeBag          = DisposeBag()
+    private lazy var viewModel      = BookDetailViewModel(
+        book:       book,
+        repository: AppContainer.shared.sentenceRepository
+    )
+    private let viewWillAppearRelay = PublishRelay<Void>()
+    private let deleteSentenceRelay = PublishRelay<Sentence>()
+
     private var sentences: [Sentence] = []
     private var highlightLayers: [(view: UIView, layer: CAGradientLayer)] = []
     private var isEditMode = false
@@ -109,7 +116,7 @@ final class BookDetailViewController: UIViewController {
     private let bookCoverView: UIImageView = {
         let iv = UIImageView()
         iv.backgroundColor   = UIColor.primary
-        iv.layer.cornerRadius = 6
+        iv.layer.cornerRadius = 3
         iv.clipsToBounds      = true
         iv.contentMode        = .scaleAspectFill
         return iv
@@ -276,6 +283,7 @@ final class BookDetailViewController: UIViewController {
         setupConstraints()
         setupProgressGradient()
         configureWithBook()
+        bindViewModel()
         bindActions()
     }
 
@@ -283,7 +291,7 @@ final class BookDetailViewController: UIViewController {
         super.viewWillAppear(animated)
         navigationController?.interactivePopGestureRecognizer?.delegate = nil
         navigationController?.interactivePopGestureRecognizer?.isEnabled = true
-        loadSentences()
+        viewWillAppearRelay.accept(())
     }
 
     override func viewDidLayoutSubviews() {
@@ -543,21 +551,24 @@ final class BookDetailViewController: UIViewController {
         moreButton.isHidden = book.description.isEmpty
     }
 
-    // MARK: - Sentences
+    // MARK: - ViewModel Binding
 
-    private func loadSentences() {
-        AppContainer.shared.sentenceRepository
-            .fetchSentences(for: book.isbn13)
-            .observe(on: MainScheduler.instance)
-            .subscribe(
-                onSuccess: { [weak self] sentences in
-                    self?.sentences = sentences
-                    self?.renderQuotePages()
-                },
-                onFailure: { _ in }
-            )
+    private func bindViewModel() {
+        let output = viewModel.transform(input: BookDetailViewModel.Input(
+            viewWillAppear: viewWillAppearRelay.asObservable(),
+            deleteSentence: deleteSentenceRelay.asObservable()
+        ))
+
+        output.sentences
+            .drive(onNext: { [weak self] sentences in
+                guard let self else { return }
+                self.sentences = sentences
+                self.renderQuotePages()
+            })
             .disposed(by: disposeBag)
     }
+
+    // MARK: - Sentences
 
     private func renderQuotePages() {
         quoteScrollView.subviews.forEach { $0.removeFromSuperview() }
@@ -612,14 +623,7 @@ final class BookDetailViewController: UIViewController {
     }
 
     private func deleteSentence(_ sentence: Sentence) {
-        AppContainer.shared.sentenceRepository.deleteSentence(sentence)
-            .observe(on: MainScheduler.instance)
-            .subscribe(onCompleted: { [weak self] in
-                self?.loadSentences()
-            }, onError: { error in
-                print("문장 삭제 실패: \(error)")
-            })
-            .disposed(by: disposeBag)
+        deleteSentenceRelay.accept(sentence)
     }
 
     private func makePageView(for sentence: Sentence) -> UIView {
@@ -784,6 +788,10 @@ final class BookDetailViewController: UIViewController {
 
         button.backgroundColor = .clear
     }
+    
+    private func loadSentences() {
+        viewWillAppearRelay.accept(())
+    }
 
     // MARK: - Bindings
 
@@ -827,7 +835,7 @@ final class BookDetailViewController: UIViewController {
 
         timerButton.rx.tap
             .subscribe(onNext: { [weak self] in
-                let vc = ReadingRecordViewController()
+                let vc = ReadingRecordViewController(bookTitle: self?.book.title ?? "")
                 self?.navigationController?.pushViewController(vc, animated: true)
             })
             .disposed(by: disposeBag)

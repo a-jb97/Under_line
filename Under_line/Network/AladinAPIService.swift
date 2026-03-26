@@ -13,7 +13,7 @@ import RxSwift
 
 protocol AladinAPIServiceProtocol {
     func fetchBestsellers() -> Single<[Book]>
-    func searchBooks(query: String, page: Int) -> Single<[Book]>
+    func searchBooks(query: String, page: Int) -> Single<(books: [Book], totalResults: Int)>
 }
 
 // MARK: - Implementation
@@ -39,26 +39,28 @@ final class AladinAPIService: AladinAPIServiceProtocol {
             "Version":      "20131101"
         ]
         return request(endpoint: "ItemList.aspx", parameters: params)
+            .map { $0.item.map { $0.toDomain() } }
     }
 
-    func searchBooks(query: String, page: Int) -> Single<[Book]> {
+    func searchBooks(query: String, page: Int) -> Single<(books: [Book], totalResults: Int)> {
         let maxResults = 50
         let params: Parameters = [
             "ttbkey":       apiKey,
             "Query":        query,
             "MaxResults":   maxResults,
-            "start":        (page - 1) * maxResults + 1,
+            "start":        page,
             "SearchTarget": "Book",
             "Cover":        "Big",
             "output":       "js",
             "Version":      "20131101"
         ]
         return request(endpoint: "ItemSearch.aspx", parameters: params)
+            .map { (books: $0.item.map { $0.toDomain() }, totalResults: $0.totalResults) }
     }
 
     // MARK: - Private
 
-    private func request(endpoint: String, parameters: Parameters) -> Single<[Book]> {
+    private func request(endpoint: String, parameters: Parameters) -> Single<AladinListResponse> {
         Single.create { [weak self] observer in
             guard let self else {
                 observer(.failure(AladinAPIError.unknown))
@@ -73,7 +75,7 @@ final class AladinAPIService: AladinAPIServiceProtocol {
             .responseDecodable(of: AladinListResponse.self) { response in
                 switch response.result {
                 case .success(let dto):
-                    observer(.success(dto.item.map { $0.toDomain() }))
+                    observer(.success(dto))
                 case .failure(let error):
                     observer(.failure(error))
                 }
