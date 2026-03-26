@@ -42,7 +42,7 @@ final class BookshelfViewController: UIViewController {
 
     private lazy var filterButton: UIButton = {
         let btn = UIButton(type: .system)
-        let cfg = UIImage.SymbolConfiguration(pointSize: 18, weight: .regular)
+        let cfg = UIImage.SymbolConfiguration(pointSize: 14, weight: .regular)
         btn.setImage(UIImage(systemName: "slider.horizontal.3", withConfiguration: cfg), for: .normal)
         btn.tintColor = UIColor.walnut
         btn.layer.cornerRadius = 20
@@ -81,7 +81,7 @@ final class BookshelfViewController: UIViewController {
     // FAB (+) 버튼
     private lazy var fabButton: UIButton = {
         let btn = UIButton(type: .system)
-        let cfg = UIImage.SymbolConfiguration(pointSize: 20, weight: .medium)
+        let cfg = UIImage.SymbolConfiguration(pointSize: 14, weight: .medium)
         btn.setImage(UIImage(systemName: "plus", withConfiguration: cfg), for: .normal)
         btn.tintColor = UIColor.walnut
         btn.layer.cornerRadius = 26
@@ -92,7 +92,7 @@ final class BookshelfViewController: UIViewController {
     // 편집 버튼
     private lazy var editButton: UIButton = {
         let btn = UIButton(type: .system)
-        let cfg = UIImage.SymbolConfiguration(pointSize: 20, weight: .medium)
+        let cfg = UIImage.SymbolConfiguration(pointSize: 14, weight: .medium)
         btn.setImage(UIImage(systemName: "square.and.pencil", withConfiguration: cfg), for: .normal)
         btn.tintColor = UIColor.walnut
         btn.layer.cornerRadius = 26
@@ -305,9 +305,9 @@ final class BookshelfViewController: UIViewController {
             editButton.setImage(nil, for: .normal)
             editButton.setTitle("완료", for: .normal)
             editButton.setTitleColor(UIColor.walnut, for: .normal)
-            editButton.titleLabel?.font = .systemFont(ofSize: 15, weight: .semibold)
+            editButton.titleLabel?.font = .systemFont(ofSize: 14, weight: .semibold)
         } else {
-            let cfg = UIImage.SymbolConfiguration(pointSize: 20, weight: .medium)
+            let cfg = UIImage.SymbolConfiguration(pointSize: 14, weight: .medium)
             editButton.setImage(UIImage(systemName: "square.and.pencil", withConfiguration: cfg), for: .normal)
             editButton.setTitle(nil, for: .normal)
         }

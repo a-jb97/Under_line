@@ -27,7 +27,7 @@ final class ReadingRecordViewController: UIViewController {
     // MARK: - Header
     private lazy var backButton: UIButton = {
         let btn = UIButton(type: .system)
-        let cfg = UIImage.SymbolConfiguration(pointSize: 20, weight: .regular)
+        let cfg = UIImage.SymbolConfiguration(pointSize: 17, weight: .regular)
         btn.setImage(UIImage(systemName: "chevron.left", withConfiguration: cfg), for: .normal)
         btn.tintColor = UIColor.accent
         return btn

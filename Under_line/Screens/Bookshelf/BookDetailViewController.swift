@@ -40,7 +40,7 @@ final class BookDetailViewController: UIViewController {
     // Header
     private lazy var backButton: UIButton = {
         let btn = UIButton(type: .system)
-        let cfg = UIImage.SymbolConfiguration(pointSize: 20, weight: .regular)
+        let cfg = UIImage.SymbolConfiguration(pointSize: 17, weight: .regular)
         btn.setImage(UIImage(systemName: "chevron.left", withConfiguration: cfg), for: .normal)
         btn.tintColor = UIColor.accent
         return btn
@@ -249,7 +249,7 @@ final class BookDetailViewController: UIViewController {
     // 문장 편집 버튼 (BookshelfViewController의 editButton과 동일)
     private lazy var sentenceEditButton: UIButton = {
         let btn = UIButton(type: .system)
-        let cfg = UIImage.SymbolConfiguration(pointSize: 20, weight: .medium)
+        let cfg = UIImage.SymbolConfiguration(pointSize: 14, weight: .medium)
         btn.setImage(UIImage(systemName: "square.and.pencil", withConfiguration: cfg), for: .normal)
         btn.tintColor = UIColor.walnut
         btn.layer.cornerRadius = 26
@@ -260,7 +260,7 @@ final class BookDetailViewController: UIViewController {
     // FAB
     private lazy var fabButton: UIButton = {
         let btn = UIButton(type: .system)
-        let cfg = UIImage.SymbolConfiguration(pointSize: 20, weight: .medium)
+        let cfg = UIImage.SymbolConfiguration(pointSize: 14, weight: .medium)
         btn.setImage(UIImage(systemName: "plus", withConfiguration: cfg), for: .normal)
         btn.tintColor = UIColor.walnut
         btn.layer.cornerRadius = 26
@@ -593,9 +593,9 @@ final class BookDetailViewController: UIViewController {
             sentenceEditButton.setImage(nil, for: .normal)
             sentenceEditButton.setTitle("완료", for: .normal)
             sentenceEditButton.setTitleColor(UIColor.walnut, for: .normal)
-            sentenceEditButton.titleLabel?.font = .systemFont(ofSize: 15, weight: .semibold)
+            sentenceEditButton.titleLabel?.font = .systemFont(ofSize: 14, weight: .semibold)
         } else {
-            let cfg = UIImage.SymbolConfiguration(pointSize: 20, weight: .medium)
+            let cfg = UIImage.SymbolConfiguration(pointSize: 14, weight: .medium)
             sentenceEditButton.setImage(UIImage(systemName: "square.and.pencil", withConfiguration: cfg), for: .normal)
             sentenceEditButton.setTitle(nil, for: .normal)
         }
