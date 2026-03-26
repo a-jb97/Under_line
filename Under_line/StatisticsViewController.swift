@@ -67,8 +67,11 @@ final class StatisticsViewController: UIViewController {
 
         let headerContainer = UIView()
         headerContainer.addSubview(titleLabel)
+        headerContainer.snp.makeConstraints { make in
+            make.height.equalTo(54)
+        }
         titleLabel.snp.makeConstraints { make in
-            make.leading.top.bottom.equalToSuperview()
+            make.leading.centerY.equalToSuperview()
             make.trailing.lessThanOrEqualToSuperview()
         }
 
@@ -85,7 +88,8 @@ final class StatisticsViewController: UIViewController {
         }
 
         contentStack.snp.makeConstraints { make in
-            make.top.bottom.equalToSuperview().inset(24)
+            make.top.equalToSuperview()
+            make.bottom.equalToSuperview().inset(24)
             make.leading.trailing.equalToSuperview().inset(24)
             make.width.equalTo(scrollView).offset(-48)
         }
