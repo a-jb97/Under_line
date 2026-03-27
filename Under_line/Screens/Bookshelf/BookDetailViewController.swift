@@ -435,7 +435,6 @@ final class BookDetailViewController: UIViewController {
         genreTagView.snp.makeConstraints { make in
             make.leading.equalTo(bookTitleLabel)
             make.top.equalTo(publisherLabel.snp.bottom).offset(6)
-            make.bottom.lessThanOrEqualTo(bookCoverView.snp.bottom)
         }
 
         genreTagLabel.snp.makeConstraints { make in
@@ -535,7 +534,15 @@ final class BookDetailViewController: UIViewController {
         }
 
         if let coverURL = book.coverURL {
-            bookCoverView.kf.setImage(with: coverURL)
+            bookCoverView.kf.setImage(with: coverURL) { [weak self] result in
+                guard let self, case .success(let value) = result else { return }
+                let imageSize = value.image.size
+                guard imageSize.width > 0 else { return }
+                let newHeight = ceil(60.0 * imageSize.height / imageSize.width)
+                self.bookCoverView.snp.updateConstraints { make in
+                    make.height.equalTo(newHeight)
+                }
+            }
         }
 
         let descStyle = NSMutableParagraphStyle()
