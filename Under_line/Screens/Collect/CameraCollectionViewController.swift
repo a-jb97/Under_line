@@ -33,6 +33,8 @@ final class CameraCollectionViewController: UIViewController {
     private var isFlashOn = false
     private var usingFrontCamera = false
 
+    private var hasTripleCamera = false
+
     // MARK: - Top Section
 
     private let topSectionView: UIView = {
@@ -259,6 +261,7 @@ final class CameraCollectionViewController: UIViewController {
             make.top.equalTo(scanGuideView.snp.bottom).offset(20)
         }
 
+
         // Capture button: centered, 20pt from bottom section top
         captureButton.snp.makeConstraints { make in
             make.top.equalToSuperview().inset(20)
@@ -418,8 +421,10 @@ final class CameraCollectionViewController: UIViewController {
         captureSession.beginConfiguration()
         captureSession.sessionPreset = .photo
 
-        let position: AVCaptureDevice.Position = usingFrontCamera ? .front : .back
-        guard let device = AVCaptureDevice.default(.builtInWideAngleCamera, for: .video, position: position),
+        let selectedDevice = usingFrontCamera
+            ? AVCaptureDevice.default(.builtInWideAngleCamera, for: .video, position: .front)
+            : bestBackCamera()
+        guard let device = selectedDevice,
               let deviceInput = try? AVCaptureDeviceInput(device: device)
         else {
             captureSession.commitConfiguration()
@@ -443,6 +448,8 @@ final class CameraCollectionViewController: UIViewController {
         preview.frame = cameraSectionView.bounds
         cameraSectionView.layer.insertSublayer(preview, at: 0)
         previewLayer = preview
+
+//        startLensPositionObservation()
 
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
             self?.captureSession.startRunning()
@@ -535,8 +542,14 @@ final class CameraCollectionViewController: UIViewController {
         guard let current = currentInput else { return }
         usingFrontCamera.toggle()
 
-        let position: AVCaptureDevice.Position = usingFrontCamera ? .front : .back
-        guard let newDevice = AVCaptureDevice.default(.builtInWideAngleCamera, for: .video, position: position),
+        let selectedDevice: AVCaptureDevice?
+        if usingFrontCamera {
+            hasTripleCamera = false
+            selectedDevice = AVCaptureDevice.default(.builtInWideAngleCamera, for: .video, position: .front)
+        } else {
+            selectedDevice = bestBackCamera()
+        }
+        guard let newDevice = selectedDevice,
               let newInput  = try? AVCaptureDeviceInput(device: newDevice)
         else { return }
 
@@ -551,6 +564,15 @@ final class CameraCollectionViewController: UIViewController {
 
         // 전면 카메라는 플래시 없으므로 끄기
         if usingFrontCamera && isFlashOn { toggleFlash() }
+    }
+
+    private func bestBackCamera() -> AVCaptureDevice? {
+        if let triple = AVCaptureDevice.default(.builtInTripleCamera, for: .video, position: .back) {
+            hasTripleCamera = true
+            return triple
+        }
+        hasTripleCamera = false
+        return AVCaptureDevice.default(.builtInWideAngleCamera, for: .video, position: .back)
     }
 }
 

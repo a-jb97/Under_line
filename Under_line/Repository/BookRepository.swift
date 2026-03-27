@@ -16,11 +16,13 @@ protocol BookRepositoryProtocol {
     // Remote
     func fetchBestsellers() -> Single<[Book]>
     func searchBooks(query: String, page: Int) -> Single<(books: [Book], totalResults: Int)>
+    func fetchBookDetail(isbn13: String) -> Single<Book>
 
     // Local
     func fetchSavedBooks() -> Observable<[Book]>
     func saveBook(_ book: Book) -> Completable
     func deleteBook(_ book: Book) -> Completable
+    func updateCurrentPage(isbn13: String, page: Int) -> Completable
 }
 
 // MARK: - Concrete Implementation
@@ -45,6 +47,10 @@ final class BookRepository: BookRepositoryProtocol {
 
     func searchBooks(query: String, page: Int) -> Single<(books: [Book], totalResults: Int)> {
         apiService.searchBooks(query: query, page: page)
+    }
+
+    func fetchBookDetail(isbn13: String) -> Single<Book> {
+        apiService.fetchBookDetail(isbn13: isbn13)
     }
 
     // MARK: Local
@@ -92,6 +98,25 @@ final class BookRepository: BookRepositoryProtocol {
                 )
                 let records = try self.modelContext.fetch(descriptor)
                 records.forEach { self.modelContext.delete($0) }
+                try self.modelContext.save()
+                self.refreshRelay()
+                completable(.completed)
+            } catch {
+                completable(.error(error))
+            }
+            return Disposables.create()
+        }
+    }
+
+    func updateCurrentPage(isbn13: String, page: Int) -> Completable {
+        Completable.create { [weak self] (completable: @escaping (CompletableEvent) -> Void) -> Disposable in
+            guard let self else { completable(.completed); return Disposables.create() }
+            do {
+                let descriptor = FetchDescriptor<BookRecord>(
+                    predicate: #Predicate { $0.isbn13 == isbn13 }
+                )
+                let records = try self.modelContext.fetch(descriptor)
+                records.first?.currentPage = page
                 try self.modelContext.save()
                 self.refreshRelay()
                 completable(.completed)

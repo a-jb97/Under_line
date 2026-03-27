@@ -18,6 +18,8 @@ final class BookRecord {
     var publishDate: String?
     var category: String?
     var bookDescription: String
+    var itemPage: Int?
+    var currentPage: Int?
     var savedAt: Date
 
     init(from book: Book) {
@@ -29,6 +31,8 @@ final class BookRecord {
         self.publishDate     = book.publishDate
         self.category        = book.category
         self.bookDescription = book.description
+        self.itemPage        = book.itemPage
+        self.currentPage     = book.currentPage
         self.savedAt         = Date()
     }
 
@@ -42,7 +46,9 @@ final class BookRecord {
             publishDate: publishDate,
             category:    category,
             bestRank:    nil,
-            description: bookDescription
+            description: bookDescription,
+            itemPage:    itemPage,
+            currentPage: currentPage
         )
     }
 }

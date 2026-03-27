@@ -104,7 +104,9 @@ final class DirectRegisterViewModel {
                     publishDate: formattedDate,
                     category:    category,
                     bestRank:    nil,
-                    description: desc.trimmingCharacters(in: .whitespaces)
+                    description: desc.trimmingCharacters(in: .whitespaces),
+                    itemPage:    nil,
+                    currentPage: nil
                 )
 
                 return self.repository.saveBook(book)

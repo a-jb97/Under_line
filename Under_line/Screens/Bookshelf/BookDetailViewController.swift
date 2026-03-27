@@ -16,15 +16,19 @@ final class BookDetailViewController: UIViewController {
     private let book: Book
     private let disposeBag          = DisposeBag()
     private lazy var viewModel      = BookDetailViewModel(
-        book:       book,
-        repository: AppContainer.shared.sentenceRepository
+        book:               book,
+        sentenceRepository: AppContainer.shared.sentenceRepository,
+        bookRepository:     AppContainer.shared.bookRepository
     )
-    private let viewWillAppearRelay = PublishRelay<Void>()
-    private let deleteSentenceRelay = PublishRelay<Sentence>()
+    private let viewWillAppearRelay    = PublishRelay<Void>()
+    private let deleteSentenceRelay    = PublishRelay<Sentence>()
+    private let updateCurrentPageRelay = PublishRelay<Int>()
 
     private var sentences: [Sentence] = []
     private var highlightLayers: [(view: UIView, layer: CAGradientLayer)] = []
     private var isEditMode = false
+    private var currentItemPage: Int?
+    private var latestCurrentPage: Int?
 
     private let scrollView: UIScrollView = {
         let sv = UIScrollView()
@@ -185,73 +189,8 @@ final class BookDetailViewController: UIViewController {
         return l
     }()
 
-    // Progress Section (neumorphic inner card)
-    private let progressSection: UIView = {
-        let v = UIView()
-        v.backgroundColor   = UIColor.background
-        v.layer.cornerRadius = 12
-        v.layer.shadowColor   = UIColor(hex: "#5d4037").cgColor
-        v.layer.shadowOpacity = Float(CGFloat(0x25) / 255)
-        v.layer.shadowRadius  = 2.5
-        v.layer.shadowOffset  = CGSize(width: 3, height: 3)
-        return v
-    }()
-
-    private let progressHeaderLabel: UILabel = {
-        let l = UILabel()
-        let attrStr = NSMutableAttributedString(
-            string: "독서 진행률 : ",
-            attributes: [
-                .font:            UIFont(name: "GoyangIlsan R", size: 13) ?? .systemFont(ofSize: 13, weight: .semibold),
-                .foregroundColor: UIColor.accent,
-            ]
-        )
-        attrStr.append(NSAttributedString(
-            string: "68%",
-            attributes: [
-                .font:            UIFont(name: "GoyangIlsan R", size: 13) ?? .systemFont(ofSize: 13, weight: .semibold),
-                .foregroundColor: UIColor.primary,
-            ]
-        ))
-        l.attributedText = attrStr
-        return l
-    }()
-
-    private lazy var editButton: UIButton = {
-        let btn = UIButton(type: .system)
-        let cfg = UIImage.SymbolConfiguration(pointSize: 10, weight: .regular)
-        btn.setImage(UIImage(systemName: "pencil", withConfiguration: cfg), for: .normal)
-        btn.setTitle(" 편집", for: .normal)
-        btn.titleLabel?.font = UIFont(name: "GoyangIlsan R", size: 12)
-            ?? .systemFont(ofSize: 12, weight: .semibold)
-        btn.tintColor = UIColor.primary.withAlphaComponent(0.7)
-        btn.setTitleColor(UIColor.primary.withAlphaComponent(0.7), for: .normal)
-        return btn
-    }()
-
-    private let progressBarBg: UIView = {
-        let v = UIView()
-        v.backgroundColor   = UIColor(hex: "#5d4037", alpha: CGFloat(0x20) / 255)
-        v.layer.cornerRadius = 6
-        v.clipsToBounds      = true
-        return v
-    }()
-
-    private let progressBarFill: UIView = {
-        let v = UIView()
-        v.layer.cornerRadius = 4
-        v.clipsToBounds      = true
-        return v
-    }()
-
-    private let progressDetailLabel: UILabel = {
-        let l = UILabel()
-        l.text      = "187 / 276 페이지"
-        l.font      = UIFont(name: "GoyangIlsan R", size: 11)
-            ?? .systemFont(ofSize: 11)
-        l.textColor = UIColor.primary.withAlphaComponent(0.45)
-        return l
-    }()
+    // Progress Section
+    private let progressSectionView = ProgressSectionView()
 
     // 문장 편집 버튼 (BookshelfViewController의 editButton과 동일)
     private lazy var sentenceEditButton: UIButton = {
@@ -281,7 +220,6 @@ final class BookDetailViewController: UIViewController {
         super.viewDidLoad()
         setupUI()
         setupConstraints()
-        setupProgressGradient()
         configureWithBook()
         bindViewModel()
         bindActions()
@@ -333,13 +271,7 @@ final class BookDetailViewController: UIViewController {
         bookInfoSection.addSubview(moreButton)
         bookInfoSection.addSubview(descriptionLabel)
 
-        progressBarBg.addSubview(progressBarFill)
-        progressSection.addSubview(progressHeaderLabel)
-        progressSection.addSubview(editButton)
-        progressSection.addSubview(progressBarBg)
-        progressSection.addSubview(progressDetailLabel)
-
-        bookInfoSection.addSubview(progressSection)
+        bookInfoSection.addSubview(progressSectionView)
         contentView.addSubview(bookInfoSection)
 
         // FAB
@@ -453,38 +385,10 @@ final class BookDetailViewController: UIViewController {
 
         // Progress Section (cornerRadius 12, padding [12,14])
         // 초기에는 description이 숨겨진 상태이므로 genreTagView 기준
-        progressSection.snp.makeConstraints { make in
+        progressSectionView.snp.makeConstraints { make in
             make.top.equalTo(genreTagView.snp.bottom).offset(16)
             make.leading.trailing.equalToSuperview().inset(16)
             make.bottom.equalToSuperview().inset(16)
-        }
-
-        progressHeaderLabel.snp.makeConstraints { make in
-            make.leading.equalToSuperview().inset(14)
-            make.top.equalToSuperview().inset(12)
-        }
-
-        editButton.snp.makeConstraints { make in
-            make.trailing.equalToSuperview().inset(14)
-            make.centerY.equalTo(progressHeaderLabel)
-        }
-
-        progressBarBg.snp.makeConstraints { make in
-            make.leading.trailing.equalToSuperview().inset(14)
-            make.top.equalTo(progressHeaderLabel.snp.bottom).offset(10)
-            make.height.equalTo(24)
-        }
-
-        progressBarFill.snp.makeConstraints { make in
-            make.leading.top.bottom.equalToSuperview()
-            // 68% progress
-            make.width.equalToSuperview().multipliedBy(0.68)
-        }
-
-        progressDetailLabel.snp.makeConstraints { make in
-            make.leading.equalToSuperview().inset(14)
-            make.top.equalTo(progressBarBg.snp.bottom).offset(10)
-            make.bottom.equalToSuperview().inset(12)
         }
 
         // FAB (52×52, trailing 24, bottom safeArea 16)
@@ -499,19 +403,6 @@ final class BookDetailViewController: UIViewController {
             make.centerY.equalTo(fabButton)
             make.size.equalTo(52)
         }
-    }
-
-    private func setupProgressGradient() {
-        let gradLayer = CAGradientLayer()
-        gradLayer.colors = [
-            UIColor.primary.cgColor,
-            UIColor(hex: "#8D6E63").cgColor,
-        ]
-        gradLayer.startPoint = CGPoint(x: 0, y: 0.5)
-        gradLayer.endPoint   = CGPoint(x: 1, y: 0.5)
-        gradLayer.cornerRadius = 4
-        progressBarFill.layer.addSublayer(gradLayer)
-        highlightLayers.append((progressBarFill, gradLayer))
     }
 
     // MARK: - Book Data
@@ -562,8 +453,9 @@ final class BookDetailViewController: UIViewController {
 
     private func bindViewModel() {
         let output = viewModel.transform(input: BookDetailViewModel.Input(
-            viewWillAppear: viewWillAppearRelay.asObservable(),
-            deleteSentence: deleteSentenceRelay.asObservable()
+            viewWillAppear:    viewWillAppearRelay.asObservable(),
+            deleteSentence:    deleteSentenceRelay.asObservable(),
+            updateCurrentPage: updateCurrentPageRelay.asObservable()
         ))
 
         output.sentences
@@ -571,6 +463,19 @@ final class BookDetailViewController: UIViewController {
                 guard let self else { return }
                 self.sentences = sentences
                 self.renderQuotePages()
+            })
+            .disposed(by: disposeBag)
+
+        output.itemPage
+            .drive(onNext: { [weak self] itemPage in
+                guard let self, let itemPage else { return }
+                self.currentItemPage = itemPage
+                if let currentPage = self.book.currentPage, currentPage > 0 {
+                    self.latestCurrentPage = currentPage
+                    self.progressSectionView.configure(currentPage: currentPage, itemPage: itemPage)
+                } else {
+                    self.progressSectionView.showNoProgress(itemPage: itemPage)
+                }
             })
             .disposed(by: disposeBag)
     }
@@ -842,8 +747,18 @@ final class BookDetailViewController: UIViewController {
 
         timerButton.rx.tap
             .subscribe(onNext: { [weak self] in
-                let vc = ReadingRecordViewController(bookTitle: self?.book.title ?? "")
-                self?.navigationController?.pushViewController(vc, animated: true)
+                guard let self else { return }
+                let vc = ReadingRecordViewController(
+                    book:            self.book,
+                    currentItemPage: self.currentItemPage,
+                    initialPage:     self.latestCurrentPage
+                )
+                vc.onPageRecorded = { [weak self] page in
+                    guard let self, let itemPage = self.currentItemPage else { return }
+                    self.latestCurrentPage = page
+                    self.progressSectionView.configure(currentPage: page, itemPage: itemPage)
+                }
+                self.navigationController?.pushViewController(vc, animated: true)
             })
             .disposed(by: disposeBag)
 
@@ -852,7 +767,7 @@ final class BookDetailViewController: UIViewController {
                 guard let self else { return }
                 let isExpanded = !self.descriptionLabel.isHidden
                 self.descriptionLabel.isHidden = isExpanded
-                self.progressSection.snp.remakeConstraints { make in
+                self.progressSectionView.snp.remakeConstraints { make in
                     if isExpanded {
                         make.top.equalTo(self.genreTagView.snp.bottom).offset(16)
                     } else {
@@ -868,10 +783,18 @@ final class BookDetailViewController: UIViewController {
             })
             .disposed(by: disposeBag)
 
-        editButton.rx.tap
-            .subscribe(onNext: {
-                // TODO: 독서 진행률 편집
-                print("편집 탭")
+        progressSectionView.editButtonTap
+            .subscribe(onNext: { [weak self] in
+                guard let self, let itemPage = self.currentItemPage else { return }
+                let vc = PageRecordViewController(itemPage: itemPage)
+                vc.modalPresentationStyle = .pageSheet
+                vc.onPageRecorded = { [weak self] page in
+                    guard let self else { return }
+                    self.latestCurrentPage = page
+                    self.progressSectionView.configure(currentPage: page, itemPage: itemPage)
+                    self.updateCurrentPageRelay.accept(page)
+                }
+                self.present(vc, animated: true)
             })
             .disposed(by: disposeBag)
 

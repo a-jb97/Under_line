@@ -12,19 +12,40 @@ import RxCocoa
 
 final class ReadingRecordViewController: UIViewController {
 
-    private let bookTitle: String
+    var onPageRecorded: ((Int) -> Void)?
+
+    private let book: Book
+    private let currentItemPage: Int?
+    private let initialPage: Int?
     private let disposeBag = DisposeBag()
 
-    init(bookTitle: String) {
-        self.bookTitle = bookTitle
+    init(book: Book, currentItemPage: Int?, initialPage: Int?) {
+        self.book = book
+        self.currentItemPage = currentItemPage
+        self.initialPage = initialPage
         super.init(nibName: nil, bundle: nil)
     }
 
     required init?(coder: NSCoder) { fatalError() }
-    private var gradientLayers: [(view: UIView, layer: CAGradientLayer)] = []
-    private var didSetupChart = false
+
+    // MARK: - Chart State
+
+    private struct ChartPoint { let label: String; let seconds: Int }
+    private enum ChartPeriod { case daily, weekly, monthly }
+
+    private var currentPeriod: ChartPeriod = .daily
+    private var gridReady = false           // 그리드 라인 1회만 추가
+    private var yAxisLabels: [UILabel] = []
+    private var chartDynamicViews: [UIView] = []
+
+    // 차트 내부 좌표 상수 (chartCard 기준, bounds 불필요)
+    private let chartTopY: CGFloat    = 24
+    private let chartBottomY: CGFloat = 144  // chartTopY + 40 * 3
+    private let chartLeftPad: CGFloat = 54   // Y축 레이블 우측 여백 확보 (레이블 우단 ≈ 50)
+    private let chartRightPad: CGFloat = 14
 
     // MARK: - Scroll
+
     private let scrollView: UIScrollView = {
         let sv = UIScrollView()
         sv.showsVerticalScrollIndicator = false
@@ -33,6 +54,7 @@ final class ReadingRecordViewController: UIViewController {
     private let contentView = UIView()
 
     // MARK: - Header
+
     private lazy var backButton: UIButton = {
         let btn = UIButton(type: .system)
         let cfg = UIImage.SymbolConfiguration(pointSize: 17, weight: .regular)
@@ -51,9 +73,11 @@ final class ReadingRecordViewController: UIViewController {
     }()
 
     // MARK: - Timer Dial
+
     private let timerDialView = TimerDialView()
 
     // MARK: - Book Title
+
     private let bookTitleLabel: UILabel = {
         let l = UILabel()
         l.font          = UIFont(name: "GowunBatang-Bold", size: 20)
@@ -65,72 +89,11 @@ final class ReadingRecordViewController: UIViewController {
     }()
 
     // MARK: - Progress Section
-    private let progressSection: UIView = {
-        let v = UIView()
-        v.backgroundColor   = UIColor.background
-        v.layer.cornerRadius = 12
-        v.layer.shadowColor   = UIColor(hex: "#5d4037").cgColor
-        v.layer.shadowOpacity = Float(CGFloat(0x25) / 255)
-        v.layer.shadowRadius  = 5
-        v.layer.shadowOffset  = CGSize(width: 3, height: 3)
-        return v
-    }()
 
-    private let progressHeaderLabel: UILabel = {
-        let l = UILabel()
-        let attrStr = NSMutableAttributedString(
-            string: "독서 진행률 : ",
-            attributes: [
-                .font:            UIFont(name: "GoyangIlsan R", size: 13) ?? .systemFont(ofSize: 13),
-                .foregroundColor: UIColor.accent,
-            ]
-        )
-        attrStr.append(NSAttributedString(
-            string: "68%",
-            attributes: [
-                .font:            UIFont(name: "GoyangIlsan R", size: 13) ?? .systemFont(ofSize: 13),
-                .foregroundColor: UIColor.primary,
-            ]
-        ))
-        l.attributedText = attrStr
-        return l
-    }()
-
-    private lazy var editButton: UIButton = {
-        let btn = UIButton(type: .system)
-        let cfg = UIImage.SymbolConfiguration(pointSize: 10, weight: .regular)
-        btn.setImage(UIImage(systemName: "pencil", withConfiguration: cfg), for: .normal)
-        btn.setTitle(" 편집", for: .normal)
-        btn.titleLabel?.font = UIFont(name: "GoyangIlsan R", size: 12) ?? .systemFont(ofSize: 12)
-        btn.tintColor = UIColor.primary.withAlphaComponent(0.7)
-        btn.setTitleColor(UIColor.primary.withAlphaComponent(0.7), for: .normal)
-        return btn
-    }()
-
-    private let progressBarBg: UIView = {
-        let v = UIView()
-        v.backgroundColor   = UIColor(hex: "#5d4037", alpha: CGFloat(0x20) / 255)
-        v.layer.cornerRadius = 6
-        v.clipsToBounds      = true
-        return v
-    }()
-
-    private let progressBarFill: UIView = {
-        let v = UIView()
-        v.layer.cornerRadius = 4
-        v.clipsToBounds      = true
-        return v
-    }()
-
-    private let progressDetailLabel: UILabel = {
-        let l = UILabel()
-        l.text      = "187 / 276 페이지"
-        l.font      = UIFont(name: "GoyangIlsan R", size: 11) ?? .systemFont(ofSize: 11)
-        l.textColor = UIColor.primary.withAlphaComponent(0.45)
-        return l
-    }()
+    private let progressSectionView = ProgressSectionView()
 
     // MARK: - Chart Section
+
     private let chartTitleLabel: UILabel = {
         let l = UILabel()
         l.text      = "독서 시간"
@@ -145,7 +108,7 @@ final class ReadingRecordViewController: UIViewController {
 
     private lazy var tabSelectorView: UIView = {
         let v = UIView()
-        v.backgroundColor   = UIColor(hex: "#E8E0DC")
+        v.backgroundColor    = UIColor(hex: "#E8E0DC")
         v.layer.cornerRadius = 15
         v.layer.shadowColor   = UIColor(hex: "#b5a49e").cgColor
         v.layer.shadowOpacity = 1.0
@@ -156,7 +119,7 @@ final class ReadingRecordViewController: UIViewController {
 
     private let chartCard: UIView = {
         let v = UIView()
-        v.backgroundColor   = .white
+        v.backgroundColor    = .white
         v.layer.cornerRadius = 16
         v.layer.shadowColor   = UIColor.black.cgColor
         v.layer.shadowOpacity = Float(CGFloat(0x16) / 255)
@@ -174,7 +137,8 @@ final class ReadingRecordViewController: UIViewController {
         super.viewDidLoad()
         setupUI()
         setupConstraints()
-        setupProgressGradient()
+        configureProgress()
+        setupYAxisLabels()   // bounds 불필요 — 상수 기반 frame 사용
         bindActions()
     }
 
@@ -184,12 +148,14 @@ final class ReadingRecordViewController: UIViewController {
         navigationController?.interactivePopGestureRecognizer?.isEnabled = true
     }
 
-    override func viewDidLayoutSubviews() {
-        super.viewDidLayoutSubviews()
-        for (view, gradient) in gradientLayers {
-            gradient.frame = view.bounds
+    override func viewDidAppear(_ animated: Bool) {
+        super.viewDidAppear(animated)
+        // bounds가 확정된 시점에 그리드 1회 추가
+        if !gridReady {
+            gridReady = true
+            setupChartGrid()
         }
-        if chartCard.bounds.width > 0 { drawChart() }
+        loadChartData(period: currentPeriod)
     }
 
     override var preferredStatusBarStyle: UIStatusBarStyle { .darkContent }
@@ -198,7 +164,7 @@ final class ReadingRecordViewController: UIViewController {
 
     private func setupUI() {
         view.backgroundColor = UIColor.background
-        bookTitleLabel.text = bookTitle
+        bookTitleLabel.text = book.title
 
         view.addSubview(scrollView)
         scrollView.addSubview(contentView)
@@ -207,13 +173,7 @@ final class ReadingRecordViewController: UIViewController {
         contentView.addSubview(titleLabel)
         contentView.addSubview(timerDialView)
         contentView.addSubview(bookTitleLabel)
-
-        progressBarBg.addSubview(progressBarFill)
-        progressSection.addSubview(progressHeaderLabel)
-        progressSection.addSubview(editButton)
-        progressSection.addSubview(progressBarBg)
-        progressSection.addSubview(progressDetailLabel)
-        contentView.addSubview(progressSection)
+        contentView.addSubview(progressSectionView)
 
         tabSelectorView.addSubview(tabDailyButton)
         tabSelectorView.addSubview(tabWeeklyButton)
@@ -254,35 +214,13 @@ final class ReadingRecordViewController: UIViewController {
             make.leading.trailing.equalToSuperview().inset(24)
         }
 
-        progressSection.snp.makeConstraints { make in
+        progressSectionView.snp.makeConstraints { make in
             make.top.equalTo(bookTitleLabel.snp.bottom).offset(24)
             make.leading.trailing.equalToSuperview().inset(24)
         }
-        progressHeaderLabel.snp.makeConstraints { make in
-            make.leading.equalToSuperview().inset(14)
-            make.top.equalToSuperview().inset(12)
-        }
-        editButton.snp.makeConstraints { make in
-            make.trailing.equalToSuperview().inset(14)
-            make.centerY.equalTo(progressHeaderLabel)
-        }
-        progressBarBg.snp.makeConstraints { make in
-            make.leading.trailing.equalToSuperview().inset(14)
-            make.top.equalTo(progressHeaderLabel.snp.bottom).offset(10)
-            make.height.equalTo(24)
-        }
-        progressBarFill.snp.makeConstraints { make in
-            make.leading.top.bottom.equalToSuperview()
-            make.width.equalToSuperview().multipliedBy(0.68)
-        }
-        progressDetailLabel.snp.makeConstraints { make in
-            make.leading.equalToSuperview().inset(14)
-            make.top.equalTo(progressBarBg.snp.bottom).offset(10)
-            make.bottom.equalToSuperview().inset(12)
-        }
 
         chartTitleLabel.snp.makeConstraints { make in
-            make.top.equalTo(progressSection.snp.bottom).offset(40)
+            make.top.equalTo(progressSectionView.snp.bottom).offset(40)
             make.leading.equalToSuperview().inset(24)
         }
         tabSelectorView.snp.makeConstraints { make in
@@ -308,37 +246,82 @@ final class ReadingRecordViewController: UIViewController {
         chartCard.snp.makeConstraints { make in
             make.top.equalTo(tabSelectorView.snp.bottom).offset(16)
             make.leading.trailing.equalToSuperview().inset(24)
-            make.height.equalTo(220)
+            make.height.equalTo(194)
             make.bottom.equalToSuperview().inset(24)
         }
     }
 
-    // MARK: - Chart Drawing
+    // MARK: - Y축 레이블 (viewDidLoad에서 생성 — bounds 불필요)
 
-    private func drawChart() {
-        guard !didSetupChart else { return }
-        didSetupChart = true
+    private func setupYAxisLabels() {
+        let step = (chartBottomY - chartTopY) / 3
+        let yPositions: [CGFloat] = (0...3).map { chartTopY + CGFloat($0) * step }
+        // [28, 68, 108, 148]
 
-        addChartAxisLabels()
+        for pos in yPositions {
+            let label = UILabel()
+            label.font          = UIFont(name: "GoyangIlsan R", size: 10) ?? .systemFont(ofSize: 10)
+            label.textColor     = UIColor.primary.withAlphaComponent(0.5)
+            label.textAlignment = .right
+            label.frame         = CGRect(x: 2, y: pos - 6, width: 48, height: 12)
+            chartCard.addSubview(label)
+            yAxisLabels.append(label)
+        }
+        updateYAxisLabels(scale: 3600)  // 초기 텍스트: 1시간/40분/20분/0분
+    }
 
-        let cardW       = chartCard.bounds.width
-        let topPad:  CGFloat = 20
-        let leftPad: CGFloat = 30
-        let chartH:  CGFloat = 150
-        let plotW = cardW - leftPad - 8
+    // MARK: - 그리드 라인 (viewDidAppear에서 생성 — bounds 필요)
 
-        let designXs: [CGFloat] = [24, 74, 124, 174, 224, 274, 324]
-        let designRange: CGFloat = 324 - 24
-        let xs = designXs.map { leftPad + ($0 - 24) / designRange * plotW }
+    private func setupChartGrid() {
+        let cardW = chartCard.bounds.width
+        let step = (chartBottomY - chartTopY) / 3
+        let yPositions: [CGFloat] = (0...3).map { chartTopY + CGFloat($0) * step }
 
-        let designYs: [CGFloat] = [76, 56, 96, 36, 116, 16, 56]
-        let ys = designYs.map { topPad + $0 }
+        for pos in yPositions {
+            let grid = CAShapeLayer()
+            let path = UIBezierPath()
+            path.move(to: CGPoint(x: chartLeftPad - 2, y: pos))
+            path.addLine(to: CGPoint(x: cardW - chartRightPad, y: pos))
+            grid.path        = path.cgPath
+            grid.strokeColor = UIColor(hex: "#5d4037", alpha: CGFloat(0x08) / 255).cgColor
+            grid.lineWidth   = 1
+            chartCard.layer.insertSublayer(grid, below: chartLineLayer)
+        }
+    }
+
+    // MARK: - Chart Rendering
+
+    private func renderChart(points: [ChartPoint]) {
+        let maxSeconds = points.map(\.seconds).max() ?? 0
+        let scale = niceMaxScale(maxSeconds)
+        updateYAxisLabels(scale: scale)
+        updateChartPaths(points: points, maxScale: scale)
+        updateChartDots(points: points, maxScale: scale)
+    }
+
+    private func updateYAxisLabels(scale: Int) {
+        let values = [scale, scale * 2 / 3, scale / 3, 0]
+        for (label, seconds) in zip(yAxisLabels, values) {
+            label.text = formatDuration(seconds)
+        }
+    }
+
+    private func updateChartPaths(points: [ChartPoint], maxScale: Int) {
+        guard points.count >= 2, chartCard.bounds.width > 0 else { return }
+        let cardW = chartCard.bounds.width
+        let plotW = cardW - chartLeftPad - chartRightPad
+        let fillY = chartBottomY + 14  // 0분 라인 아래 여유
+
+        let xs: [CGFloat] = points.indices.map { i in
+            chartLeftPad + CGFloat(i) / CGFloat(points.count - 1) * plotW
+        }
+        let ys = points.map { yPos(seconds: $0.seconds, maxScale: maxScale) }
 
         let linePath = UIBezierPath()
         linePath.move(to: CGPoint(x: xs[0], y: ys[0]))
         for i in 1..<xs.count {
             let prev = CGPoint(x: xs[i-1], y: ys[i-1])
-            let curr = CGPoint(x: xs[i], y: ys[i])
+            let curr = CGPoint(x: xs[i],   y: ys[i])
             let cp1  = CGPoint(x: prev.x + (curr.x - prev.x) * 0.5, y: prev.y)
             let cp2  = CGPoint(x: curr.x - (curr.x - prev.x) * 0.5, y: curr.y)
             linePath.addCurve(to: curr, controlPoint1: cp1, controlPoint2: cp2)
@@ -352,69 +335,141 @@ final class ReadingRecordViewController: UIViewController {
         chartLineLayer.lineJoin    = .round
 
         let areaPath = linePath.copy() as! UIBezierPath
-        let bottomY  = topPad + chartH
-        areaPath.addLine(to: CGPoint(x: xs.last!, y: bottomY))
-        areaPath.addLine(to: CGPoint(x: xs.first!, y: bottomY))
+        areaPath.addLine(to: CGPoint(x: xs.last!,  y: fillY))
+        areaPath.addLine(to: CGPoint(x: xs.first!, y: fillY))
         areaPath.close()
         chartAreaLayer.path      = areaPath.cgPath
-        chartAreaLayer.fillColor = UIColor(hex: "#5d4037", alpha: CGFloat(0x20) / 255).cgColor
+        chartAreaLayer.fillColor = UIColor(hex: "#5d4037", alpha: CGFloat(0x18) / 255).cgColor
+    }
 
-        let xLabels = ["월", "화", "수", "목", "금", "토", "일"]
-        for i in 0..<xs.count {
+    private func updateChartDots(points: [ChartPoint], maxScale: Int) {
+        chartDynamicViews.forEach { $0.removeFromSuperview() }
+        chartDynamicViews.removeAll()
+        guard points.count >= 2, chartCard.bounds.width > 0 else { return }
+
+        let cardW = chartCard.bounds.width
+        let plotW = cardW - chartLeftPad - chartRightPad
+
+        for (i, point) in points.enumerated() {
+            let x = chartLeftPad + CGFloat(i) / CGFloat(points.count - 1) * plotW
+            let y = yPos(seconds: point.seconds, maxScale: maxScale)
+
             let dot = UIView()
-            dot.backgroundColor  = UIColor.primary
+            dot.backgroundColor    = UIColor.primary
             dot.layer.cornerRadius = 4
             dot.layer.borderWidth  = 2
             dot.layer.borderColor  = UIColor.white.cgColor
-            dot.frame = CGRect(x: xs[i] - 4, y: ys[i] - 4, width: 8, height: 8)
+            dot.frame = CGRect(x: x - 4, y: y - 4, width: 8, height: 8)
             chartCard.addSubview(dot)
+            chartDynamicViews.append(dot)
 
             let xLabel = UILabel()
-            xLabel.text          = xLabels[i]
+            xLabel.text          = point.label
             xLabel.font          = UIFont(name: "GoyangIlsan R", size: 10) ?? .systemFont(ofSize: 10)
-            xLabel.textColor     = UIColor.primary.withAlphaComponent(0.4)
+            xLabel.textColor     = UIColor.primary.withAlphaComponent(0.5)
             xLabel.textAlignment = .center
             xLabel.sizeToFit()
-            xLabel.center = CGPoint(x: xs[i], y: bottomY + 12)
+            xLabel.center = CGPoint(x: x, y: chartBottomY + 20)
             chartCard.addSubview(xLabel)
+            chartDynamicViews.append(xLabel)
         }
     }
 
-    private func addChartAxisLabels() {
-        let yLabels:   [String]  = ["3h", "2h", "1h", "0h"]
-        let yPositions: [CGFloat] = [20, 60, 100, 140]
-        let cardW = chartCard.bounds.width
+    // MARK: - Chart Helpers
 
-        for (i, text) in yLabels.enumerated() {
-            let label = UILabel()
-            label.text          = text
-            label.font          = UIFont(name: "GoyangIlsan R", size: 10) ?? .systemFont(ofSize: 10)
-            label.textColor     = UIColor.primary.withAlphaComponent(0.4)
-            label.textAlignment = .right
-            label.frame         = CGRect(x: 0, y: yPositions[i] - 6, width: 26, height: 12)
-            chartCard.addSubview(label)
+    private func yPos(seconds: Int, maxScale: Int) -> CGFloat {
+        guard maxScale > 0 else { return chartBottomY }
+        let fraction = CGFloat(seconds) / CGFloat(maxScale)
+        return chartBottomY - fraction * (chartBottomY - chartTopY)
+    }
 
-            let grid = CAShapeLayer()
-            let gridPath = UIBezierPath()
-            gridPath.move(to: CGPoint(x: 30, y: yPositions[i]))
-            gridPath.addLine(to: CGPoint(x: cardW - 8, y: yPositions[i]))
-            grid.path        = gridPath.cgPath
-            grid.strokeColor = UIColor(hex: "#5d4037", alpha: CGFloat(0x08) / 255).cgColor
-            grid.lineWidth   = 1
-            chartCard.layer.addSublayer(grid)
+    private func niceMaxScale(_ maxSeconds: Int) -> Int {
+        if maxSeconds <= 0 { return 3600 }
+        let halfHours = (maxSeconds + 1799) / 1800
+        return halfHours * 1800
+    }
+
+    private func formatDuration(_ seconds: Int) -> String {
+        if seconds == 0 { return "0분" }
+        let h = seconds / 3600
+        let m = (seconds % 3600) / 60
+        if m == 0 { return "\(h)시간" }
+        if h == 0 { return "\(m)분" }
+        return "\(h)시간\(m)분"
+    }
+
+    // MARK: - Chart Data Loading
+
+    private func loadChartData(period: ChartPeriod) {
+        AppContainer.shared.readingSessionRepository
+            .fetchSessions(for: book.isbn13)
+            .observe(on: MainScheduler.instance)
+            .subscribe(
+                onSuccess: { [weak self] sessions in
+                    guard let self else { return }
+                    let points = self.aggregateData(sessions: sessions, period: period)
+                    self.renderChart(points: points)
+                },
+                onFailure: { _ in }
+            )
+            .disposed(by: disposeBag)
+    }
+
+    private func aggregateData(sessions: [ReadingSession], period: ChartPeriod) -> [ChartPoint] {
+        let calendar = Calendar.current
+        let now = Date()
+
+        switch period {
+        case .daily:
+            return (0..<7).reversed().map { daysAgo -> ChartPoint in
+                let date     = calendar.date(byAdding: .day, value: -daysAgo, to: now)!
+                let dayStart = calendar.startOfDay(for: date)
+                let dayEnd   = calendar.date(byAdding: .day, value: 1, to: dayStart)!
+                let total    = sessions
+                    .filter { $0.date >= dayStart && $0.date < dayEnd }
+                    .reduce(0) { $0 + $1.durationSeconds }
+                let weekday = calendar.component(.weekday, from: date)
+                let label   = ["일","월","화","수","목","금","토"][weekday - 1]
+                return ChartPoint(label: label, seconds: total)
+            }
+
+        case .weekly:
+            return (0..<7).reversed().map { weeksAgo -> ChartPoint in
+                let ref       = calendar.date(byAdding: .weekOfYear, value: -weeksAgo, to: now)!
+                let interval  = calendar.dateInterval(of: .weekOfYear, for: ref)!
+                let weekStart = interval.start
+                let weekEnd   = calendar.date(byAdding: .weekOfYear, value: 1, to: weekStart)!
+                let total     = sessions
+                    .filter { $0.date >= weekStart && $0.date < weekEnd }
+                    .reduce(0) { $0 + $1.durationSeconds }
+                let month = calendar.component(.month, from: weekStart)
+                let day   = calendar.component(.day, from: weekStart)
+                return ChartPoint(label: "\(month)/\(day)", seconds: total)
+            }
+
+        case .monthly:
+            return (0..<7).reversed().map { monthsAgo -> ChartPoint in
+                let ref        = calendar.date(byAdding: .month, value: -monthsAgo, to: now)!
+                let comps      = calendar.dateComponents([.year, .month], from: ref)
+                let monthStart = calendar.date(from: comps)!
+                let monthEnd   = calendar.date(byAdding: .month, value: 1, to: monthStart)!
+                let total      = sessions
+                    .filter { $0.date >= monthStart && $0.date < monthEnd }
+                    .reduce(0) { $0 + $1.durationSeconds }
+                return ChartPoint(label: "\(comps.month!)월", seconds: total)
+            }
         }
     }
 
-    // MARK: - Progress Gradient
+    // MARK: - Progress
 
-    private func setupProgressGradient() {
-        let grad = CAGradientLayer()
-        grad.colors      = [UIColor.primary.cgColor, UIColor(hex: "#8D6E63").cgColor]
-        grad.startPoint  = CGPoint(x: 0, y: 0.5)
-        grad.endPoint    = CGPoint(x: 1, y: 0.5)
-        grad.cornerRadius = 4
-        progressBarFill.layer.addSublayer(grad)
-        gradientLayers.append((progressBarFill, grad))
+    private func configureProgress() {
+        guard let itemPage = currentItemPage else { return }
+        if let page = initialPage, page > 0 {
+            progressSectionView.configure(currentPage: page, itemPage: itemPage)
+        } else {
+            progressSectionView.showNoProgress(itemPage: itemPage)
+        }
     }
 
     // MARK: - Bindings
@@ -425,6 +480,39 @@ final class ReadingRecordViewController: UIViewController {
                 self?.navigationController?.popViewController(animated: true)
             })
             .disposed(by: disposeBag)
+
+        progressSectionView.editButtonTap
+            .subscribe(onNext: { [weak self] in
+                guard let self, let itemPage = self.currentItemPage else { return }
+                let vc = PageRecordViewController(itemPage: itemPage)
+                vc.modalPresentationStyle = .pageSheet
+                vc.onPageRecorded = { [weak self] page in
+                    guard let self else { return }
+                    self.progressSectionView.configure(currentPage: page, itemPage: itemPage)
+                    self.onPageRecorded?(page)
+                    AppContainer.shared.bookRepository
+                        .updateCurrentPage(isbn13: self.book.isbn13, page: page)
+                        .subscribe()
+                        .disposed(by: self.disposeBag)
+                }
+                self.present(vc, animated: true)
+            })
+            .disposed(by: disposeBag)
+
+        timerDialView.onTimerStopped = { [weak self] elapsed in
+            guard let self else { return }
+            AppContainer.shared.readingSessionRepository
+                .saveSession(bookISBN: self.book.isbn13, durationSeconds: elapsed)
+                .observe(on: MainScheduler.instance)
+                .subscribe(
+                    onCompleted: { [weak self] in
+                        guard let self else { return }
+                        self.loadChartData(period: self.currentPeriod)
+                    },
+                    onError: { _ in }
+                )
+                .disposed(by: self.disposeBag)
+        }
 
         tabDailyButton.rx.tap
             .subscribe(onNext: { [weak self] in self?.selectTab(0) })
@@ -450,6 +538,9 @@ final class ReadingRecordViewController: UIViewController {
                 btn.setTitleColor(UIColor.primary, for: .normal)
             }
         }
+        let periods: [ChartPeriod] = [.daily, .weekly, .monthly]
+        currentPeriod = periods[index]
+        loadChartData(period: currentPeriod)
     }
 
     // MARK: - Helpers

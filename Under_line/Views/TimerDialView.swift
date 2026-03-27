@@ -14,10 +14,13 @@ final class TimerDialView: UIView {
 
     // MARK: - Callbacks
     var onTimerStateChanged: ((Bool) -> Void)?   // isRunning 변화 시 호출
+    var onTimerStopped: ((Int) -> Void)?         // 정지/완료 시 경과 초(elapsed seconds) 전달
 
     // MARK: - Timer State
     private(set) var setMinutes: Int = 0
     private(set) var remainingSeconds: Int = 0
+    private var accumulatedSeconds = 0
+    private var sessionStartRemainingSeconds = 0
     private let dialHaptic = UIImpactFeedbackGenerator(style: .light)
     private(set) var isRunning = false
     private var countdownTimer: Timer?
@@ -537,6 +540,7 @@ final class TimerDialView: UIView {
 
     private func startTimer() {
         guard setMinutes > 0 else { return }
+        sessionStartRemainingSeconds = remainingSeconds
         isRunning    = true
         timerEndDate = Date().addingTimeInterval(TimeInterval(remainingSeconds))
         let cfg = UIImage.SymbolConfiguration(pointSize: 18, weight: .medium)
@@ -554,6 +558,9 @@ final class TimerDialView: UIView {
     }
 
     private func pauseTimer() {
+        if isRunning {
+            accumulatedSeconds += sessionStartRemainingSeconds - remainingSeconds
+        }
         isRunning    = false
         timerEndDate = nil
         let cfg = UIImage.SymbolConfiguration(pointSize: 18, weight: .medium)
@@ -564,12 +571,17 @@ final class TimerDialView: UIView {
     }
 
     private func stopTimer() {
+        let elapsed = accumulatedSeconds + (isRunning ? sessionStartRemainingSeconds - remainingSeconds : 0)
         pauseTimer()
-        // TODO: 독서 시간 기록 저장
+        accumulatedSeconds = 0
+        sessionStartRemainingSeconds = 0
+        if elapsed > 0 { onTimerStopped?(elapsed) }
     }
 
     private func resetTimer() {
         pauseTimer()
+        accumulatedSeconds = 0
+        sessionStartRemainingSeconds = 0
         setMinutes       = 0
         remainingSeconds = 0
         updateTimerDisplay()

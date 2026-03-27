@@ -14,6 +14,7 @@ import RxSwift
 protocol AladinAPIServiceProtocol {
     func fetchBestsellers() -> Single<[Book]>
     func searchBooks(query: String, page: Int) -> Single<(books: [Book], totalResults: Int)>
+    func fetchBookDetail(isbn13: String) -> Single<Book>
 }
 
 // MARK: - Implementation
@@ -56,6 +57,23 @@ final class AladinAPIService: AladinAPIServiceProtocol {
         ]
         return request(endpoint: "ItemSearch.aspx", parameters: params)
             .map { (books: $0.item.map { $0.toDomain() }, totalResults: $0.totalResults) }
+    }
+
+    func fetchBookDetail(isbn13: String) -> Single<Book> {
+        let params: Parameters = [
+            "ttbkey":     apiKey,
+            "itemIdType": "ISBN13",
+            "ItemId":     isbn13,
+            "Cover":      "Big",
+            "output":     "js",
+            "Version":    "20131101",
+            "OptResult":  "subInfo"
+        ]
+        return request(endpoint: "ItemLookUp.aspx", parameters: params)
+            .map { response in
+                guard let item = response.item.first else { throw AladinAPIError.unknown }
+                return item.toDomain()
+            }
     }
 
     // MARK: - Private
