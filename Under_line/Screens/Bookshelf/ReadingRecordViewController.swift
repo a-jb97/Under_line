@@ -19,6 +19,16 @@ final class ReadingRecordViewController: UIViewController {
     private let initialPage: Int?
     private let disposeBag = DisposeBag()
 
+    private lazy var viewModel = ReadingRecordViewModel(
+        book: book,
+        readingSessionRepository: AppContainer.shared.readingSessionRepository,
+        bookRepository: AppContainer.shared.bookRepository
+    )
+    private let viewDidAppearRelay = PublishRelay<Void>()
+    private let tabSelectedRelay   = BehaviorRelay<Int>(value: 0)
+    private let timerStoppedRelay  = PublishRelay<Int>()
+    private let pageRecordedRelay  = PublishRelay<Int>()
+
     init(book: Book, currentItemPage: Int?, initialPage: Int?) {
         self.book = book
         self.currentItemPage = currentItemPage
@@ -30,10 +40,6 @@ final class ReadingRecordViewController: UIViewController {
 
     // MARK: - Chart State
 
-    private struct ChartPoint { let label: String; let seconds: Int }
-    private enum ChartPeriod { case daily, weekly, monthly }
-
-    private var currentPeriod: ChartPeriod = .daily
     private var gridReady = false           // 그리드 라인 1회만 추가
     private var yAxisLabels: [UILabel] = []
     private var chartDynamicViews: [UIView] = []
@@ -139,6 +145,7 @@ final class ReadingRecordViewController: UIViewController {
         setupConstraints()
         configureProgress()
         setupYAxisLabels()   // bounds 불필요 — 상수 기반 frame 사용
+        bindViewModel()
         bindActions()
     }
 
@@ -155,7 +162,7 @@ final class ReadingRecordViewController: UIViewController {
             gridReady = true
             setupChartGrid()
         }
-        loadChartData(period: currentPeriod)
+        viewDidAppearRelay.accept(())
     }
 
     override var preferredStatusBarStyle: UIStatusBarStyle { .darkContent }
@@ -398,69 +405,6 @@ final class ReadingRecordViewController: UIViewController {
         return "\(h)시간\(m)분"
     }
 
-    // MARK: - Chart Data Loading
-
-    private func loadChartData(period: ChartPeriod) {
-        AppContainer.shared.readingSessionRepository
-            .fetchSessions(for: book.isbn13)
-            .observe(on: MainScheduler.instance)
-            .subscribe(
-                onSuccess: { [weak self] sessions in
-                    guard let self else { return }
-                    let points = self.aggregateData(sessions: sessions, period: period)
-                    self.renderChart(points: points)
-                },
-                onFailure: { _ in }
-            )
-            .disposed(by: disposeBag)
-    }
-
-    private func aggregateData(sessions: [ReadingSession], period: ChartPeriod) -> [ChartPoint] {
-        let calendar = Calendar.current
-        let now = Date()
-
-        switch period {
-        case .daily:
-            return (0..<7).reversed().map { daysAgo -> ChartPoint in
-                let date     = calendar.date(byAdding: .day, value: -daysAgo, to: now)!
-                let dayStart = calendar.startOfDay(for: date)
-                let dayEnd   = calendar.date(byAdding: .day, value: 1, to: dayStart)!
-                let total    = sessions
-                    .filter { $0.date >= dayStart && $0.date < dayEnd }
-                    .reduce(0) { $0 + $1.durationSeconds }
-                let weekday = calendar.component(.weekday, from: date)
-                let label   = ["일","월","화","수","목","금","토"][weekday - 1]
-                return ChartPoint(label: label, seconds: total)
-            }
-
-        case .weekly:
-            return (0..<7).reversed().map { weeksAgo -> ChartPoint in
-                let ref       = calendar.date(byAdding: .weekOfYear, value: -weeksAgo, to: now)!
-                let interval  = calendar.dateInterval(of: .weekOfYear, for: ref)!
-                let weekStart = interval.start
-                let weekEnd   = calendar.date(byAdding: .weekOfYear, value: 1, to: weekStart)!
-                let total     = sessions
-                    .filter { $0.date >= weekStart && $0.date < weekEnd }
-                    .reduce(0) { $0 + $1.durationSeconds }
-                let month = calendar.component(.month, from: weekStart)
-                let day   = calendar.component(.day, from: weekStart)
-                return ChartPoint(label: "\(month)/\(day)", seconds: total)
-            }
-
-        case .monthly:
-            return (0..<7).reversed().map { monthsAgo -> ChartPoint in
-                let ref        = calendar.date(byAdding: .month, value: -monthsAgo, to: now)!
-                let comps      = calendar.dateComponents([.year, .month], from: ref)
-                let monthStart = calendar.date(from: comps)!
-                let monthEnd   = calendar.date(byAdding: .month, value: 1, to: monthStart)!
-                let total      = sessions
-                    .filter { $0.date >= monthStart && $0.date < monthEnd }
-                    .reduce(0) { $0 + $1.durationSeconds }
-                return ChartPoint(label: "\(comps.month!)월", seconds: total)
-            }
-        }
-    }
-
     // MARK: - Progress
 
     private func configureProgress() {
@@ -470,6 +414,23 @@ final class ReadingRecordViewController: UIViewController {
         } else {
             progressSectionView.showNoProgress(itemPage: itemPage)
         }
+    }
+
+    // MARK: - ViewModel Binding
+
+    private func bindViewModel() {
+        let output = viewModel.transform(input: ReadingRecordViewModel.Input(
+            viewDidAppear: viewDidAppearRelay.asObservable(),
+            tabSelected:   tabSelectedRelay.asObservable(),
+            timerStopped:  timerStoppedRelay.asObservable(),
+            pageRecorded:  pageRecordedRelay.asObservable()
+        ))
+
+        output.chartPoints
+            .drive(onNext: { [weak self] points in
+                self?.renderChart(points: points)
+            })
+            .disposed(by: disposeBag)
     }
 
     // MARK: - Bindings
@@ -490,28 +451,14 @@ final class ReadingRecordViewController: UIViewController {
                     guard let self else { return }
                     self.progressSectionView.configure(currentPage: page, itemPage: itemPage)
                     self.onPageRecorded?(page)
-                    AppContainer.shared.bookRepository
-                        .updateCurrentPage(isbn13: self.book.isbn13, page: page)
-                        .subscribe()
-                        .disposed(by: self.disposeBag)
+                    self.pageRecordedRelay.accept(page)
                 }
                 self.present(vc, animated: true)
             })
             .disposed(by: disposeBag)
 
         timerDialView.onTimerStopped = { [weak self] elapsed in
-            guard let self else { return }
-            AppContainer.shared.readingSessionRepository
-                .saveSession(bookISBN: self.book.isbn13, durationSeconds: elapsed)
-                .observe(on: MainScheduler.instance)
-                .subscribe(
-                    onCompleted: { [weak self] in
-                        guard let self else { return }
-                        self.loadChartData(period: self.currentPeriod)
-                    },
-                    onError: { _ in }
-                )
-                .disposed(by: self.disposeBag)
+            self?.timerStoppedRelay.accept(elapsed)
         }
 
         tabDailyButton.rx.tap
@@ -538,9 +485,7 @@ final class ReadingRecordViewController: UIViewController {
                 btn.setTitleColor(UIColor.primary, for: .normal)
             }
         }
-        let periods: [ChartPeriod] = [.daily, .weekly, .monthly]
-        currentPeriod = periods[index]
-        loadChartData(period: currentPeriod)
+        tabSelectedRelay.accept(index)
     }
 
     // MARK: - Helpers

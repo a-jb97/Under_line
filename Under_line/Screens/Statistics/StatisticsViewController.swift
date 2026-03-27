@@ -14,7 +14,11 @@ import RxCocoa
 
 final class StatisticsViewController: UIViewController {
 
-    private let disposeBag = DisposeBag()
+    private let disposeBag          = DisposeBag()
+    private let viewWillAppearRelay = PublishRelay<Void>()
+    private lazy var viewModel      = StatisticsViewModel(
+        readingSessionRepository: AppContainer.shared.readingSessionRepository
+    )
 
     // MARK: UI
 
@@ -57,6 +61,12 @@ final class StatisticsViewController: UIViewController {
         view.backgroundColor = .background
         setupUI()
         setupConstraints()
+        bindViewModel()
+    }
+
+    override func viewWillAppear(_ animated: Bool) {
+        super.viewWillAppear(animated)
+        viewWillAppearRelay.accept(())
     }
 
     // MARK: - Setup
@@ -94,6 +104,20 @@ final class StatisticsViewController: UIViewController {
             make.width.equalTo(scrollView).offset(-48)
         }
     }
+
+    // MARK: - ViewModel Binding
+
+    private func bindViewModel() {
+        let output = viewModel.transform(input: StatisticsViewModel.Input(
+            viewWillAppear: viewWillAppearRelay.asObservable()
+        ))
+
+        output.allSessions
+            .drive(onNext: { [weak self] sessions in
+                self?.heatmapCard.configure(with: sessions)
+            })
+            .disposed(by: disposeBag)
+    }
 }
 
 // MARK: - HeatmapCardView
@@ -102,8 +126,8 @@ final class HeatmapCardView: UIView {
 
     private var currentYear = Calendar.current.component(.year, from: Date())
     private var currentMonth = Calendar.current.component(.month, from: Date())
-    private let disposeBag = DisposeBag()
     private var allSessions: [ReadingSession] = []
+    private let disposeBag = DisposeBag()
 
     private let titleLabel: UILabel = {
         let l = UILabel()
@@ -162,13 +186,35 @@ final class HeatmapCardView: UIView {
         layer.shadowOffset = CGSize(width: 0, height: 8)
 
         updatePeriodLabel()
-        prevButton.addTarget(self, action: #selector(prevMonth), for: .touchUpInside)
-        nextButton.addTarget(self, action: #selector(nextMonth), for: .touchUpInside)
+
+        prevButton.rx.tap
+            .subscribe(onNext: { [weak self] in
+                guard let self else { return }
+                self.currentMonth -= 1
+                if self.currentMonth == 0 { self.currentMonth = 12; self.currentYear -= 1 }
+                self.updatePeriodLabel()
+                self.reloadHeatmap()
+            })
+            .disposed(by: disposeBag)
+
+        nextButton.rx.tap
+            .subscribe(onNext: { [weak self] in
+                guard let self else { return }
+                self.currentMonth += 1
+                if self.currentMonth == 13 { self.currentMonth = 1; self.currentYear += 1 }
+                self.updatePeriodLabel()
+                self.reloadHeatmap()
+            })
+            .disposed(by: disposeBag)
+
+        let periodTap = UITapGestureRecognizer()
         periodLabel.isUserInteractionEnabled = true
-        periodLabel.addGestureRecognizer(UITapGestureRecognizer(target: self, action: #selector(periodTapped)))
+        periodLabel.addGestureRecognizer(periodTap)
+        periodTap.rx.event
+            .subscribe(onNext: { [weak self] _ in self?.showPeriodPicker() })
+            .disposed(by: disposeBag)
 
         reloadHeatmap()
-        loadSessions()
 
         // 타이틀 행: 좌측 "독서량", 우측 "< 2026년 X월 >"
         let titleRow = UIView()
@@ -199,25 +245,11 @@ final class HeatmapCardView: UIView {
         }
     }
 
-    @objc private func prevMonth() {
-        currentMonth -= 1
-        if currentMonth == 0 { currentMonth = 12; currentYear -= 1 }
-        updatePeriodLabel()
-        reloadHeatmap()
-    }
-
-    @objc private func nextMonth() {
-        currentMonth += 1
-        if currentMonth == 13 { currentMonth = 1; currentYear += 1 }
-        updatePeriodLabel()
-        reloadHeatmap()
-    }
-
     private func updatePeriodLabel() {
         periodLabel.text = "\(currentYear)년 \(currentMonth)월"
     }
 
-    @objc private func periodTapped() {
+    private func showPeriodPicker() {
         guard let vc = findViewController() else { return }
         let picker = MonthYearPickerViewController(year: currentYear, month: currentMonth)
         picker.onConfirm = { [weak self] year, month in
@@ -244,13 +276,9 @@ final class HeatmapCardView: UIView {
         return nil
     }
 
-    private func loadSessions() {
-        AppContainer.shared.readingSessionRepository.fetchAllSessions()
-            .subscribe(onSuccess: { [weak self] sessions in
-                self?.allSessions = sessions
-                self?.reloadHeatmap()
-            }, onFailure: { _ in })
-            .disposed(by: disposeBag)
+    func configure(with sessions: [ReadingSession]) {
+        allSessions = sessions
+        reloadHeatmap()
     }
 
     private func reloadHeatmap() {
@@ -970,6 +998,15 @@ private final class MonthYearPickerViewController: UIViewController,
     private let nowMonth: Int
 
     private let picker = UIPickerView()
+    private let confirmButton: UIButton = {
+        let btn = UIButton(type: .system)
+        btn.setTitle("확인", for: .normal)
+        btn.titleLabel?.font = UIFont(name: "GoyangIlsan R", size: 15)
+            ?? .systemFont(ofSize: 15, weight: .semibold)
+        btn.tintColor = .accent
+        return btn
+    }()
+    private let disposeBag = DisposeBag()
 
     init(year: Int, month: Int) {
         let cal = Calendar.current
@@ -993,12 +1030,13 @@ private final class MonthYearPickerViewController: UIViewController,
             ?? .systemFont(ofSize: 17, weight: .semibold)
         titleLabel.textColor = .accent
 
-        let confirmBtn = UIButton(type: .system)
-        confirmBtn.setTitle("확인", for: .normal)
-        confirmBtn.titleLabel?.font = UIFont(name: "GoyangIlsan R", size: 15)
-            ?? .systemFont(ofSize: 15, weight: .semibold)
-        confirmBtn.tintColor = .accent
-        confirmBtn.addTarget(self, action: #selector(confirm), for: .touchUpInside)
+        confirmButton.rx.tap
+            .subscribe(onNext: { [weak self] in
+                guard let self else { return }
+                self.onConfirm?(self.selectedYear, self.selectedMonth)
+                self.dismiss(animated: true)
+            })
+            .disposed(by: disposeBag)
 
         picker.dataSource = self
         picker.delegate = self
@@ -1009,14 +1047,14 @@ private final class MonthYearPickerViewController: UIViewController,
         picker.selectRow(selectedMonth - 1, inComponent: 1, animated: false)
 
         view.addSubview(titleLabel)
-        view.addSubview(confirmBtn)
+        view.addSubview(confirmButton)
         view.addSubview(picker)
 
         titleLabel.snp.makeConstraints { make in
             make.top.equalToSuperview()
             make.centerX.equalToSuperview()
         }
-        confirmBtn.snp.makeConstraints { make in
+        confirmButton.snp.makeConstraints { make in
             make.centerY.equalTo(titleLabel)
             make.trailing.equalToSuperview().inset(24)
         }
@@ -1025,11 +1063,6 @@ private final class MonthYearPickerViewController: UIViewController,
             make.leading.trailing.equalToSuperview()
             make.bottom.equalTo(view.safeAreaLayoutGuide).inset(8)
         }
-    }
-
-    @objc private func confirm() {
-        onConfirm?(selectedYear, selectedMonth)
-        dismiss(animated: true)
     }
 
     // MARK: UIPickerViewDataSource

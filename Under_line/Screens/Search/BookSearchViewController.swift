@@ -392,6 +392,7 @@ private final class BookRowCell: UITableViewCell {
 
     var onRegister: ((Book) -> Void)?
     private var currentBook: Book?
+    private let disposeBag = DisposeBag()
 
     /// nil = 아직 미설정 (첫 configure 시 반드시 레이아웃 업데이트)
     private var rankVisible: Bool?
@@ -401,6 +402,12 @@ private final class BookRowCell: UITableViewCell {
     override init(style: UITableViewCell.CellStyle, reuseIdentifier: String?) {
         super.init(style: style, reuseIdentifier: reuseIdentifier)
         setupCell()
+        registerButton.rx.tap
+            .subscribe(onNext: { [weak self] in
+                guard let self, let book = self.currentBook else { return }
+                self.onRegister?(book)
+            })
+            .disposed(by: disposeBag)
     }
 
     required init?(coder: NSCoder) { fatalError() }
@@ -455,12 +462,6 @@ private final class BookRowCell: UITableViewCell {
             make.centerY.equalToSuperview()
         }
 
-        registerButton.addTarget(self, action: #selector(registerTapped), for: .touchUpInside)
-    }
-
-    @objc private func registerTapped() {
-        guard let book = currentBook else { return }
-        onRegister?(book)
     }
 
     // MARK: - Configure

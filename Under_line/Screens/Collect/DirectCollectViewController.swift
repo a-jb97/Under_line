@@ -262,10 +262,6 @@ final class DirectCollectViewController: UIViewController {
         }
     }
 
-    @objc private func pageFieldDidBeginEditing() {
-        activeTextView = nil
-    }
-
     private func scrollToActive(_ active: UIView, animated: Bool) {
         let activeRect = active.convert(active.bounds, to: scrollView)
         let buttonRect = registerButton.convert(registerButton.bounds, to: scrollView)
@@ -312,8 +308,6 @@ final class DirectCollectViewController: UIViewController {
         // Emotion
         for emotion in Emotion.allCases {
             let chip = NeumorphicChipButton(emotion: emotion)
-            chip.tag = emotion.rawValue
-            chip.addTarget(self, action: #selector(chipTapped(_:)), for: .touchUpInside)
             emotionChipsRow.addArrangedSubview(chip)
             emotionChips.append(chip)
         }
@@ -413,19 +407,24 @@ final class DirectCollectViewController: UIViewController {
             })
             .disposed(by: disposeBag)
 
-        pageTextField.addTarget(self, action: #selector(pageFieldDidBeginEditing), for: .editingDidBegin)
-    }
+        pageTextField.rx.controlEvent(.editingDidBegin)
+            .subscribe(onNext: { [weak self] in self?.activeTextView = nil })
+            .disposed(by: disposeBag)
 
-    // MARK: - Chip Selection
-
-    @objc private func chipTapped(_ sender: UIControl) {
-        guard let emotion = Emotion(rawValue: sender.tag) else { return }
-        let tappingSelected = selectedEmotion == emotion
-        selectedEmotion = tappingSelected ? nil : emotion
-        selectedEmotionRelay.accept(selectedEmotion)
-        emotionChips.forEach { chip in
-            chip.isSelected = !tappingSelected && chip.tag == emotion.rawValue
+        let chipTaps = zip(Emotion.allCases, emotionChips).map { (emotion, chip) in
+            chip.rx.controlEvent(.touchUpInside).map { emotion }
         }
+        Observable.merge(chipTaps)
+            .subscribe(onNext: { [weak self] emotion in
+                guard let self else { return }
+                let tappingSelected = self.selectedEmotion == emotion
+                self.selectedEmotion = tappingSelected ? nil : emotion
+                self.selectedEmotionRelay.accept(self.selectedEmotion)
+                self.emotionChips.forEach { chip in
+                    chip.isSelected = !tappingSelected && chip.emotion == emotion
+                }
+            })
+            .disposed(by: disposeBag)
     }
 
     // MARK: - Helpers
@@ -471,6 +470,8 @@ private final class NeumorphicChipButton: UIControl {
     private var darkLayer  = CALayer()
     private var lightLayer = CALayer()
 
+    let emotion: Emotion
+
     // MARK: Selection — update shadow direction on change
 
     override var isSelected: Bool {
@@ -478,6 +479,7 @@ private final class NeumorphicChipButton: UIControl {
     }
 
     init(emotion: Emotion) {
+        self.emotion = emotion
         super.init(frame: .zero)
         backgroundColor = UIColor.background
         layer.cornerRadius = 16

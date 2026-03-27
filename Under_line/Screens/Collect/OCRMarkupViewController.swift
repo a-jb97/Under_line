@@ -9,6 +9,8 @@
 import UIKit
 import Vision
 import SnapKit
+import RxSwift
+import RxCocoa
 
 final class OCRMarkupViewController: UIViewController {
 
@@ -19,6 +21,7 @@ final class OCRMarkupViewController: UIViewController {
 
     // MARK: - Properties
 
+    private let disposeBag = DisposeBag()
     private let capturedImage: UIImage
     private var observations: [VNRecognizedTextObservation] = []
     // observation + 해당 스트로크의 x범위 매핑 (여러 스트로크 누적)
@@ -153,6 +156,7 @@ final class OCRMarkupViewController: UIViewController {
         view.backgroundColor = UIColor(hex: "#1a1a1a")
         setupUI()
         setupConstraints()
+        bindActions()
         runOCR()
     }
 
@@ -175,10 +179,6 @@ final class OCRMarkupViewController: UIViewController {
         view.addSubview(bottomBar)
         bottomBar.addSubview(clearButton)
         bottomBar.addSubview(confirmButton)
-
-        cancelButton.addTarget(self, action: #selector(cancelTapped), for: .touchUpInside)
-        confirmButton.addTarget(self, action: #selector(confirmTapped), for: .touchUpInside)
-        clearButton.addTarget(self, action: #selector(clearTapped), for: .touchUpInside)
 
         drawingOverlay.onStrokeUpdated = { [weak self] in self?.updateSelection() }
         drawingOverlay.onStrokeEnded   = { [weak self] in self?.updateSelection() }
@@ -243,37 +243,40 @@ final class OCRMarkupViewController: UIViewController {
         }
     }
 
-    // MARK: - Actions
+    // MARK: - Bindings
 
-    @objc private func cancelTapped() {
-        dismiss(animated: true)
-    }
+    private func bindActions() {
+        cancelButton.rx.tap
+            .subscribe(onNext: { [weak self] in self?.dismiss(animated: true) })
+            .disposed(by: disposeBag)
 
-    @objc private func clearTapped() {
-        drawingOverlay.clearAll()
-        selectionMap.removeAll()
-        updateConfirmButton()
-    }
+        clearButton.rx.tap
+            .subscribe(onNext: { [weak self] in
+                guard let self else { return }
+                self.drawingOverlay.clearAll()
+                self.selectionMap.removeAll()
+                self.updateConfirmButton()
+            })
+            .disposed(by: disposeBag)
 
-    @objc private func confirmTapped() {
-        let imageRect = displayRect(for: capturedImage, in: imageContainerView.bounds)
-
-        // reading order: top → bottom (Vision y↑이므로 midY 큰 쪽이 위), left → right
-        let text = selectionMap
-            .sorted { lhs, rhs in
-                let yDiff = rhs.obs.boundingBox.midY - lhs.obs.boundingBox.midY
-                if abs(yDiff) > 0.02 { return yDiff < 0 }  // 큰 midY(위쪽) 먼저
-                return lhs.obs.boundingBox.minX < rhs.obs.boundingBox.minX
-            }
-            .compactMap { item -> String? in
-                guard let candidate = item.obs.topCandidates(1).first else { return nil }
-                return extractWords(from: candidate, withinXRange: item.xRange, imageRect: imageRect)
-            }
-            .joined(separator: " ")
-
-        dismiss(animated: true) { [weak self] in
-            self?.onConfirm?(text)
-        }
+        confirmButton.rx.tap
+            .subscribe(onNext: { [weak self] in
+                guard let self else { return }
+                let imageRect = self.displayRect(for: self.capturedImage, in: self.imageContainerView.bounds)
+                let text = self.selectionMap
+                    .sorted { lhs, rhs in
+                        let yDiff = rhs.obs.boundingBox.midY - lhs.obs.boundingBox.midY
+                        if abs(yDiff) > 0.02 { return yDiff < 0 }
+                        return lhs.obs.boundingBox.minX < rhs.obs.boundingBox.minX
+                    }
+                    .compactMap { item -> String? in
+                        guard let candidate = item.obs.topCandidates(1).first else { return nil }
+                        return self.extractWords(from: candidate, withinXRange: item.xRange, imageRect: imageRect)
+                    }
+                    .joined(separator: " ")
+                self.dismiss(animated: true) { self.onConfirm?(text) }
+            })
+            .disposed(by: disposeBag)
     }
 
     /// stroke x 범위에 걸치는 단어만 추출 (Vision word-level bbox 이용)

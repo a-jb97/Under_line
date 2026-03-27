@@ -7,6 +7,8 @@
 
 import UIKit
 import SnapKit
+import RxSwift
+import RxCocoa
 
 protocol BookshelfFilterDelegate: AnyObject {
     func bookshelfFilter(didSearch query: String)
@@ -16,6 +18,8 @@ protocol BookshelfFilterDelegate: AnyObject {
 final class BookshelfFilterViewController: UIViewController {
 
     weak var delegate: BookshelfFilterDelegate?
+
+    private let disposeBag = DisposeBag()
 
     /// 시트 최적 높이: 전부표시 버튼 하단 + 16pt
     static var preferredSheetHeight: CGFloat {
@@ -96,6 +100,7 @@ final class BookshelfFilterViewController: UIViewController {
         super.viewDidLoad()
         setupUI()
         setupConstraints()
+        bindActions()
     }
 
     override func viewDidAppear(_ animated: Bool) {
@@ -115,9 +120,23 @@ final class BookshelfFilterViewController: UIViewController {
         view.addSubview(searchBarView)
         view.addSubview(divider)
         view.addSubview(showAllButton)
+    }
 
-        searchTextField.addTarget(self, action: #selector(searchDidReturn), for: .editingDidEndOnExit)
-        showAllButton.addTarget(self, action: #selector(showAllTapped), for: .touchUpInside)
+    private func bindActions() {
+        searchTextField.rx.controlEvent(.editingDidEndOnExit)
+            .withLatestFrom(searchTextField.rx.text.orEmpty)
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+            .subscribe(onNext: { [weak self] query in
+                self?.delegate?.bookshelfFilter(didSearch: query)
+            })
+            .disposed(by: disposeBag)
+
+        showAllButton.rx.tap
+            .subscribe(onNext: { [weak self] in
+                self?.delegate?.bookshelfFilterDidRequestShowAll()
+            })
+            .disposed(by: disposeBag)
     }
 
     private func setupConstraints() {
@@ -157,13 +176,4 @@ final class BookshelfFilterViewController: UIViewController {
         }
     }
 
-    @objc private func searchDidReturn() {
-        let query = searchTextField.text?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-        guard !query.isEmpty else { return }
-        delegate?.bookshelfFilter(didSearch: query)
-    }
-
-    @objc private func showAllTapped() {
-        delegate?.bookshelfFilterDidRequestShowAll()
-    }
 }
