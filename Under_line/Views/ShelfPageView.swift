@@ -31,7 +31,6 @@ final class ShelfRowView: UIView {
 
         bookViews.forEach { $0.snp.makeConstraints { make in
             make.width.equalTo(88)
-            make.height.equalTo(117)
         }}
 
         addSubview(booksStack)
@@ -55,6 +54,7 @@ final class ShelfRowView: UIView {
 
         guard let book else {
             container.backgroundColor = .clear
+            wrapper.snp.makeConstraints { make in make.height.equalTo(117) }
             return wrapper
         }
 
@@ -71,14 +71,30 @@ final class ShelfRowView: UIView {
             cornerRadii: CGSize(width: 3, height: 3)
         ).cgPath
 
+        wrapper.snp.makeConstraints { make in make.height.equalTo(117) }
+
         if let coverURL = book.coverURL {
             container.backgroundColor = UIColor.primary
             let iv = UIImageView()
             iv.contentMode = .scaleAspectFill
             iv.clipsToBounds = true
-            iv.kf.setImage(with: coverURL)
             container.addSubview(iv)
             iv.snp.makeConstraints { $0.edges.equalToSuperview() }
+            iv.kf.setImage(with: coverURL) { [weak wrapper] result in
+                guard let wrapper, case .success(let value) = result else { return }
+                let imageSize = value.image.size
+                guard imageSize.width > 0 else { return }
+                let newHeight = ceil(88.0 * imageSize.height / imageSize.width)
+                wrapper.snp.updateConstraints { make in
+                    make.height.equalTo(newHeight)
+                }
+                wrapper.layer.shadowPath = UIBezierPath(
+                    roundedRect: CGRect(origin: .zero, size: CGSize(width: 88, height: newHeight)),
+                    byRoundingCorners: [.topLeft, .topRight],
+                    cornerRadii: CGSize(width: 3, height: 3)
+                ).cgPath
+                wrapper.superview?.setNeedsLayout()
+            }
         } else {
             container.backgroundColor = UIColor.primary
             let titleLabel = UILabel()
