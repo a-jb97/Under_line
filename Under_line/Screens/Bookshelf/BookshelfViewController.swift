@@ -36,7 +36,7 @@ final class BookshelfViewController: UIViewController {
         if let query = activeFilterQuery, !query.isEmpty {
             savedBooks = allBooks.filter {
                 $0.title.localizedCaseInsensitiveContains(query) ||
-                ($0.author ?? "").localizedCaseInsensitiveContains(query)
+                ($0.author).localizedCaseInsensitiveContains(query)
             }
         } else {
             savedBooks = allBooks

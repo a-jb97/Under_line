@@ -92,6 +92,8 @@ final class DirectCollectViewController: UIViewController {
         tv.backgroundColor = .clear
         tv.font = UIFont(name: "GoyangIlsan R", size: 14) ?? .systemFont(ofSize: 14)
         tv.textColor = UIColor.primary
+        tv.textContainerInset = .zero
+        tv.textContainer.lineFragmentPadding = 0
         tv.delegate = self
         return tv
     }()
@@ -173,6 +175,8 @@ final class DirectCollectViewController: UIViewController {
         tv.backgroundColor = .clear
         tv.font = UIFont(name: "GoyangIlsan R", size: 14) ?? .systemFont(ofSize: 14)
         tv.textColor = UIColor.primary
+        tv.textContainerInset = .zero
+        tv.textContainer.lineFragmentPadding = 0
         tv.delegate = self
         return tv
     }()
@@ -209,10 +213,73 @@ final class DirectCollectViewController: UIViewController {
         setupUI()
         setupConstraints()
         bindActions()
+        setupKeyboardHandling()
 
         if let text = initialSentence, !text.isEmpty {
             sentenceTextView.text    = text
             sentencePlaceholder.isHidden = true
+        }
+    }
+
+    override func viewWillDisappear(_ animated: Bool) {
+        super.viewWillDisappear(animated)
+        NotificationCenter.default.removeObserver(self)
+    }
+
+    // MARK: - Keyboard
+
+    private func setupKeyboardHandling() {
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(keyboardWillShow(_:)),
+            name: UIResponder.keyboardWillShowNotification,
+            object: nil
+        )
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(keyboardWillHide(_:)),
+            name: UIResponder.keyboardWillHideNotification,
+            object: nil
+        )
+    }
+
+    private var keyboardHeight: CGFloat = 0
+    private weak var activeTextView: UITextView?
+
+    @objc private func keyboardWillShow(_ notification: Notification) {
+        guard let info = notification.userInfo,
+              let keyboardFrame = info[UIResponder.keyboardFrameEndUserInfoKey] as? CGRect,
+              let duration = info[UIResponder.keyboardAnimationDurationUserInfoKey] as? TimeInterval
+        else { return }
+
+        keyboardHeight = keyboardFrame.height - view.safeAreaInsets.bottom
+        scrollView.contentInset.bottom = keyboardHeight
+        scrollView.verticalScrollIndicatorInsets.bottom = keyboardHeight
+
+        guard let active = activeTextView, active === memoTextView else { return }
+        UIView.animate(withDuration: duration) {
+            self.scrollToActive(active, animated: false)
+        }
+    }
+
+    @objc private func pageFieldDidBeginEditing() {
+        activeTextView = nil
+    }
+
+    private func scrollToActive(_ active: UIView, animated: Bool) {
+        let activeRect = active.convert(active.bounds, to: scrollView)
+        let buttonRect = registerButton.convert(registerButton.bounds, to: scrollView)
+        let rect = activeRect.union(buttonRect).insetBy(dx: 0, dy: -16)
+        scrollView.scrollRectToVisible(rect, animated: animated)
+    }
+
+    @objc private func keyboardWillHide(_ notification: Notification) {
+        guard let duration = notification.userInfo?[UIResponder.keyboardAnimationDurationUserInfoKey] as? TimeInterval
+        else { return }
+        keyboardHeight = 0
+        UIView.animate(withDuration: duration) {
+            self.scrollView.contentInset.bottom = 0
+            self.scrollView.verticalScrollIndicatorInsets.bottom = 0
         }
     }
 
@@ -345,6 +412,8 @@ final class DirectCollectViewController: UIViewController {
                 self.dismiss(animated: true) { onSaved?() }
             })
             .disposed(by: disposeBag)
+
+        pageTextField.addTarget(self, action: #selector(pageFieldDidBeginEditing), for: .editingDidBegin)
     }
 
     // MARK: - Chip Selection
@@ -373,6 +442,15 @@ final class DirectCollectViewController: UIViewController {
 // MARK: - UITextViewDelegate
 
 extension DirectCollectViewController: UITextViewDelegate {
+    func textViewDidBeginEditing(_ textView: UITextView) {
+        activeTextView = textView
+        guard textView === memoTextView, keyboardHeight > 0 else { return }
+        DispatchQueue.main.async { [weak self] in
+            guard let self, self.activeTextView === textView else { return }
+            self.scrollToActive(textView, animated: true)
+        }
+    }
+
     func textViewDidChange(_ textView: UITextView) {
         if textView === sentenceTextView {
             sentencePlaceholder.isHidden = !textView.text.isEmpty

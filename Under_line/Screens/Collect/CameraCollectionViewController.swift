@@ -158,7 +158,7 @@ final class CameraCollectionViewController: UIViewController {
 
     private let hintLabel: UILabel = {
         let l = UILabel()
-        l.text = "책의 페이지를 촬영하면 자동으로 밑줄을 인식합니다"
+        l.text = "촬영하고 나면 밑줄을 그을 수 있습니다"
         l.font = UIFont(name: "GowunBatang-Regular", size: 12) ?? .systemFont(ofSize: 12)
         l.textColor = UIColor.primary.withAlphaComponent(0.6)
         l.textAlignment = .center
