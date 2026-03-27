@@ -14,6 +14,7 @@ import RxSwift
 protocol ReadingSessionRepositoryProtocol {
     func saveSession(bookISBN: String, durationSeconds: Int) -> Completable
     func fetchSessions(for bookISBN: String) -> Single<[ReadingSession]>
+    func fetchAllSessions() -> Single<[ReadingSession]>
 }
 
 // MARK: - Concrete Implementation
@@ -46,6 +47,21 @@ final class ReadingSessionRepository: ReadingSessionRepositoryProtocol {
             do {
                 let descriptor = FetchDescriptor<ReadingSessionRecord>(
                     predicate: #Predicate { $0.bookISBN == bookISBN },
+                    sortBy: [SortDescriptor(\ReadingSessionRecord.date, order: .forward)]
+                )
+                single(.success(try self.modelContext.fetch(descriptor).map { $0.toDomain() }))
+            } catch {
+                single(.failure(error))
+            }
+            return Disposables.create()
+        }
+    }
+
+    func fetchAllSessions() -> Single<[ReadingSession]> {
+        Single.create { [weak self] single in
+            guard let self else { single(.success([])); return Disposables.create() }
+            do {
+                let descriptor = FetchDescriptor<ReadingSessionRecord>(
                     sortBy: [SortDescriptor(\ReadingSessionRecord.date, order: .forward)]
                 )
                 single(.success(try self.modelContext.fetch(descriptor).map { $0.toDomain() }))

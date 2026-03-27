@@ -100,14 +100,10 @@ final class StatisticsViewController: UIViewController {
 
 final class HeatmapCardView: UIView {
 
-    // 히트맵 더미 데이터: 7행(요일) × 11열(주)
-    private static let gridData: [[Int]] = {
-        let levels = [0, 1, 2, 3, 4]
-        return (0..<7).map { _ in (0..<11).map { _ in levels.randomElement()! } }
-    }()
-
-    private var currentYear = 2026
-    private var currentMonth = 3
+    private var currentYear = Calendar.current.component(.year, from: Date())
+    private var currentMonth = Calendar.current.component(.month, from: Date())
+    private let disposeBag = DisposeBag()
+    private var allSessions: [ReadingSession] = []
 
     private let titleLabel: UILabel = {
         let l = UILabel()
@@ -171,7 +167,8 @@ final class HeatmapCardView: UIView {
         periodLabel.isUserInteractionEnabled = true
         periodLabel.addGestureRecognizer(UITapGestureRecognizer(target: self, action: #selector(periodTapped)))
 
-        heatmapBody.data = Self.gridData
+        reloadHeatmap()
+        loadSessions()
 
         // 타이틀 행: 좌측 "독서량", 우측 "< 2026년 X월 >"
         let titleRow = UIView()
@@ -206,12 +203,14 @@ final class HeatmapCardView: UIView {
         currentMonth -= 1
         if currentMonth == 0 { currentMonth = 12; currentYear -= 1 }
         updatePeriodLabel()
+        reloadHeatmap()
     }
 
     @objc private func nextMonth() {
         currentMonth += 1
         if currentMonth == 13 { currentMonth = 1; currentYear += 1 }
         updatePeriodLabel()
+        reloadHeatmap()
     }
 
     private func updatePeriodLabel() {
@@ -225,6 +224,7 @@ final class HeatmapCardView: UIView {
             self?.currentYear = year
             self?.currentMonth = month
             self?.updatePeriodLabel()
+            self?.reloadHeatmap()
         }
         picker.modalPresentationStyle = .pageSheet
         if let sheet = picker.sheetPresentationController {
@@ -242,6 +242,74 @@ final class HeatmapCardView: UIView {
             responder = r.next
         }
         return nil
+    }
+
+    private func loadSessions() {
+        AppContainer.shared.readingSessionRepository.fetchAllSessions()
+            .subscribe(onSuccess: { [weak self] sessions in
+                self?.allSessions = sessions
+                self?.reloadHeatmap()
+            }, onFailure: { _ in })
+            .disposed(by: disposeBag)
+    }
+
+    private func reloadHeatmap() {
+        heatmapBody.days = buildGrid()
+    }
+
+    private func buildGrid() -> [[HeatmapDay]] {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.locale = Locale(identifier: "en_US_POSIX")
+
+        // 날짜별 독서 시간 합산
+        var durationByDay: [Date: Int] = [:]
+        for session in allSessions {
+            let dayStart = calendar.startOfDay(for: session.date)
+            durationByDay[dayStart, default: 0] += session.durationSeconds
+        }
+
+        // 전월 1일 계산
+        var prevMonth = currentMonth - 1
+        var prevYear = currentYear
+        if prevMonth == 0 { prevMonth = 12; prevYear -= 1 }
+
+        guard let prevMonthFirstDay = calendar.date(
+            from: DateComponents(year: prevYear, month: prevMonth, day: 1)
+        ) else { return [] }
+
+        // 전월 1일이 속한 주의 월요일 → 그리드 시작일
+        // weekday: 1=일, 2=월, 3=화, ... 7=토
+        let weekday = calendar.component(.weekday, from: prevMonthFirstDay)
+        let mondayOffset = weekday == 1 ? -6 : -(weekday - 2)
+        guard let gridStart = calendar.date(
+            byAdding: .day, value: mondayOffset, to: prevMonthFirstDay
+        ) else { return [] }
+
+        // 7행(요일) × 11열(주) 그리드 생성
+        var grid: [[HeatmapDay]] = Array(repeating: [], count: 7)
+        for col in 0..<11 {
+            for row in 0..<7 {
+                let offset = col * 7 + row
+                guard let date = calendar.date(byAdding: .day, value: offset, to: gridStart) else { continue }
+                let dayStart = calendar.startOfDay(for: date)
+                let duration = durationByDay[dayStart] ?? 0
+                let intensity = Self.intensityLevel(seconds: duration)
+                let comps = calendar.dateComponents([.year, .month], from: date)
+                let isCurrentMonth = comps.year == currentYear && comps.month == currentMonth
+                grid[row].append(HeatmapDay(date: date, intensity: intensity, isCurrentMonth: isCurrentMonth))
+            }
+        }
+        return grid
+    }
+
+    private static func intensityLevel(seconds: Int) -> Int {
+        switch seconds {
+        case 0:            return 0
+        case 1...600:      return 1
+        case 601...1800:   return 2
+        case 1801...3600:  return 3
+        default:           return 4
+        }
     }
 
     private func buildLegend() {
@@ -279,6 +347,14 @@ final class HeatmapCardView: UIView {
     }
 }
 
+// MARK: - HeatmapDay
+
+struct HeatmapDay {
+    let date: Date
+    let intensity: Int        // 0 = 없음, 1–4 = 독서량 단계
+    let isCurrentMonth: Bool
+}
+
 // MARK: - HeatmapBodyView
 
 final class HeatmapBodyView: UIView {
@@ -289,14 +365,15 @@ final class HeatmapBodyView: UIView {
     private static let labelWidth: CGFloat = 18
     private static let labelGridGap: CGFloat = 6
 
-    private let days = ["월", "화", "수", "목", "금", "토", "일"]
+    private let weekdayLabels = ["월", "화", "수", "목", "금", "토", "일"]
     private let walnut = UIColor(hex: "#5d4037")
 
-    var data: [[Int]] = [] { didSet { setNeedsLayout() } }
+    var days: [[HeatmapDay]] = [] { didSet { needsRebuild = true; setNeedsLayout() } }
 
     private var cellButtons: [[UIButton]] = []
     private var selectedCell: (row: Int, col: Int)?
     private var lastWidth: CGFloat = 0
+    private var needsRebuild = false
 
     override init(frame: CGRect) {
         super.init(frame: frame)
@@ -315,8 +392,9 @@ final class HeatmapBodyView: UIView {
     override func layoutSubviews() {
         super.layoutSubviews()
         guard bounds.width > 0 else { return }
-        if abs(bounds.width - lastWidth) > 0.5 {
+        if abs(bounds.width - lastWidth) > 0.5 || needsRebuild {
             lastWidth = bounds.width
+            needsRebuild = false
             buildCells()
             invalidateIntrinsicContentSize()
         }
@@ -339,7 +417,7 @@ final class HeatmapBodyView: UIView {
         ]
 
         // 요일 레이블 (월 ~ 일)
-        for (i, day) in days.enumerated() {
+        for (i, day) in weekdayLabels.enumerated() {
             let lbl = UILabel()
             lbl.text = day
             lbl.font = UIFont(name: "GoyangIlsan R", size: 11) ?? .systemFont(ofSize: 11)
@@ -368,8 +446,10 @@ final class HeatmapBodyView: UIView {
                 btn.tag = r * Self.cols + c
                 btn.addTarget(self, action: #selector(cellTapped(_:)), for: .touchUpInside)
 
-                let level = (r < data.count && c < data[r].count) ? data[r][c] : 0
-                let alpha = alphas[min(level, alphas.count - 1)]
+                let day = (r < days.count && c < days[r].count) ? days[r][c] : nil
+                let level = day?.intensity ?? 0
+                let baseAlpha = alphas[min(level, alphas.count - 1)]
+                let alpha = (day?.isCurrentMonth ?? true) ? baseAlpha : baseAlpha * 0.35
                 btn.backgroundColor = walnut.withAlphaComponent(alpha)
 
                 addSubview(btn)
