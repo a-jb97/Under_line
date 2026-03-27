@@ -112,7 +112,7 @@ final class BookSearchViewController: UIViewController {
 
     private let bestsellerLabel: UILabel = {
         let l = UILabel()
-        l.text            = "베스트셀러 TOP 50"
+        l.text            = "베스트셀러 50"
         l.font            = UIFont(name: "GowunBatang-Bold", size: 14) ?? .systemFont(ofSize: 14)
         l.textColor       = UIColor.primary
         l.backgroundColor = UIColor.background

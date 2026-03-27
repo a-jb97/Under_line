@@ -22,10 +22,24 @@ final class BookshelfViewController: UIViewController {
 
     // MARK: - Saved Books
 
+    private var allBooks: [Book] = []
+    private var activeFilterQuery: String?
+
     private var savedBooks: [Book] = [] {
         didSet {
             guard layoutReady else { return }
             rebuildShelfPages()
+        }
+    }
+
+    private func applyFilter() {
+        if let query = activeFilterQuery, !query.isEmpty {
+            savedBooks = allBooks.filter {
+                $0.title.localizedCaseInsensitiveContains(query) ||
+                ($0.author ?? "").localizedCaseInsensitiveContains(query)
+            }
+        } else {
+            savedBooks = allBooks
         }
     }
 
@@ -43,7 +57,7 @@ final class BookshelfViewController: UIViewController {
         return l
     }()
 
-    private lazy var filterButton: UIButton = {
+    private lazy var sortButton: UIButton = {
         let btn = UIButton(type: .system)
         let cfg = UIImage.SymbolConfiguration(pointSize: 14, weight: .regular)
         btn.setImage(UIImage(systemName: "slider.horizontal.3", withConfiguration: cfg), for: .normal)
@@ -135,7 +149,7 @@ final class BookshelfViewController: UIViewController {
 
         view.addSubview(headerView)
         headerView.addSubview(appTitleLabel)
-        headerView.addSubview(filterButton)
+        headerView.addSubview(sortButton)
 
         view.addSubview(bookshelfScrollView)
         view.addSubview(shelfOverlayView)   // 스크롤뷰 위에 고정 선반 오버레이
@@ -144,7 +158,7 @@ final class BookshelfViewController: UIViewController {
 
         view.addSubview(editButton)
 
-        applyFabGlassStyle(to: filterButton, cornerRadius: 20)
+        applyFabGlassStyle(to: sortButton, cornerRadius: 20)
         applyFabGlassStyle(to: fabButton,    cornerRadius: 26)
         applyFabGlassStyle(to: editButton,   cornerRadius: 26)
     }
@@ -160,7 +174,7 @@ final class BookshelfViewController: UIViewController {
             make.leading.centerY.equalToSuperview()
         }
 
-        filterButton.snp.makeConstraints { make in
+        sortButton.snp.makeConstraints { make in
             make.trailing.equalToSuperview()
             make.centerY.equalToSuperview()
             make.size.equalTo(40)
@@ -403,7 +417,9 @@ final class BookshelfViewController: UIViewController {
         // 저장된 도서 스트림 → 책장 자동 업데이트
         output.books
             .drive(onNext: { [weak self] books in
-                self?.savedBooks = books
+                guard let self else { return }
+                self.allBooks = books
+                self.applyFilter()
             })
             .disposed(by: disposeBag)
 
@@ -446,11 +462,35 @@ final class BookshelfViewController: UIViewController {
             .disposed(by: disposeBag)
 
         // 필터 버튼
-        filterButton.rx.tap
+        sortButton.rx.tap
             .subscribe(onNext: { [weak self] in
-                // TODO: 정렬/필터 시트 present
-                print("필터 탭")
+                guard let self else { return }
+                let vc = BookshelfFilterViewController()
+                vc.delegate = self
+                vc.modalPresentationStyle = .pageSheet
+                if let sheet = vc.sheetPresentationController {
+                    sheet.detents               = [.custom { _ in BookshelfFilterViewController.preferredSheetHeight }]
+                    sheet.prefersGrabberVisible = true
+                    sheet.preferredCornerRadius = 24
+                }
+                self.present(vc, animated: true)
             })
             .disposed(by: disposeBag)
+    }
+}
+
+// MARK: - BookshelfFilterDelegate
+
+extension BookshelfViewController: BookshelfFilterDelegate {
+    func bookshelfFilter(didSearch query: String) {
+        activeFilterQuery = query
+        applyFilter()
+        dismiss(animated: true)
+    }
+
+    func bookshelfFilterDidRequestShowAll() {
+        activeFilterQuery = nil
+        applyFilter()
+        dismiss(animated: true)
     }
 }
