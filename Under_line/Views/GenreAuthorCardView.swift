@@ -78,6 +78,7 @@ final class GenreAuthorCardView: UIView {
         segmentControl.selectionChanged
             .subscribe(onNext: { [weak self] index in
                 self?.updateChart(for: index)
+                self?.donutView.animateIn()
             })
             .disposed(by: disposeBag)
     }
