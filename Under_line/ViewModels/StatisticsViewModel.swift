@@ -9,6 +9,26 @@ import Foundation
 import RxSwift
 import RxCocoa
 
+// MARK: - ReadingTimeChartData
+
+struct ReadingTimeChartPoint {
+    let label: String
+    let minutes: Double
+}
+
+struct ReadingTimeChartData {
+    let weekly: [ReadingTimeChartPoint]
+    let monthly: [ReadingTimeChartPoint]
+    let yearly: [ReadingTimeChartPoint]
+    let thisWeekHours: Double
+    let thisMonthHours: Double
+    let dailyAvgHours: Double
+    static let empty = ReadingTimeChartData(
+        weekly: [], monthly: [], yearly: [],
+        thisWeekHours: 0, thisMonthHours: 0, dailyAvgHours: 0
+    )
+}
+
 // MARK: - SentenceDonutData
 
 struct SentenceDonutItem {
@@ -38,6 +58,7 @@ final class StatisticsViewModel {
         let allSessions: Driver<[ReadingSession]>
         let genreData: Driver<SentenceDonutData>
         let authorData: Driver<SentenceDonutData>
+        let lineChartData: Driver<ReadingTimeChartData>
     }
 
     // MARK: - Dependencies
@@ -66,6 +87,9 @@ final class StatisticsViewModel {
                     .catch { _ in .just([]) }
                     .asObservable()
             }
+            .share(replay: 1)
+
+        let lineChartData = allSessions.map { Self.computeLineChartData(sessions: $0) }
 
         let donutData = input.viewWillAppear
             .flatMapLatest { [weak self] _ -> Observable<(SentenceDonutData, SentenceDonutData)> in
@@ -82,13 +106,78 @@ final class StatisticsViewModel {
             }
 
         return Output(
-            allSessions: allSessions.asDriver(onErrorJustReturn: []),
-            genreData:   donutData.map { $0.0 }.asDriver(onErrorJustReturn: .empty),
-            authorData:  donutData.map { $0.1 }.asDriver(onErrorJustReturn: .empty)
+            allSessions:   allSessions.asDriver(onErrorJustReturn: []),
+            genreData:     donutData.map { $0.0 }.asDriver(onErrorJustReturn: .empty),
+            authorData:    donutData.map { $0.1 }.asDriver(onErrorJustReturn: .empty),
+            lineChartData: lineChartData.asDriver(onErrorJustReturn: .empty)
         )
     }
 
     // MARK: - Private helpers
+
+    private static func computeLineChartData(sessions: [ReadingSession]) -> ReadingTimeChartData {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.locale = Locale(identifier: "ko_KR")
+        calendar.firstWeekday = 2  // 월요일 기준
+        let now = Date()
+
+        let weekStart  = calendar.date(from: calendar.dateComponents([.yearForWeekOfYear, .weekOfYear], from: now))!
+        let monthStart = calendar.date(from: calendar.dateComponents([.year, .month], from: now))!
+        let yearStart  = calendar.date(from: calendar.dateComponents([.year], from: now))!
+
+        // 주간: 월~일 7일
+        let weekDays = ["월", "화", "수", "목", "금", "토", "일"]
+        let weeklyPoints: [ReadingTimeChartPoint] = (0..<7).map { offset in
+            let dayStart = calendar.date(byAdding: .day, value: offset, to: weekStart)!
+            let dayEnd   = calendar.date(byAdding: .day, value: 1, to: dayStart)!
+            let secs = sessions.filter { $0.date >= dayStart && $0.date < dayEnd }
+                .reduce(0) { $0 + $1.durationSeconds }
+            return ReadingTimeChartPoint(label: weekDays[offset], minutes: Double(secs) / 60)
+        }
+
+        // 월간: 7일 단위 블록으로 묶음
+        let daysInMonth = calendar.range(of: .day, in: .month, for: monthStart)!.count
+        let weeksInMonth = Int(ceil(Double(daysInMonth) / 7.0))
+        let monthlyPoints: [ReadingTimeChartPoint] = (0..<weeksInMonth).map { weekIndex in
+            let startDay = weekIndex * 7
+            let endDay   = min(startDay + 7, daysInMonth)
+            let blockStart = calendar.date(byAdding: .day, value: startDay, to: monthStart)!
+            let blockEnd   = calendar.date(byAdding: .day, value: endDay,   to: monthStart)!
+            let secs = sessions.filter { $0.date >= blockStart && $0.date < blockEnd }
+                .reduce(0) { $0 + $1.durationSeconds }
+            return ReadingTimeChartPoint(label: "\(weekIndex + 1)주", minutes: Double(secs) / 60)
+        }
+
+        // 연간: 1~12월
+        let yearlyPoints: [ReadingTimeChartPoint] = (0..<12).map { monthOffset in
+            var comps = calendar.dateComponents([.year], from: yearStart)
+            comps.month = monthOffset + 1
+            let mStart = calendar.date(from: comps)!
+            let mEnd   = calendar.date(byAdding: .month, value: 1, to: mStart)!
+            let secs = sessions.filter { $0.date >= mStart && $0.date < mEnd }
+                .reduce(0) { $0 + $1.durationSeconds }
+            return ReadingTimeChartPoint(label: "\(monthOffset + 1)월", minutes: Double(secs) / 60)
+        }
+
+        // 통계 값
+        let weekEnd  = calendar.date(byAdding: .day,   value: 7, to: weekStart)!
+        let monthEnd = calendar.date(byAdding: .month, value: 1, to: monthStart)!
+        let weekSecs  = sessions.filter { $0.date >= weekStart  && $0.date < weekEnd  }.reduce(0) { $0 + $1.durationSeconds }
+        let monthSecs = sessions.filter { $0.date >= monthStart && $0.date < monthEnd }.reduce(0) { $0 + $1.durationSeconds }
+
+        let thirtyAgo    = calendar.date(byAdding: .day, value: -30, to: now)!
+        let last30Secs   = sessions.filter { $0.date >= thirtyAgo }.reduce(0) { $0 + $1.durationSeconds }
+        let dailyAvgSecs = Double(last30Secs) / 30.0
+
+        return ReadingTimeChartData(
+            weekly:         weeklyPoints,
+            monthly:        monthlyPoints,
+            yearly:         yearlyPoints,
+            thisWeekHours:  Double(weekSecs)  / 3600,
+            thisMonthHours: Double(monthSecs) / 3600,
+            dailyAvgHours:  dailyAvgSecs      / 3600
+        )
+    }
 
     private static func computeGenreData(sentences: [Sentence], books: [Book]) -> SentenceDonutData {
         var bookMap: [String: Book] = [:]

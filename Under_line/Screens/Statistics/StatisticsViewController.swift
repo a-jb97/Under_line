@@ -126,6 +126,12 @@ final class StatisticsViewController: UIViewController {
                 self?.genreCard.animateIn()
             })
             .disposed(by: disposeBag)
+
+        output.lineChartData
+            .drive(onNext: { [weak self] data in
+                self?.lineChartCard.configure(with: data)
+            })
+            .disposed(by: disposeBag)
     }
 }
 
