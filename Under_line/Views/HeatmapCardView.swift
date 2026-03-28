@@ -14,6 +14,7 @@ struct HeatmapDay {
     let date: Date
     let intensity: Int        // 0 = 없음, 1–4 = 독서량 단계
     let isCurrentMonth: Bool
+    let durationSeconds: Int  // 해당 날 총 독서 시간(초)
 }
 
 // MARK: - HeatmapCardView
@@ -65,6 +66,22 @@ final class HeatmapCardView: UIView {
         s.spacing = 4
         s.alignment = .center
         return s
+    }()
+
+    private let tooltipView: UIView = {
+        let v = UIView()
+        v.backgroundColor = UIColor(hex: "#5d4037").withAlphaComponent(0.92)
+        v.layer.cornerRadius = 8
+        v.alpha = 0
+        v.isUserInteractionEnabled = false
+        return v
+    }()
+
+    private let tooltipLabel: UILabel = {
+        let l = UILabel()
+        l.font = UIFont(name: "GoyangIlsan R", size: 12) ?? .systemFont(ofSize: 12)
+        l.textColor = .white
+        return l
     }()
 
     override init(frame: CGRect) {
@@ -139,6 +156,21 @@ final class HeatmapCardView: UIView {
         vStack.snp.makeConstraints { make in
             make.edges.equalToSuperview().inset(20)
         }
+
+        // 툴팁 설정
+        tooltipView.addSubview(tooltipLabel)
+        addSubview(tooltipView)
+
+        heatmapBody.cellTapped
+            .subscribe(onNext: { [weak self] (day, buttonFrame) in
+                guard let self else { return }
+                if let day {
+                    self.showTooltip(for: day, buttonFrame: buttonFrame)
+                } else {
+                    self.hideTooltip()
+                }
+            })
+            .disposed(by: disposeBag)
     }
 
     private func updatePeriodLabel() {
@@ -220,7 +252,7 @@ final class HeatmapCardView: UIView {
                 let intensity = Self.intensityLevel(seconds: duration)
                 let comps = calendar.dateComponents([.year, .month], from: date)
                 let isCurrentMonth = comps.year == currentYear && comps.month == currentMonth
-                grid[row].append(HeatmapDay(date: date, intensity: intensity, isCurrentMonth: isCurrentMonth))
+                grid[row].append(HeatmapDay(date: date, intensity: intensity, isCurrentMonth: isCurrentMonth, durationSeconds: duration))
             }
         }
         return grid
@@ -269,6 +301,52 @@ final class HeatmapCardView: UIView {
         }
         legendStack.addArrangedSubview(moreLabel)
     }
+
+    // MARK: - Tooltip
+
+    private func showTooltip(for day: HeatmapDay, buttonFrame: CGRect) {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "ko_KR")
+        formatter.dateFormat = "M월 d일"
+        let dateStr = formatter.string(from: day.date)
+
+        let minutes = day.durationSeconds / 60
+        let durationStr: String
+        if day.durationSeconds == 0 {
+            durationStr = "독서 없음"
+        } else if minutes < 1 {
+            durationStr = "1분 미만"
+        } else {
+            durationStr = "\(minutes)분 독서"
+        }
+
+        tooltipLabel.text = "\(dateStr) · \(durationStr)"
+        tooltipLabel.sizeToFit()
+
+        let hPad: CGFloat = 10
+        let vPad: CGFloat = 6
+        let tooltipW = tooltipLabel.frame.width + hPad * 2
+        let tooltipH = tooltipLabel.frame.height + vPad * 2
+
+        let btnRect = heatmapBody.convert(buttonFrame, to: self)
+        var tx = btnRect.midX - tooltipW / 2
+        tx = max(20, min(tx, bounds.width - tooltipW - 20))
+
+        let gap: CGFloat = 6
+        let ty: CGFloat = btnRect.minY > tooltipH + gap
+            ? btnRect.minY - tooltipH - gap
+            : btnRect.maxY + gap
+
+        tooltipView.frame = CGRect(x: tx, y: ty, width: tooltipW, height: tooltipH)
+        tooltipLabel.frame = CGRect(x: hPad, y: vPad,
+                                    width: tooltipLabel.frame.width,
+                                    height: tooltipLabel.frame.height)
+        UIView.animate(withDuration: 0.15) { self.tooltipView.alpha = 1 }
+    }
+
+    private func hideTooltip() {
+        UIView.animate(withDuration: 0.15) { self.tooltipView.alpha = 0 }
+    }
 }
 
 // MARK: - HeatmapBodyView
@@ -290,6 +368,12 @@ final class HeatmapBodyView: UIView {
     private var selectedCell: (row: Int, col: Int)?
     private var lastWidth: CGFloat = 0
     private var needsRebuild = false
+    private var cellDisposeBag = DisposeBag()
+
+    private let cellTapSubject = PublishSubject<(day: HeatmapDay?, buttonFrame: CGRect)>()
+    var cellTapped: Observable<(day: HeatmapDay?, buttonFrame: CGRect)> {
+        cellTapSubject.asObservable()
+    }
 
     override init(frame: CGRect) {
         super.init(frame: frame)
@@ -359,8 +443,6 @@ final class HeatmapBodyView: UIView {
                 let y = CGFloat(r) * (cellSize + Self.gap)
                 btn.frame = CGRect(x: x, y: y, width: cellSize, height: cellSize)
                 btn.layer.cornerRadius = 5
-                btn.tag = r * Self.cols + c
-                btn.addTarget(self, action: #selector(cellTapped(_:)), for: .touchUpInside)
 
                 let day = (r < days.count && c < days[r].count) ? days[r][c] : nil
                 let level = day?.intensity ?? 0
@@ -374,14 +456,33 @@ final class HeatmapBodyView: UIView {
             cellButtons.append(row)
         }
 
+        // rx.tap 구독
+        cellDisposeBag = DisposeBag()
+        for r in 0..<cellButtons.count {
+            for c in 0..<cellButtons[r].count {
+                let btn = cellButtons[r][c]
+                btn.rx.tap
+                    .subscribe(onNext: { [weak self] in
+                        self?.handleCellTap(row: r, col: c, button: btn)
+                    })
+                    .disposed(by: cellDisposeBag)
+            }
+        }
+
         applySelection()
     }
 
-    @objc private func cellTapped(_ sender: UIButton) {
-        let r = sender.tag / Self.cols
-        let c = sender.tag % Self.cols
-        selectedCell = (selectedCell?.row == r && selectedCell?.col == c) ? nil : (r, c)
+    private func handleCellTap(row: Int, col: Int, button: UIButton) {
+        let wasSame = selectedCell?.row == row && selectedCell?.col == col
+        selectedCell = wasSame ? nil : (row, col)
         applySelection()
+
+        if let (sr, sc) = selectedCell,
+           sr < days.count, sc < days[sr].count {
+            cellTapSubject.onNext((day: days[sr][sc], buttonFrame: button.frame))
+        } else {
+            cellTapSubject.onNext((day: nil, buttonFrame: .zero))
+        }
     }
 
     private func applySelection() {
