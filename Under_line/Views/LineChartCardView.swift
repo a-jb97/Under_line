@@ -30,8 +30,8 @@ final class LineChartCardView: UIView {
         backgroundColor = .white
         layer.cornerRadius = 16
         layer.shadowColor   = UIColor.black.cgColor
-        layer.shadowOpacity = Float(CGFloat(0x16) / 255)
-        layer.shadowRadius  = 24
+        layer.shadowOpacity = Float(CGFloat(0x26) / 255)
+        layer.shadowRadius  = 12
         layer.shadowOffset  = CGSize(width: 0, height: 8)
 
         let titleLabel = UILabel()
@@ -139,8 +139,8 @@ private final class StatMiniCard: UIView {
         backgroundColor     = .white
         layer.cornerRadius  = 12
         layer.shadowColor   = UIColor.black.cgColor
-        layer.shadowOpacity = Float(CGFloat(0x16) / 255)
-        layer.shadowRadius  = 24
+        layer.shadowOpacity = Float(CGFloat(0x26) / 255)
+        layer.shadowRadius  = 12
         layer.shadowOffset  = CGSize(width: 0, height: 8)
 
         let titleLabel = UILabel()
