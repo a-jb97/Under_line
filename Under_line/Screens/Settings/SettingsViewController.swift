@@ -222,7 +222,7 @@ final class SettingsViewController: UIViewController {
 
         feedbackRow.rx.tap
             .subscribe(onNext: { _ in
-                guard let url = URL(string: "a_jb97@naver.com") else { return }
+                guard let url = URL(string: "mailto:a_jb97@naver.com") else { return }
                 UIApplication.shared.open(url)
             })
             .disposed(by: disposeBag)
