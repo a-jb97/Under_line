@@ -89,8 +89,8 @@ final class BookshelfViewController: UIViewController {
         let pc = UIPageControl()
         pc.numberOfPages = 1
         pc.currentPage   = 0
-        pc.currentPageIndicatorTintColor = UIColor.primary
-        pc.pageIndicatorTintColor        = UIColor.primary.withAlphaComponent(0.3)
+        pc.currentPageIndicatorTintColor = UIColor.appPrimary
+        pc.pageIndicatorTintColor        = UIColor.appPrimary.withAlphaComponent(0.3)
         pc.transform = CGAffineTransform(scaleX: 0.75, y: 0.75)
         return pc
     }()

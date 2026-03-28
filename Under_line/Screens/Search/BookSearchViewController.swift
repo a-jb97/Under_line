@@ -76,13 +76,16 @@ final class BookSearchViewController: UIViewController {
     }()
 
     private let directRegisterButton: UIButton = {
-        let btn = UIButton(type: .system)
-        btn.setTitle("직접 등록", for: .normal)
-        btn.titleLabel?.font = UIFont(name: "GoyangIlsan R", size: 14)
-            ?? .systemFont(ofSize: 14)
-        btn.setTitleColor(UIColor.walnut, for: .normal)
-        btn.contentEdgeInsets = UIEdgeInsets(top: 6, left: 12, bottom: 6, right: 12)
-        return btn
+        var config = UIButton.Configuration.plain()
+        config.title = "직접 등록"
+        config.baseForegroundColor = UIColor.walnut
+        config.contentInsets = NSDirectionalEdgeInsets(top: 6, leading: 12, bottom: 6, trailing: 12)
+        config.titleTextAttributesTransformer = UIConfigurationTextAttributesTransformer { incoming in
+            var outgoing = incoming
+            outgoing.font = UIFont(name: "GoyangIlsan R", size: 14) ?? .systemFont(ofSize: 14)
+            return outgoing
+        }
+        return UIButton(configuration: config)
     }()
 
     private let tableView: UITableView = {
@@ -114,7 +117,7 @@ final class BookSearchViewController: UIViewController {
         let l = UILabel()
         l.text            = "베스트셀러 50"
         l.font            = UIFont(name: "GowunBatang-Bold", size: 14) ?? .systemFont(ofSize: 14)
-        l.textColor       = UIColor.primary
+        l.textColor       = UIColor.appPrimary
         l.backgroundColor = UIColor.background
         return l
     }()
@@ -258,7 +261,7 @@ final class BookSearchViewController: UIViewController {
         output.errorMessage
             .emit(onNext: { [weak self] message in
                 var style = ToastStyle()
-                style.backgroundColor = UIColor.primary.withAlphaComponent(0.9)
+                style.backgroundColor = UIColor.appPrimary.withAlphaComponent(0.9)
                 style.messageFont = UIFont(name: "GowunBatang-Regular", size: 14) ?? .systemFont(ofSize: 14)
                 self?.view.makeToast(message, duration: 1.2, position: .center, style: style)
             })
@@ -376,15 +379,19 @@ private final class BookRowCell: UITableViewCell {
     }()
 
     private let registerButton: UIButton = {
-        let btn = UIButton(type: .system)
-        btn.setTitle("등록", for: .normal)
-        btn.titleLabel?.font = UIFont(name: "GoyangIlsan R", size: 13)
-            ?? .systemFont(ofSize: 13, weight: .medium)
-        btn.setTitleColor(UIColor.walnut, for: .normal)
+        var config = UIButton.Configuration.plain()
+        config.title = "등록"
+        config.baseForegroundColor = UIColor.walnut
+        config.contentInsets = NSDirectionalEdgeInsets(top: 7, leading: 14, bottom: 7, trailing: 14)
+        config.titleTextAttributesTransformer = UIConfigurationTextAttributesTransformer { incoming in
+            var outgoing = incoming
+            outgoing.font = UIFont(name: "GoyangIlsan R", size: 13) ?? .systemFont(ofSize: 13, weight: .medium)
+            return outgoing
+        }
+        let btn = UIButton(configuration: config)
         btn.layer.cornerRadius = 7
         btn.layer.borderWidth  = 1
         btn.layer.borderColor  = UIColor.walnut.cgColor
-        btn.contentEdgeInsets  = UIEdgeInsets(top: 7, left: 14, bottom: 7, right: 14)
         btn.setContentHuggingPriority(.required, for: .horizontal)
         btn.setContentCompressionResistancePriority(.required, for: .horizontal)
         return btn

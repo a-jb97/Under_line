@@ -161,7 +161,7 @@ final class NeumorphicSegmentView: UIView {
         layer.shadowRadius = 8
         layer.shadowOffset = CGSize(width: 4, height: 4)
 
-        selector.backgroundColor = .primary
+        selector.backgroundColor = .appPrimary
         selector.layer.cornerRadius = 8
         selector.layer.shadowColor = UIColor(hex: "#c9c2c1").cgColor
         selector.layer.shadowOpacity = 1
@@ -208,8 +208,8 @@ final class NeumorphicSegmentView: UIView {
         guard !buttons.isEmpty else { return }
         for (i, btn) in buttons.enumerated() {
             let isSelected = i == selectedIndex
-            btn.tintColor = isSelected ? .background : UIColor.primary
-            btn.backgroundColor = isSelected ? .primary : .clear
+            btn.tintColor = isSelected ? .background : UIColor.appPrimary
+            btn.backgroundColor = isSelected ? .appPrimary : .clear
         }
         updateSelectorFrame()
     }

@@ -53,7 +53,7 @@ final class PillTabBarView: UIView {
         pill.backgroundColor = UIColor.background
         pill.layer.cornerRadius = 36
         pill.layer.borderWidth = 1
-        pill.layer.borderColor = UIColor.primary.cgColor
+        pill.layer.borderColor = UIColor.appPrimary.cgColor
 
         addSubview(pill)
         pill.snp.makeConstraints { make in
@@ -151,13 +151,13 @@ private final class TabItemView: UIView {
 
     private func updateStyle() {
         if isSelected {
-            backgroundColor = UIColor.primary
+            backgroundColor = UIColor.appPrimary
             icon.tintColor   = UIColor.background
             label.textColor  = UIColor.background
         } else {
             backgroundColor = .clear
-            icon.tintColor   = UIColor.primary
-            label.textColor  = UIColor.primary
+            icon.tintColor   = UIColor.appPrimary
+            label.textColor  = UIColor.appPrimary
         }
     }
 }

@@ -184,7 +184,7 @@ final class DirectRegisterViewController: UIViewController {
         output.errorMessage
             .emit(onNext: { [weak self] message in
                 var style = ToastStyle()
-                style.backgroundColor = UIColor.primary.withAlphaComponent(0.9)
+                style.backgroundColor = UIColor.appPrimary.withAlphaComponent(0.9)
                 style.messageFont = UIFont(name: "GowunBatang-Regular", size: 14) ?? .systemFont(ofSize: 14)
                 self?.view.makeToast(message, duration: 1.5, position: .center, style: style)
             })
@@ -228,7 +228,7 @@ private final class FormFieldView: UIView {
         super.init(frame: .zero)
         labelView.text = label
         textField.keyboardType = keyboardType
-        textField.attributedPlaceholder = NSAttributedString(string: placeholder, attributes: [NSAttributedString.Key.foregroundColor : UIColor.primary.withAlphaComponent(0.4)])
+        textField.attributedPlaceholder = NSAttributedString(string: placeholder, attributes: [NSAttributedString.Key.foregroundColor : UIColor.appPrimary.withAlphaComponent(0.4)])
         setup()
     }
 

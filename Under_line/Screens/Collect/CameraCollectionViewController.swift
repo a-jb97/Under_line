@@ -69,10 +69,10 @@ final class CameraCollectionViewController: UIViewController {
             attributes: AttributeContainer([
                 .font: UIFont(name: "GowunBatang-Bold", size: 12)
                     ?? UIFont.systemFont(ofSize: 12, weight: .semibold),
-                .foregroundColor: UIColor.primary,
+                .foregroundColor: UIColor.appPrimary,
             ])
         )
-        config.baseForegroundColor = UIColor.primary
+        config.baseForegroundColor = UIColor.appPrimary
         config.background.backgroundColor = UIColor.background
         config.background.cornerRadius = 12
         config.contentInsets = NSDirectionalEdgeInsets(top: 0, leading: 14, bottom: 0, trailing: 14)
@@ -118,7 +118,7 @@ final class CameraCollectionViewController: UIViewController {
         let btn = UIButton(type: .system)
         let cfg = UIImage.SymbolConfiguration(pointSize: 18, weight: .regular)
         btn.setImage(UIImage(systemName: "bolt", withConfiguration: cfg), for: .normal)
-        btn.tintColor = UIColor.primary
+        btn.tintColor = UIColor.appPrimary
         btn.layer.cornerRadius = 24
         btn.clipsToBounds = true
         return btn
@@ -139,7 +139,7 @@ final class CameraCollectionViewController: UIViewController {
         )
         config.imagePlacement = .leading
         config.imagePadding = 10
-        config.baseForegroundColor = UIColor.primary
+        config.baseForegroundColor = UIColor.appPrimary
         let btn = UIButton(configuration: config)
         btn.layer.cornerRadius = 32
         btn.clipsToBounds = true
@@ -150,7 +150,7 @@ final class CameraCollectionViewController: UIViewController {
         let btn = UIButton(type: .system)
         let cfg = UIImage.SymbolConfiguration(pointSize: 18, weight: .regular)
         btn.setImage(UIImage(systemName: "arrow.triangle.2.circlepath.camera", withConfiguration: cfg), for: .normal)
-        btn.tintColor = UIColor.primary
+        btn.tintColor = UIColor.appPrimary
         btn.layer.cornerRadius = 24
         btn.clipsToBounds = true
         return btn
@@ -160,7 +160,7 @@ final class CameraCollectionViewController: UIViewController {
         let l = UILabel()
         l.text = "촬영하고 나면 밑줄을 그을 수 있습니다"
         l.font = UIFont(name: "GowunBatang-Regular", size: 12) ?? .systemFont(ofSize: 12)
-        l.textColor = UIColor.primary.withAlphaComponent(0.6)
+        l.textColor = UIColor.appPrimary.withAlphaComponent(0.6)
         l.textAlignment = .center
         l.numberOfLines = 0
         return l

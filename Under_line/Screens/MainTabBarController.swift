@@ -42,7 +42,7 @@ final class MainTabBarController: UITabBarController {
     }
 
     private func setupAppearance() {
-        let primary = UIColor.primary
+        let primary = UIColor.appPrimary
         let bg      = UIColor.background
 
         // 배경색만 Appearance로 지정

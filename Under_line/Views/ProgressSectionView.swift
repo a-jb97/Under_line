@@ -31,7 +31,7 @@ final class ProgressSectionView: UIView {
             string: "0%",
             attributes: [
                 .font:            UIFont(name: "GoyangIlsan R", size: 13) ?? .systemFont(ofSize: 13),
-                .foregroundColor: UIColor.primary,
+                .foregroundColor: UIColor.appPrimary,
             ]
         ))
         l.attributedText = attrStr
@@ -44,8 +44,8 @@ final class ProgressSectionView: UIView {
         btn.setImage(UIImage(systemName: "pencil", withConfiguration: cfg), for: .normal)
         btn.setTitle(" 편집", for: .normal)
         btn.titleLabel?.font = UIFont(name: "GoyangIlsan R", size: 12) ?? .systemFont(ofSize: 12)
-        btn.tintColor = UIColor.primary.withAlphaComponent(0.7)
-        btn.setTitleColor(UIColor.primary.withAlphaComponent(0.7), for: .normal)
+        btn.tintColor = UIColor.appPrimary.withAlphaComponent(0.7)
+        btn.setTitleColor(UIColor.appPrimary.withAlphaComponent(0.7), for: .normal)
         return btn
     }()
 
@@ -68,7 +68,7 @@ final class ProgressSectionView: UIView {
         let l = UILabel()
         l.text      = "0 / - 페이지"
         l.font      = UIFont(name: "GoyangIlsan R", size: 11) ?? .systemFont(ofSize: 11)
-        l.textColor = UIColor.primary.withAlphaComponent(0.45)
+        l.textColor = UIColor.appPrimary.withAlphaComponent(0.45)
         return l
     }()
 
@@ -136,7 +136,7 @@ final class ProgressSectionView: UIView {
 
     private func setupGradient() {
         let grad = CAGradientLayer()
-        grad.colors       = [UIColor.primary.cgColor, UIColor(hex: "#8D6E63").cgColor]
+        grad.colors       = [UIColor.appPrimary.cgColor, UIColor(hex: "#8D6E63").cgColor]
         grad.startPoint   = CGPoint(x: 0, y: 0.5)
         grad.endPoint     = CGPoint(x: 1, y: 0.5)
         grad.cornerRadius = 4
@@ -163,7 +163,7 @@ final class ProgressSectionView: UIView {
             string: "\(percent)%",
             attributes: [
                 .font:            UIFont(name: "GoyangIlsan R", size: 13) ?? .systemFont(ofSize: 13),
-                .foregroundColor: UIColor.primary,
+                .foregroundColor: UIColor.appPrimary,
             ]
         ))
         progressHeaderLabel.attributedText = attrStr

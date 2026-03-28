@@ -291,7 +291,7 @@ final class LineChartView: UIView {
 
         lineLayer.path        = linePath.cgPath
         lineLayer.fillColor   = UIColor.clear.cgColor
-        lineLayer.strokeColor = UIColor.primary.cgColor
+        lineLayer.strokeColor = UIColor.appPrimary.cgColor
         lineLayer.lineWidth   = 2.5
         lineLayer.lineCap     = .round
         lineLayer.lineJoin    = .round
@@ -312,7 +312,7 @@ final class LineChartView: UIView {
             let r: CGFloat = 4
             dot.frame           = CGRect(x: xPos(i) - r, y: yPos(val) - r, width: r * 2, height: r * 2)
             dot.cornerRadius    = r
-            dot.backgroundColor = UIColor.primary.cgColor
+            dot.backgroundColor = UIColor.appPrimary.cgColor
             dot.borderColor     = UIColor.white.cgColor
             dot.borderWidth     = 2
             layer.addSublayer(dot)
@@ -345,7 +345,7 @@ final class LineChartView: UIView {
         let lbl = UILabel()
         lbl.text      = text
         lbl.font      = UIFont(name: "GoyangIlsan R", size: 10) ?? .systemFont(ofSize: 10)
-        lbl.textColor = UIColor.primary.withAlphaComponent(0.5)
+        lbl.textColor = UIColor.appPrimary.withAlphaComponent(0.5)
         return lbl
     }
 }

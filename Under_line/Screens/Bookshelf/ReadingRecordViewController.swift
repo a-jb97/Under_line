@@ -268,7 +268,7 @@ final class ReadingRecordViewController: UIViewController {
         for pos in yPositions {
             let label = UILabel()
             label.font          = UIFont(name: "GoyangIlsan R", size: 10) ?? .systemFont(ofSize: 10)
-            label.textColor     = UIColor.primary.withAlphaComponent(0.5)
+            label.textColor     = UIColor.appPrimary.withAlphaComponent(0.5)
             label.textAlignment = .right
             label.frame         = CGRect(x: 2, y: pos - 6, width: 48, height: 12)
             chartCard.addSubview(label)
@@ -336,7 +336,7 @@ final class ReadingRecordViewController: UIViewController {
 
         chartLineLayer.path        = linePath.cgPath
         chartLineLayer.fillColor   = UIColor.clear.cgColor
-        chartLineLayer.strokeColor = UIColor.primary.cgColor
+        chartLineLayer.strokeColor = UIColor.appPrimary.cgColor
         chartLineLayer.lineWidth   = 2.5
         chartLineLayer.lineCap     = .round
         chartLineLayer.lineJoin    = .round
@@ -362,7 +362,7 @@ final class ReadingRecordViewController: UIViewController {
             let y = yPos(seconds: point.seconds, maxScale: maxScale)
 
             let dot = UIView()
-            dot.backgroundColor    = UIColor.primary
+            dot.backgroundColor    = UIColor.appPrimary
             dot.layer.cornerRadius = 4
             dot.layer.borderWidth  = 2
             dot.layer.borderColor  = UIColor.white.cgColor
@@ -373,7 +373,7 @@ final class ReadingRecordViewController: UIViewController {
             let xLabel = UILabel()
             xLabel.text          = point.label
             xLabel.font          = UIFont(name: "GoyangIlsan R", size: 10) ?? .systemFont(ofSize: 10)
-            xLabel.textColor     = UIColor.primary.withAlphaComponent(0.5)
+            xLabel.textColor     = UIColor.appPrimary.withAlphaComponent(0.5)
             xLabel.textAlignment = .center
             xLabel.sizeToFit()
             xLabel.center = CGPoint(x: x, y: chartBottomY + 20)
@@ -478,11 +478,11 @@ final class ReadingRecordViewController: UIViewController {
         let buttons = [tabDailyButton, tabWeeklyButton, tabMonthlyButton]
         for (i, btn) in buttons.enumerated() {
             if i == index {
-                btn.backgroundColor = UIColor.primary
+                btn.backgroundColor = UIColor.appPrimary
                 btn.setTitleColor(.white, for: .normal)
             } else {
                 btn.backgroundColor = .clear
-                btn.setTitleColor(UIColor.primary, for: .normal)
+                btn.setTitleColor(UIColor.appPrimary, for: .normal)
             }
         }
         tabSelectedRelay.accept(index)
@@ -495,8 +495,8 @@ final class ReadingRecordViewController: UIViewController {
         btn.setTitle(title, for: .normal)
         btn.titleLabel?.font = UIFont(name: "GoyangIlsan R", size: 11) ?? .systemFont(ofSize: 11)
         btn.layer.cornerRadius = 11
-        btn.backgroundColor    = selected ? UIColor.primary : .clear
-        btn.setTitleColor(selected ? .background : UIColor.primary, for: .normal)
+        btn.backgroundColor    = selected ? UIColor.appPrimary : .clear
+        btn.setTitleColor(selected ? .background : UIColor.appPrimary, for: .normal)
         return btn
     }
 }

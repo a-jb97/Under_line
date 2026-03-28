@@ -192,7 +192,7 @@ final class TimerDialView: UIView {
 
     private let knobNeedleView: UIView = {
         let v = UIView()
-        v.backgroundColor    = UIColor.primary
+        v.backgroundColor    = UIColor.appPrimary
         v.layer.cornerRadius = 1
         return v
     }()
@@ -203,7 +203,7 @@ final class TimerDialView: UIView {
         l.text = "00 : 00"
         l.font = UIFont(name: "GoyangIlsan R", size: 24)
             ?? .systemFont(ofSize: 24, weight: .light)
-        l.textColor   = UIColor.primary
+        l.textColor   = UIColor.appPrimary
         l.textAlignment = .center
         return l
     }()
@@ -213,7 +213,7 @@ final class TimerDialView: UIView {
         let btn = UIButton(type: .system)
         let cfg = UIImage.SymbolConfiguration(pointSize: 14, weight: .regular)
         btn.setImage(UIImage(systemName: "arrow.counterclockwise", withConfiguration: cfg), for: .normal)
-        btn.tintColor        = UIColor.primary.withAlphaComponent(0.6)
+        btn.tintColor        = UIColor.appPrimary.withAlphaComponent(0.6)
         btn.backgroundColor  = UIColor(hex: "#5d4037", alpha: CGFloat(0x12) / 255)
         btn.layer.cornerRadius = 22
         btn.layer.borderWidth  = 1
@@ -225,7 +225,7 @@ final class TimerDialView: UIView {
         let btn = UIButton(type: .system)
         let cfg = UIImage.SymbolConfiguration(pointSize: 18, weight: .medium)
         btn.setImage(UIImage(systemName: "play.fill", withConfiguration: cfg), for: .normal)
-        btn.tintColor          = UIColor.primary
+        btn.tintColor          = UIColor.appPrimary
         btn.layer.cornerRadius = 28
         btn.clipsToBounds      = true
         return btn
@@ -235,7 +235,7 @@ final class TimerDialView: UIView {
         let btn = UIButton(type: .system)
         let cfg = UIImage.SymbolConfiguration(pointSize: 14, weight: .regular)
         btn.setImage(UIImage(systemName: "stop.fill", withConfiguration: cfg), for: .normal)
-        btn.tintColor        = UIColor.primary.withAlphaComponent(0.6)
+        btn.tintColor        = UIColor.appPrimary.withAlphaComponent(0.6)
         btn.backgroundColor  = UIColor(hex: "#5d4037", alpha: CGFloat(0x12) / 255)
         btn.layer.cornerRadius = 22
         btn.layer.borderWidth  = 1
@@ -419,7 +419,7 @@ final class TimerDialView: UIView {
                          startAngle: -.pi / 2, endAngle: endAngle, clockwise: true)
         innerPath.close()
         innerArcLayer.path      = innerPath.cgPath
-        innerArcLayer.fillColor = UIColor.primary.withAlphaComponent(0.9).cgColor
+        innerArcLayer.fillColor = UIColor.appPrimary.withAlphaComponent(0.9).cgColor
     }
 
     private func updateNeedle(minutes: Int) {
@@ -498,7 +498,7 @@ final class TimerDialView: UIView {
 
             let layer = CAShapeLayer()
             layer.path        = path.cgPath
-            layer.strokeColor = UIColor.primary.cgColor
+            layer.strokeColor = UIColor.appPrimary.cgColor
             layer.lineWidth   = tickWidth
             layer.lineCap     = .round
             markingsView.layer.addSublayer(layer)
@@ -518,7 +518,7 @@ final class TimerDialView: UIView {
             let label = UILabel()
             label.text          = "\(minute)"
             label.font          = UIFont(name: "GoyangIlsan R", size: 11.7) ?? .systemFont(ofSize: 11.7)
-            label.textColor     = UIColor.primary
+            label.textColor     = UIColor.appPrimary
             label.textAlignment = .center
             label.sizeToFit()
             label.center = CGPoint(x: x, y: y)

@@ -78,17 +78,17 @@ final class BookshelfFilterViewController: UIViewController {
 
     private let divider: UIView = {
         let v = UIView()
-        v.backgroundColor = UIColor.primary.withAlphaComponent(0.2)
+        v.backgroundColor = UIColor.appPrimary.withAlphaComponent(0.2)
         return v
     }()
 
     private lazy var showAllButton: UIButton = {
         let btn = UIButton(type: .system)
         btn.setTitle("전부 표시", for: .normal)
-        btn.setTitleColor(UIColor.primary, for: .normal)
+        btn.setTitleColor(UIColor.appPrimary, for: .normal)
         btn.titleLabel?.font = UIFont(name: "GowunBatang-Regular", size: 16)
             ?? .systemFont(ofSize: 16)
-        btn.backgroundColor    = UIColor.primary.withAlphaComponent(0.1)
+        btn.backgroundColor    = UIColor.appPrimary.withAlphaComponent(0.1)
         btn.layer.cornerRadius = 12
         btn.clipsToBounds      = true
         return btn

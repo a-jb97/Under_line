@@ -40,7 +40,7 @@ final class DirectCollectViewController: UIViewController {
 
     private let handleView: UIView = {
         let v = UIView()
-        v.backgroundColor = UIColor.primary.withAlphaComponent(0.25)
+        v.backgroundColor = UIColor.appPrimary.withAlphaComponent(0.25)
         v.layer.cornerRadius = 2.5
         v.isUserInteractionEnabled = false
         return v
@@ -82,7 +82,7 @@ final class DirectCollectViewController: UIViewController {
         let v = UIView()
         v.layer.cornerRadius = 10
         v.layer.borderWidth = 1
-        v.layer.borderColor = UIColor.primary.cgColor
+        v.layer.borderColor = UIColor.appPrimary.cgColor
         v.clipsToBounds = true
         return v
     }()
@@ -91,7 +91,7 @@ final class DirectCollectViewController: UIViewController {
         let tv = UITextView()
         tv.backgroundColor = .clear
         tv.font = UIFont(name: "GoyangIlsan R", size: 14) ?? .systemFont(ofSize: 14)
-        tv.textColor = UIColor.primary
+        tv.textColor = UIColor.appPrimary
         tv.textContainerInset = .zero
         tv.textContainer.lineFragmentPadding = 0
         tv.delegate = self
@@ -102,7 +102,7 @@ final class DirectCollectViewController: UIViewController {
         let l = UILabel()
         l.text = "수집할 밑줄을 입력하세요"
         l.font = UIFont(name: "GoyangIlsan R", size: 14) ?? .systemFont(ofSize: 14)
-        l.textColor = UIColor.primary.withAlphaComponent(0.4)
+        l.textColor = UIColor.appPrimary.withAlphaComponent(0.4)
         l.numberOfLines = 0
         l.isUserInteractionEnabled = false
         return l
@@ -116,7 +116,7 @@ final class DirectCollectViewController: UIViewController {
         let v = UIView()
         v.layer.cornerRadius = 10
         v.layer.borderWidth = 1
-        v.layer.borderColor = UIColor.primary.cgColor
+        v.layer.borderColor = UIColor.appPrimary.cgColor
         return v
     }()
 
@@ -124,13 +124,13 @@ final class DirectCollectViewController: UIViewController {
         let tf = UITextField()
         tf.backgroundColor = .clear
         tf.font = UIFont(name: "GoyangIlsan R", size: 14) ?? .systemFont(ofSize: 14)
-        tf.textColor = UIColor.primary
+        tf.textColor = UIColor.appPrimary
         tf.keyboardType = .numberPad
         tf.attributedPlaceholder = NSAttributedString(
             string: "예: 42",
             attributes: [
                 .font: UIFont(name: "GoyangIlsan R", size: 14) ?? UIFont.systemFont(ofSize: 14),
-                .foregroundColor: UIColor.primary.withAlphaComponent(0.4),
+                .foregroundColor: UIColor.appPrimary.withAlphaComponent(0.4),
             ]
         )
         return tf
@@ -165,7 +165,7 @@ final class DirectCollectViewController: UIViewController {
         let v = UIView()
         v.layer.cornerRadius = 10
         v.layer.borderWidth = 1
-        v.layer.borderColor = UIColor.primary.cgColor
+        v.layer.borderColor = UIColor.appPrimary.cgColor
         v.clipsToBounds = true
         return v
     }()
@@ -174,7 +174,7 @@ final class DirectCollectViewController: UIViewController {
         let tv = UITextView()
         tv.backgroundColor = .clear
         tv.font = UIFont(name: "GoyangIlsan R", size: 14) ?? .systemFont(ofSize: 14)
-        tv.textColor = UIColor.primary
+        tv.textColor = UIColor.appPrimary
         tv.textContainerInset = .zero
         tv.textContainer.lineFragmentPadding = 0
         tv.delegate = self
@@ -185,7 +185,7 @@ final class DirectCollectViewController: UIViewController {
         let l = UILabel()
         l.text = "이 밑줄에 대한 나의 생각..."
         l.font = UIFont(name: "GoyangIlsan R", size: 14) ?? .systemFont(ofSize: 14)
-        l.textColor = UIColor.primary.withAlphaComponent(0.4)
+        l.textColor = UIColor.appPrimary.withAlphaComponent(0.4)
         l.numberOfLines = 0
         l.isUserInteractionEnabled = false
         return l
@@ -535,7 +535,7 @@ private final class NeumorphicChipButton: UIControl {
         let nameLabel = UILabel()
         nameLabel.text = emotion.label
         nameLabel.font = UIFont(name: "GoyangIlsan R", size: 10) ?? .systemFont(ofSize: 10)
-        nameLabel.textColor = UIColor.primary
+        nameLabel.textColor = UIColor.appPrimary
         nameLabel.textAlignment = .center
         nameLabel.isUserInteractionEnabled = false
 

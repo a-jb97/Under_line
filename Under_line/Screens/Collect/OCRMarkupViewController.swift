@@ -61,10 +61,10 @@ final class OCRMarkupViewController: UIViewController {
             attributes: AttributeContainer([
                 .font: UIFont(name: "GowunBatang-Bold", size: 14)
                     ?? UIFont.systemFont(ofSize: 14, weight: .semibold),
-                .foregroundColor: UIColor.primary,
+                .foregroundColor: UIColor.appPrimary,
             ])
         )
-        config.baseForegroundColor = UIColor.primary
+        config.baseForegroundColor = UIColor.appPrimary
         config.background.backgroundColor = UIColor.background
         config.background.cornerRadius = 12
         config.contentInsets = NSDirectionalEdgeInsets(top: 0, leading: 14, bottom: 0, trailing: 14)
@@ -522,7 +522,7 @@ private final class DrawingOverlayView: UIView {
     // MARK: Drawing
 
     override func draw(_ rect: CGRect) {
-        UIColor.primary.setStroke()
+        UIColor.appPrimary.setStroke()
         let stroke: (UIBezierPath) -> Void = {
             $0.lineWidth = 6; $0.lineCapStyle = .round; $0.lineJoinStyle = .round; $0.stroke()
         }

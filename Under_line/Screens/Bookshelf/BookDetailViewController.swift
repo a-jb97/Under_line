@@ -70,7 +70,7 @@ final class BookDetailViewController: UIViewController {
         let btn = UIButton(type: .system)
         let cfg = UIImage.SymbolConfiguration(pointSize: 16, weight: .regular)
         btn.setImage(UIImage(systemName: "timer", withConfiguration: cfg), for: .normal)
-        btn.tintColor = UIColor.primary
+        btn.tintColor = UIColor.appPrimary
         btn.layer.cornerRadius = 20
         btn.clipsToBounds = true
         return btn
@@ -99,8 +99,8 @@ final class BookDetailViewController: UIViewController {
     // Page Control
     private let pageControl: UIPageControl = {
         let pc = UIPageControl()
-        pc.currentPageIndicatorTintColor = UIColor.primary
-        pc.pageIndicatorTintColor = UIColor.primary.withAlphaComponent(0.3)
+        pc.currentPageIndicatorTintColor = UIColor.appPrimary
+        pc.pageIndicatorTintColor = UIColor.appPrimary.withAlphaComponent(0.3)
         pc.hidesForSinglePage = true
         return pc
     }()
@@ -119,7 +119,7 @@ final class BookDetailViewController: UIViewController {
 
     private let bookCoverView: UIImageView = {
         let iv = UIImageView()
-        iv.backgroundColor   = UIColor.primary
+        iv.backgroundColor   = UIColor.appPrimary
         iv.layer.cornerRadius = 3
         iv.clipsToBounds      = true
         iv.contentMode        = .scaleAspectFill
@@ -140,7 +140,7 @@ final class BookDetailViewController: UIViewController {
         l.text      = "에리히 프롬"
         l.font      = UIFont(name: "GowunBatang-Regular", size: 13)
             ?? .systemFont(ofSize: 13)
-        l.textColor = UIColor.primary
+        l.textColor = UIColor.appPrimary
         return l
     }()
 
@@ -149,13 +149,13 @@ final class BookDetailViewController: UIViewController {
         l.text      = "문예출판사 · 2023"
         l.font      = UIFont(name: "GoyangIlsan R", size: 11)
             ?? .systemFont(ofSize: 11)
-        l.textColor = UIColor.primary.withAlphaComponent(0.5)
+        l.textColor = UIColor.appPrimary.withAlphaComponent(0.5)
         return l
     }()
 
     private let genreTagView: UIView = {
         let v = UIView()
-        v.backgroundColor   = UIColor.primary.withAlphaComponent(0.7)
+        v.backgroundColor   = UIColor.appPrimary.withAlphaComponent(0.7)
         v.layer.cornerRadius = 3
         return v
     }()
@@ -174,7 +174,7 @@ final class BookDetailViewController: UIViewController {
         btn.setTitle("더 보기", for: .normal)
         btn.titleLabel?.font = UIFont(name: "GoyangIlsan R", size: 11)
             ?? .systemFont(ofSize: 11)
-        btn.setTitleColor(UIColor.primary.withAlphaComponent(0.7), for: .normal)
+        btn.setTitleColor(UIColor.appPrimary.withAlphaComponent(0.7), for: .normal)
         btn.contentHorizontalAlignment = .right
         return btn
     }()
@@ -184,7 +184,7 @@ final class BookDetailViewController: UIViewController {
         l.numberOfLines = 0
         l.font = UIFont(name: "GoyangIlsan R", size: 12)
             ?? .systemFont(ofSize: 12)
-        l.textColor = UIColor.primary.withAlphaComponent(0.75)
+        l.textColor = UIColor.appPrimary.withAlphaComponent(0.75)
         l.isHidden = true
         return l
     }()
@@ -442,7 +442,7 @@ final class BookDetailViewController: UIViewController {
             string: book.description,
             attributes: [
                 .font:            UIFont(name: "GoyangIlsan R", size: 12) ?? .systemFont(ofSize: 12),
-                .foregroundColor: UIColor.primary.withAlphaComponent(0.75),
+                .foregroundColor: UIColor.appPrimary.withAlphaComponent(0.75),
                 .paragraphStyle:  descStyle,
             ]
         )
@@ -551,7 +551,7 @@ final class BookDetailViewController: UIViewController {
             string: sentence.sentence,
             attributes: [
                 .font:            UIFont(name: "GowunBatang-Regular", size: 18) ?? .systemFont(ofSize: 18),
-                .foregroundColor: UIColor.primary,
+                .foregroundColor: UIColor.appPrimary,
                 .paragraphStyle:  style,
             ]
         )
@@ -559,7 +559,7 @@ final class BookDetailViewController: UIViewController {
         let pageLabel = UILabel()
         pageLabel.text = "p.\(sentence.page)"
         pageLabel.font = UIFont(name: "GoyangIlsan R", size: 13) ?? .systemFont(ofSize: 13)
-        pageLabel.textColor = UIColor.primary.withAlphaComponent(0.5)
+        pageLabel.textColor = UIColor.appPrimary.withAlphaComponent(0.5)
         pageLabel.textAlignment = .right
 
         let emotionImageView = UIImageView(image: sentence.emotion.emoji)
@@ -617,7 +617,7 @@ final class BookDetailViewController: UIViewController {
             string: "첫 밑줄을 등록해보세요.",
             attributes: [
                 .font:            UIFont(name: "GowunBatang-Regular", size: 18) ?? .systemFont(ofSize: 18),
-                .foregroundColor: UIColor.primary,
+                .foregroundColor: UIColor.appPrimary,
                 .paragraphStyle:  style,
             ]
         )

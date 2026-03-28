@@ -74,7 +74,7 @@ final class ShelfRowView: UIView {
         wrapper.snp.makeConstraints { make in make.height.equalTo(117) }
 
         if let coverURL = book.coverURL {
-            container.backgroundColor = UIColor.primary
+            container.backgroundColor = UIColor.appPrimary
             let iv = UIImageView()
             iv.contentMode = .scaleAspectFill
             iv.clipsToBounds = true
@@ -96,7 +96,7 @@ final class ShelfRowView: UIView {
                 wrapper.superview?.setNeedsLayout()
             }
         } else {
-            container.backgroundColor = UIColor.primary
+            container.backgroundColor = UIColor.appPrimary
             let titleLabel = UILabel()
             titleLabel.text          = book.title
             titleLabel.font          = UIFont(name: "GowunBatang-Bold", size: 10) ?? .boldSystemFont(ofSize: 10)

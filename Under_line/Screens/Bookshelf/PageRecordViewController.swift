@@ -172,7 +172,7 @@ final class PageRecordViewController: UIViewController {
                 guard let self, let page = Int(text) else { return }
                 if page > self.itemPage {
                     var style = ToastStyle()
-                    style.backgroundColor = UIColor.primary.withAlphaComponent(0.9)
+                    style.backgroundColor = UIColor.appPrimary.withAlphaComponent(0.9)
                     style.messageFont = UIFont(name: "GowunBatang-Regular", size: 14) ?? .systemFont(ofSize: 14)
                     self.view.window?.makeToast(
                         "전체 페이지보다 많은 페이지는 기록할 수 없습니다.",

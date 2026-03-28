@@ -604,7 +604,7 @@ final class MonthYearPickerViewController: UIViewController,
         } else {
             isFuture = selectedYear == nowYear && (row + 1) > nowMonth
         }
-        lbl.textColor = isFuture ? .tertiaryLabel : .primary
+        lbl.textColor = isFuture ? .tertiaryLabel : .appPrimary
         return lbl
     }
 

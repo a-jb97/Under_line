@@ -86,7 +86,7 @@ final class SettingsViewController: UIViewController {
 
             if hasSeparator {
                 let sep = UIView()
-                sep.backgroundColor = UIColor.primary.withAlphaComponent(0.12)
+                sep.backgroundColor = UIColor.appPrimary.withAlphaComponent(0.12)
                 row.addSubview(sep)
                 sep.snp.makeConstraints { make in
                     make.leading.equalToSuperview().inset(24)
@@ -133,7 +133,7 @@ final class SettingsViewController: UIViewController {
         let icon = UIImageView()
         icon.image = UIImage(systemName: "chevron.right",
                              withConfiguration: UIImage.SymbolConfiguration(pointSize: 14, weight: .regular))
-        icon.tintColor = .primary
+        icon.tintColor = .appPrimary
         icon.contentMode = .scaleAspectFit
         icon.isUserInteractionEnabled = false
 
@@ -167,7 +167,7 @@ final class SettingsViewController: UIViewController {
         versionLabel.text = version
         versionLabel.font = UIFont(name: "GowunBatang-Regular", size: 16)
             ?? .systemFont(ofSize: 16)
-        versionLabel.textColor = UIColor.primary.withAlphaComponent(0.5)
+        versionLabel.textColor = UIColor.appPrimary.withAlphaComponent(0.5)
 
         container.addSubview(label)
         container.addSubview(versionLabel)
