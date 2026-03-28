@@ -15,6 +15,10 @@ final class AppContainer {
     let sentenceRepository: SentenceRepositoryProtocol
     let readingSessionRepository: ReadingSessionRepositoryProtocol
 
+    func reloadBookRelay() {
+        (bookRepository as? BookRepository)?.reloadRelay()
+    }
+
     private init() {
         modelContainer = try! ModelContainer(for: BookRecord.self, SentenceRecord.self, ReadingSessionRecord.self)
         bookRepository = BookRepository(

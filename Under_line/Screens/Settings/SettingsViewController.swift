@@ -2,17 +2,23 @@
 //  SettingsViewController.swift
 //  Under_line
 //
-//  설정 탭 — 백업 / 의견 보내기 / 앱 리뷰 / 이용약관 / 버전
+//  설정 탭 — 백업 / 불러오기 / 의견 보내기 / 앱 리뷰 / 이용약관 / 버전
 //
 
 import UIKit
 import SnapKit
 import RxSwift
 import RxCocoa
+import UniformTypeIdentifiers
+import Toast
 
 final class SettingsViewController: UIViewController {
 
+    private let viewModel = SettingsViewModel()
+    private let restoreFilePickedRelay = PublishRelay<URL>()
     private let disposeBag = DisposeBag()
+
+    private var isImportMode = false
 
     // MARK: - UI
 
@@ -31,10 +37,11 @@ final class SettingsViewController: UIViewController {
         return v
     }()
 
-    private lazy var backupRow:   UIButton = makeChevronRow(title: "내 밑줄 기록 백업하기")
+    private lazy var backupRow:  UIButton = makeChevronRow(title: "내 밑줄 기록 백업하기")
+    private lazy var restoreRow: UIButton = makeChevronRow(title: "내 밑줄 기록 불러오기")
     private lazy var feedbackRow: UIButton = makeChevronRow(title: "의견 보내기")
     private lazy var reviewRow:   UIButton = makeChevronRow(title: "앱 리뷰 작성하기")
-    private lazy var termsRow:    UIButton = makeChevronRow(title: "서비스 이용약관")
+    private lazy var termsRow:    UIButton = makeChevronRow(title: "개인정보 처리방침")
     private lazy var versionRow:  UIView   = makeVersionRow(title: "앱 버전", version: "1.0.0")
 
     // MARK: - Lifecycle
@@ -57,6 +64,7 @@ final class SettingsViewController: UIViewController {
 
         let rows: [(UIView, Bool)] = [
             (backupRow,   true),
+            (restoreRow,  true),
             (feedbackRow, true),
             (reviewRow,   true),
             (termsRow,    true),
@@ -179,16 +187,42 @@ final class SettingsViewController: UIViewController {
     // MARK: - Bindings
 
     private func bindActions() {
-        backupRow.rx.tap
+        let output = viewModel.transform(input: SettingsViewModel.Input(
+            backupTap:         backupRow.rx.tap.asObservable(),
+            restoreFilePicked: restoreFilePickedRelay.asObservable()
+        ))
+
+        output.exportFileURL
+            .observe(on: MainScheduler.instance)
+            .subscribe(onNext: { [weak self] url in
+                guard let self else { return }
+                let picker = UIDocumentPickerViewController(forExporting: [url], asCopy: true)
+                picker.delegate = self
+                self.isImportMode = false
+                self.present(picker, animated: true)
+            })
+            .disposed(by: disposeBag)
+
+        output.toastMessage
+            .observe(on: MainScheduler.instance)
+            .subscribe(onNext: { [weak self] message in
+                self?.view.makeToast(message, duration: 2.5, position: .bottom)
+            })
+            .disposed(by: disposeBag)
+
+        restoreRow.rx.tap
             .subscribe(onNext: { [weak self] in
-                // TODO: SwiftData 백업 기능 연결
-                self?.showAlert(message: "백업 기능은 준비 중입니다.")
+                guard let self else { return }
+                let picker = UIDocumentPickerViewController(forOpeningContentTypes: [.json])
+                picker.delegate = self
+                self.isImportMode = true
+                self.present(picker, animated: true)
             })
             .disposed(by: disposeBag)
 
         feedbackRow.rx.tap
             .subscribe(onNext: { _ in
-                guard let url = URL(string: "mailto:feedback@underline.app") else { return }
+                guard let url = URL(string: "a_jb97@naver.com") else { return }
                 UIApplication.shared.open(url)
             })
             .disposed(by: disposeBag)
@@ -203,16 +237,40 @@ final class SettingsViewController: UIViewController {
 
         termsRow.rx.tap
             .subscribe(onNext: { _ in
-                // TODO: 실제 이용약관 URL로 교체
-                guard let url = URL(string: "https://underline.app/terms") else { return }
+                guard let url = URL(string: "https://tide-animal-6d1.notion.site/331dbf174e6680b6883fec57dc7d074f") else { return }
                 UIApplication.shared.open(url)
             })
             .disposed(by: disposeBag)
     }
+}
 
-    private func showAlert(message: String) {
-        let alert = UIAlertController(title: nil, message: message, preferredStyle: .alert)
-        alert.addAction(UIAlertAction(title: "확인", style: .default))
+// MARK: - UIDocumentPickerDelegate
+
+extension SettingsViewController: UIDocumentPickerDelegate {
+
+    func documentPicker(_ controller: UIDocumentPickerViewController, didPickDocumentsAt urls: [URL]) {
+        if isImportMode {
+            guard let url = urls.first else { return }
+            showRestoreConfirmAlert(url: url)
+        } else {
+            view.makeToast("백업 파일이 저장되었습니다.", duration: 2.5, position: .bottom)
+        }
+    }
+
+    func documentPickerWasCancelled(_ controller: UIDocumentPickerViewController) {
+        isImportMode = false
+    }
+
+    private func showRestoreConfirmAlert(url: URL) {
+        let alert = UIAlertController(
+            title:   "밑줄 기록 불러오기",
+            message: "현재 저장된 모든 데이터가 백업 파일로 교체됩니다.\n계속하시겠습니까?",
+            preferredStyle: .alert
+        )
+        alert.addAction(UIAlertAction(title: "취소", style: .cancel))
+        alert.addAction(UIAlertAction(title: "불러오기", style: .destructive) { [weak self] _ in
+            self?.restoreFilePickedRelay.accept(url)
+        })
         present(alert, animated: true)
     }
 }

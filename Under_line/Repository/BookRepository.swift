@@ -127,6 +127,12 @@ final class BookRepository: BookRepositoryProtocol {
         }
     }
 
+    // MARK: Internal
+
+    func reloadRelay() {
+        refreshRelay()
+    }
+
     // MARK: Private
 
     private func refreshRelay() {
