@@ -496,7 +496,7 @@ final class ReadingRecordViewController: UIViewController {
         btn.titleLabel?.font = UIFont(name: "GoyangIlsan R", size: 11) ?? .systemFont(ofSize: 11)
         btn.layer.cornerRadius = 11
         btn.backgroundColor    = selected ? UIColor.primary : .clear
-        btn.setTitleColor(selected ? .white : UIColor.primary, for: .normal)
+        btn.setTitleColor(selected ? .background : UIColor.primary, for: .normal)
         return btn
     }
 }

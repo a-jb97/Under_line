@@ -15,6 +15,7 @@ protocol SentenceRepositoryProtocol {
     func saveSentence(_ sentence: Sentence) -> Completable
     func fetchSentences(for bookISBN: String) -> Single<[Sentence]>
     func deleteSentence(_ sentence: Sentence) -> Completable
+    func fetchAllSentences() -> Single<[Sentence]>
 }
 
 // MARK: - Concrete Implementation
@@ -67,6 +68,21 @@ final class SentenceRepository: SentenceRepositoryProtocol {
             do {
                 let descriptor = FetchDescriptor<SentenceRecord>(
                     predicate: #Predicate { $0.bookISBN == bookISBN },
+                    sortBy: [SortDescriptor(\SentenceRecord.date, order: .reverse)]
+                )
+                single(.success(try self.modelContext.fetch(descriptor).map { $0.toDomain() }))
+            } catch {
+                single(.failure(error))
+            }
+            return Disposables.create()
+        }
+    }
+
+    func fetchAllSentences() -> Single<[Sentence]> {
+        Single.create { [weak self] single in
+            guard let self else { single(.success([])); return Disposables.create() }
+            do {
+                let descriptor = FetchDescriptor<SentenceRecord>(
                     sortBy: [SortDescriptor(\SentenceRecord.date, order: .reverse)]
                 )
                 single(.success(try self.modelContext.fetch(descriptor).map { $0.toDomain() }))
