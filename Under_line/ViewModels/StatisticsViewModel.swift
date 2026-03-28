@@ -110,8 +110,11 @@ final class StatisticsViewModel {
         var counts: [String: Int] = [:]
         for sentence in sentences {
             let fullAuthor  = bookMap[sentence.bookISBN]?.author ?? ""
-            let firstAuthor = fullAuthor.components(separatedBy: ",").first?
+            let rawFirst = fullAuthor.components(separatedBy: ",").first?
                 .trimmingCharacters(in: .whitespaces) ?? ""
+            let firstAuthor = rawFirst
+                .replacingOccurrences(of: "\\(지은이\\)", with: "", options: .regularExpression)
+                .trimmingCharacters(in: .whitespaces)
             let key = firstAuthor.isEmpty ? "알 수 없음" : firstAuthor
             counts[key, default: 0] += 1
         }
