@@ -2,8 +2,6 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-	<key>UIUserInterfaceStyle</key>
-	<string>Light</string>
 	<key>UIAppFonts</key>
 	<array>
 		<string>GowunBatang-Bold.ttf</string>
@@ -11,8 +9,6 @@
 		<string>고양일산 L.TTF</string>
 		<string>고양일산 R.TTF</string>
 	</array>
-	<key>NSCameraUsageDescription</key>
-	<string>책의 밑줄 부분을 촬영하여 문장을 수집합니다.</string>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>
