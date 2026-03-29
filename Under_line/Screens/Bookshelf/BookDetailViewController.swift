@@ -29,6 +29,7 @@ final class BookDetailViewController: UIViewController {
     private var isEditMode = false
     private var currentItemPage: Int?
     private var latestCurrentPage: Int?
+    private var flippedSentenceIDs: Set<UUID> = []
 
     private let scrollView: UIScrollView = {
         let sv = UIScrollView()
@@ -541,6 +542,9 @@ final class BookDetailViewController: UIViewController {
 
     private func makePageView(for sentence: Sentence) -> UIView {
         let page = UIView()
+
+        // ── Front view (문장) ──────────────────────────────────
+        let frontView = UIView()
         let style = NSMutableParagraphStyle()
         style.lineHeightMultiple = 1.2
         style.alignment = .center
@@ -566,9 +570,9 @@ final class BookDetailViewController: UIViewController {
         let emotionImageView = UIImageView(image: sentence.emotion.emoji)
         emotionImageView.contentMode = .scaleAspectFit
 
-        page.addSubview(textLabel)
-        page.addSubview(pageLabel)
-        page.addSubview(emotionImageView)
+        frontView.addSubview(textLabel)
+        frontView.addSubview(pageLabel)
+        frontView.addSubview(emotionImageView)
 
         textLabel.snp.makeConstraints { make in
             make.leading.trailing.equalToSuperview().inset(24)
@@ -584,6 +588,79 @@ final class BookDetailViewController: UIViewController {
             make.size.equalTo(18)
         }
 
+        page.addSubview(frontView)
+        frontView.snp.makeConstraints { make in make.edges.equalToSuperview() }
+
+        // ── Back view (메모) ───────────────────────────────────
+        let backView = UIView()
+
+        let memoStyle = NSMutableParagraphStyle()
+        memoStyle.lineHeightMultiple = 1.5
+        memoStyle.alignment = .center
+
+        let memoLabel = UILabel()
+        memoLabel.numberOfLines = 0
+        memoLabel.textAlignment = .center
+        if let memo = sentence.memo, !memo.isEmpty {
+            memoLabel.attributedText = NSAttributedString(
+                string: memo,
+                attributes: [
+                    .font:            UIFont(name: "GowunBatang-Regular", size: 16) ?? .systemFont(ofSize: 16),
+                    .foregroundColor: UIColor.appPrimary,
+                    .paragraphStyle:  memoStyle,
+                ]
+            )
+        } else {
+            memoLabel.attributedText = NSAttributedString(
+                string: "등록된 메모 없음",
+                attributes: [
+                    .font:            UIFont(name: "GowunBatang-Regular", size: 16) ?? .systemFont(ofSize: 16),
+                    .foregroundColor: UIColor.appPrimary.withAlphaComponent(0.35),
+                    .paragraphStyle:  memoStyle,
+                ]
+            )
+        }
+
+        backView.addSubview(memoLabel)
+
+        memoLabel.snp.makeConstraints { make in
+            make.leading.trailing.equalToSuperview().inset(24)
+            make.center.equalToSuperview()
+        }
+
+        page.addSubview(backView)
+        backView.snp.makeConstraints { make in make.edges.equalToSuperview() }
+
+        // 초기 flip 상태 반영
+        let isFlipped = flippedSentenceIDs.contains(sentence.id)
+        frontView.isHidden = isFlipped
+        backView.isHidden  = !isFlipped
+
+        // ── 탭 버튼 (전체 영역, 편집 모드에서는 비활성) ──────────
+        let tapButton = UIButton(type: .system)
+        tapButton.backgroundColor = .clear
+        page.addSubview(tapButton)
+        tapButton.snp.makeConstraints { make in make.edges.equalToSuperview() }
+
+        tapButton.rx.tap
+            .subscribe(onNext: { [weak self, weak page, weak frontView, weak backView] in
+                guard let self, let page, let frontView, let backView,
+                      !self.isEditMode else { return }
+                let nowFlipped = self.flippedSentenceIDs.contains(sentence.id)
+                if nowFlipped {
+                    self.flippedSentenceIDs.remove(sentence.id)
+                } else {
+                    self.flippedSentenceIDs.insert(sentence.id)
+                }
+                let toFlip = !nowFlipped
+                UIView.transition(with: page, duration: 0.45, options: .transitionFlipFromRight, animations: {
+                    frontView.isHidden = toFlip
+                    backView.isHidden  = !toFlip
+                }, completion: nil)
+            })
+            .disposed(by: disposeBag)
+
+        // ── 편집 모드 삭제 버튼 (탭 버튼 위) ─────────────────────
         if isEditMode {
             let deleteButton = UIButton(type: .system)
             let cfg = UIImage.SymbolConfiguration(pointSize: 14, weight: .medium)
