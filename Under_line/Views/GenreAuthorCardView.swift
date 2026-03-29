@@ -63,7 +63,20 @@ final class GenreAuthorCardView: UIView {
             ?? .systemFont(ofSize: 18, weight: .semibold)
         titleLabel.textColor = .accent
 
-        let vStack = UIStackView(arrangedSubviews: [titleLabel, segmentControl, donutView, legendStack])
+        let segmentContainer = UIView()
+        segmentContainer.addSubview(segmentControl)
+        if UIDevice.current.userInterfaceIdiom == .pad {
+            segmentControl.snp.makeConstraints { make in
+                make.top.bottom.trailing.equalToSuperview()
+                make.width.equalTo(200)
+            }
+        } else {
+            segmentControl.snp.makeConstraints { make in
+                make.edges.equalToSuperview()
+            }
+        }
+
+        let vStack = UIStackView(arrangedSubviews: [titleLabel, segmentContainer, donutView, legendStack])
         vStack.axis = .vertical
         vStack.spacing = 16
 
@@ -72,7 +85,7 @@ final class GenreAuthorCardView: UIView {
             make.edges.equalToSuperview().inset(20)
         }
 
-        segmentControl.snp.makeConstraints { $0.height.equalTo(32) }
+        segmentContainer.snp.makeConstraints { $0.height.equalTo(32) }
         donutView.snp.makeConstraints { $0.height.equalTo(180) }
 
         segmentControl.selectionChanged

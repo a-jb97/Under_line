@@ -142,6 +142,11 @@ final class BookshelfViewController: UIViewController {
 
     override var preferredStatusBarStyle: UIStatusBarStyle { .darkContent }
 
+    override func viewWillTransition(to size: CGSize, with coordinator: UIViewControllerTransitionCoordinator) {
+        super.viewWillTransition(to: size, with: coordinator)
+        layoutReady = false  // viewDidLayoutSubviews가 새 bounds로 rebuildShelfPages() 재실행
+    }
+
     // MARK: - Setup
 
     private func setupUI() {
@@ -198,7 +203,7 @@ final class BookshelfViewController: UIViewController {
         }
 
         bookshelfScrollView.snp.makeConstraints { make in
-            make.top.equalTo(headerView.snp.bottom).offset(16)
+            make.top.equalTo(headerView.snp.bottom)
             make.leading.trailing.equalToSuperview().inset(24)
             make.bottom.equalTo(fabButton.snp.top).offset(-16)
         }
@@ -219,7 +224,14 @@ final class BookshelfViewController: UIViewController {
         bookshelfScrollView.subviews.forEach { $0.removeFromSuperview() }
         shelfOverlayView.subviews.forEach    { $0.removeFromSuperview() }
 
-        let booksPerRow  = 3
+        let isIPad = UIDevice.current.userInterfaceIdiom == .pad
+        let isLandscape = pageWidth > pageHeight
+        let booksPerRow: Int = isIPad ? (isLandscape ? 8 : (pageWidth >= 900 ? 5 : 4)) : 3
+        let bookWidth: CGFloat = isIPad
+            ? (pageWidth - 20.0 * CGFloat(booksPerRow - 1)) / CGFloat(booksPerRow) * 0.652
+            : 82
+        let bookHeight: CGFloat = min(ceil(bookWidth * 117.0 / 88.0), 180.0)
+
         let rowsPerPage  = 3
         let booksPerPage = booksPerRow * rowsPerPage
         let pageCount    = max(1, Int(ceil(Double(savedBooks.count) / Double(booksPerPage))))
@@ -242,7 +254,7 @@ final class BookshelfViewController: UIViewController {
                 while rowBooks.count < booksPerRow { rowBooks.append(nil) }
                 rows.append(ShelfPageView.RowData(books: rowBooks))
             }
-            let pageView = ShelfPageView(rows: rows, isEditing: isEditMode, onDelete: { [weak self] book in
+            let pageView = ShelfPageView(rows: rows, bookWidth: bookWidth, isEditing: isEditMode, onDelete: { [weak self] book in
                 self?.deleteBook(book)
             }, onTap: { [weak self] book in
                 guard let self else { return }
@@ -258,15 +270,14 @@ final class BookshelfViewController: UIViewController {
             )
         }
 
-        setupFixedShelfBoards(pageHeight: pageHeight)
+        setupFixedShelfBoards(pageHeight: pageHeight, bookHeight: bookHeight, isIPad: isIPad)
     }
 
     /// 스크롤과 무관하게 고정되는 선반 보드를 오버레이에 추가
-    private func setupFixedShelfBoards(pageHeight: CGFloat) {
-        // ShelfRowView 높이: top inset(10) + 책 높이(117) + 선반 높이(22) = 149
-        let rowHeight: CGFloat = 149
+    private func setupFixedShelfBoards(pageHeight: CGFloat, bookHeight: CGFloat, isIPad: Bool = false) {
+        let rowHeight: CGFloat = 10 + bookHeight + 22
         let rowCount: CGFloat  = 3
-        let rowsHeight = rowHeight * rowCount                                // 447
+        let rowsHeight = rowHeight * rowCount
         let stackHeight = 0.5 * pageHeight + rowsHeight / 2
         let stackMinY   = (pageHeight - stackHeight) / 2
         let spacing     = rowCount > 1 ? (stackHeight - rowsHeight) / (rowCount - 1) : 0
@@ -274,13 +285,19 @@ final class BookshelfViewController: UIViewController {
         var lastShelfMaxY: CGFloat = 0
         for i in 0..<Int(rowCount) {
             let rowMinY  = stackMinY + CGFloat(i) * (rowHeight + spacing)
-            // 선반 보드 Y = 행 시작 + top inset(10) + 책 높이(117)
-            let shelfY   = rowMinY + 127
+            // 선반 보드 Y = 행 시작 + top inset(10) + 책 높이
+            let shelfY   = rowMinY + 10 + bookHeight
 
+            let shelfWidth = isIPad
+                ? shelfOverlayView.bounds.width * 0.85
+                : shelfOverlayView.bounds.width
+            let shelfX = isIPad
+                ? shelfOverlayView.bounds.width * 0.075
+                : 0.0
             let boardFrame = CGRect(
-                x:      0,
+                x:      shelfX,
                 y:      shelfY,
-                width:  shelfOverlayView.bounds.width,
+                width:  shelfWidth,
                 height: 22
             )
 

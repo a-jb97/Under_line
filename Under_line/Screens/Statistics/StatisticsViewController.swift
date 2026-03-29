@@ -102,8 +102,9 @@ final class StatisticsViewController: UIViewController {
         contentStack.snp.makeConstraints { make in
             make.top.equalToSuperview()
             make.bottom.equalToSuperview().inset(24)
-            make.leading.trailing.equalToSuperview().inset(24)
-            make.width.equalTo(scrollView).offset(-48)
+            make.width.lessThanOrEqualTo(700)
+            make.width.equalTo(scrollView).offset(-48).priority(.high)
+            make.centerX.equalTo(scrollView)
         }
     }
 

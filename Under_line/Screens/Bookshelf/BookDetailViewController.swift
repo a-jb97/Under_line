@@ -316,10 +316,11 @@ final class BookDetailViewController: UIViewController {
         }
 
         // Quote Card (height: 266, padding: [24,24,20,24])
+        let quoteCardWidthInset: CGFloat = UIDevice.current.userInterfaceIdiom == .pad ? 100 : 24
         quoteCard.snp.makeConstraints { make in
             make.top.equalToSuperview().offset(12)
-            make.leading.trailing.equalToSuperview().inset(24)
-            make.height.equalTo(266)
+            make.leading.trailing.equalToSuperview().inset(quoteCardWidthInset)
+            make.height.equalTo(quoteCard.snp.width).multipliedBy(0.7)
         }
 
         quoteScrollView.snp.makeConstraints { make in

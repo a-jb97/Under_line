@@ -33,7 +33,7 @@ final class BookshelfFilterViewController: UIViewController {
 
     private let titleLabel: UILabel = {
         let l = UILabel()
-        l.text = "책 검색"
+        l.text = "책 필터"
         l.font = UIFont(name: "GowunBatang-Bold", size: 20)
             ?? .systemFont(ofSize: 20, weight: .bold)
         l.textColor = UIColor.accent

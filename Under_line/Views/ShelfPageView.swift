@@ -14,15 +14,16 @@ import Kingfisher
 /// 책 + 책장 보드 1행
 final class ShelfRowView: UIView {
 
-    init(books: [Book?], isEditing: Bool = false, onDelete: ((Book) -> Void)? = nil, onTap: ((Book) -> Void)? = nil) {
+    init(books: [Book?], bookWidth: CGFloat = 88, isEditing: Bool = false, onDelete: ((Book) -> Void)? = nil, onTap: ((Book) -> Void)? = nil) {
         super.init(frame: .zero)
-        setupBooks(books, isEditing: isEditing, onDelete: onDelete, onTap: onTap)
+        setupBooks(books, bookWidth: bookWidth, isEditing: isEditing, onDelete: onDelete, onTap: onTap)
     }
 
     required init?(coder: NSCoder) { fatalError() }
 
-    private func setupBooks(_ books: [Book?], isEditing: Bool, onDelete: ((Book) -> Void)?, onTap: ((Book) -> Void)?) {
-        let bookViews: [UIView] = books.map { makeBookView($0, isEditing: isEditing, onDelete: onDelete, onTap: onTap) }
+    private func setupBooks(_ books: [Book?], bookWidth: CGFloat, isEditing: Bool, onDelete: ((Book) -> Void)?, onTap: ((Book) -> Void)?) {
+        let bookHeight: CGFloat = min(ceil(bookWidth * 117.0 / 88.0), 180.0)
+        let bookViews: [UIView] = books.map { makeBookView($0, bookWidth: bookWidth, bookHeight: bookHeight, isEditing: isEditing, onDelete: onDelete, onTap: onTap) }
 
         let booksStack = UIStackView(arrangedSubviews: bookViews)
         booksStack.axis      = .horizontal
@@ -30,19 +31,19 @@ final class ShelfRowView: UIView {
         booksStack.alignment = .bottom
 
         bookViews.forEach { $0.snp.makeConstraints { make in
-            make.width.equalTo(88)
+            make.width.equalTo(bookWidth)
         }}
 
         addSubview(booksStack)
 
         booksStack.snp.makeConstraints { make in
             make.centerX.equalToSuperview()
-            make.top.equalToSuperview().inset(10)
-            make.bottom.equalToSuperview().inset(22)  // 선반 보드 높이만큼 여백
+            make.top.equalToSuperview().offset(-2)
+            make.bottom.equalToSuperview().inset(12)
         }
     }
 
-    private func makeBookView(_ book: Book?, isEditing: Bool, onDelete: ((Book) -> Void)?, onTap: ((Book) -> Void)?) -> UIView {
+    private func makeBookView(_ book: Book?, bookWidth: CGFloat, bookHeight: CGFloat, isEditing: Bool, onDelete: ((Book) -> Void)?, onTap: ((Book) -> Void)?) -> UIView {
         let wrapper = UIView()
 
         let container = UIView()
@@ -54,7 +55,7 @@ final class ShelfRowView: UIView {
 
         guard let book else {
             container.backgroundColor = .clear
-            wrapper.snp.makeConstraints { make in make.height.equalTo(117) }
+            wrapper.snp.makeConstraints { make in make.height.equalTo(bookHeight) }
             return wrapper
         }
 
@@ -66,12 +67,12 @@ final class ShelfRowView: UIView {
         wrapper.layer.cornerRadius   = 3
         wrapper.layer.maskedCorners  = [.layerMinXMinYCorner, .layerMaxXMinYCorner]
         wrapper.layer.shadowPath     = UIBezierPath(
-            roundedRect: CGRect(origin: .zero, size: CGSize(width: 88, height: 117)),
+            roundedRect: CGRect(origin: .zero, size: CGSize(width: bookWidth, height: bookHeight)),
             byRoundingCorners: [.topLeft, .topRight],
             cornerRadii: CGSize(width: 3, height: 3)
         ).cgPath
 
-        wrapper.snp.makeConstraints { make in make.height.equalTo(117) }
+        wrapper.snp.makeConstraints { make in make.height.equalTo(bookHeight) }
 
         if let coverURL = book.coverURL {
             container.backgroundColor = UIColor.appPrimary
@@ -84,12 +85,13 @@ final class ShelfRowView: UIView {
                 guard let wrapper, case .success(let value) = result else { return }
                 let imageSize = value.image.size
                 guard imageSize.width > 0 else { return }
-                let newHeight = ceil(88.0 * imageSize.height / imageSize.width)
+                let rawHeight = ceil(bookWidth * imageSize.height / imageSize.width)
+                let newHeight = min(rawHeight, 180.0)
                 wrapper.snp.updateConstraints { make in
                     make.height.equalTo(newHeight)
                 }
                 wrapper.layer.shadowPath = UIBezierPath(
-                    roundedRect: CGRect(origin: .zero, size: CGSize(width: 88, height: newHeight)),
+                    roundedRect: CGRect(origin: .zero, size: CGSize(width: bookWidth, height: newHeight)),
                     byRoundingCorners: [.topLeft, .topRight],
                     cornerRadii: CGSize(width: 3, height: 3)
                 ).cgPath
@@ -146,25 +148,26 @@ final class ShelfPageView: UIView {
         let books: [Book?]
     }
 
-    init(rows: [RowData], isEditing: Bool = false, onDelete: ((Book) -> Void)? = nil, onTap: ((Book) -> Void)? = nil) {
+    init(rows: [RowData], bookWidth: CGFloat = 88, isEditing: Bool = false, onDelete: ((Book) -> Void)? = nil, onTap: ((Book) -> Void)? = nil) {
         super.init(frame: .zero)
-        setupRows(rows, isEditing: isEditing, onDelete: onDelete, onTap: onTap)
+        setupRows(rows, bookWidth: bookWidth, isEditing: isEditing, onDelete: onDelete, onTap: onTap)
     }
 
     required init?(coder: NSCoder) { fatalError() }
 
-    private func setupRows(_ rows: [RowData], isEditing: Bool, onDelete: ((Book) -> Void)?, onTap: ((Book) -> Void)?) {
+    private func setupRows(_ rows: [RowData], bookWidth: CGFloat, isEditing: Bool, onDelete: ((Book) -> Void)?, onTap: ((Book) -> Void)?) {
         let stack = UIStackView()
         stack.axis         = .vertical
         stack.distribution = .equalSpacing
 
         rows.forEach { rowData in
-            stack.addArrangedSubview(ShelfRowView(books: rowData.books, isEditing: isEditing, onDelete: onDelete, onTap: onTap))
+            stack.addArrangedSubview(ShelfRowView(books: rowData.books, bookWidth: bookWidth, isEditing: isEditing, onDelete: onDelete, onTap: onTap))
         }
 
-        // 행 높이 합(top inset 10 + book 117 + shelf board 22) × 행 수
+        // 행 높이 합(top inset 10 + bookHeight + shelf board 22) × 행 수
         // 스택 높이 = 0.5×pageHeight + rowsHeight/2 → 간격을 정확히 50% 축소
-        let rowsHeight: CGFloat = (10 + 117 + 22) * CGFloat(rows.count)
+        let bookHeight: CGFloat = min(ceil(bookWidth * 117.0 / 88.0), 180.0)
+        let rowsHeight: CGFloat = (10 + bookHeight + 22) * CGFloat(rows.count)
         addSubview(stack)
         stack.snp.makeConstraints { make in
             make.leading.trailing.equalToSuperview()

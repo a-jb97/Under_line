@@ -108,12 +108,17 @@ final class SettingsViewController: UIViewController {
     private func setupConstraints() {
         titleLabel.snp.makeConstraints { make in
             make.top.equalTo(view.safeAreaLayoutGuide).offset(8)
-            make.leading.equalToSuperview().inset(24)
+            make.leading.greaterThanOrEqualToSuperview().inset(24)
+            make.width.lessThanOrEqualTo(600)
+            make.width.equalToSuperview().priority(.high)
+            make.centerX.equalToSuperview()
         }
 
         tableSection.snp.makeConstraints { make in
             make.top.equalTo(titleLabel.snp.bottom).offset(28)
-            make.leading.trailing.equalToSuperview()
+            make.width.lessThanOrEqualTo(600)
+            make.width.equalToSuperview().priority(.high)
+            make.centerX.equalToSuperview()
         }
     }
 

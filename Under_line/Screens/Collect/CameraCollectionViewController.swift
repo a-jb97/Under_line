@@ -248,17 +248,15 @@ final class CameraCollectionViewController: UIViewController {
             make.bottom.equalTo(bottomSectionView.snp.top)
         }
 
-        // Scan guide: 320×380, centered horizontally, 98pt from camera section top
+        // Scan guide: cameraSectionView 기준 leading/trailing/top/bottom inset 40
+        let scanGuideInset: CGFloat = UIDevice.current.userInterfaceIdiom == .pad ? 100 : 48
         scanGuideView.snp.makeConstraints { make in
-            make.width.equalTo(320)
-            make.height.equalTo(380)
-            make.centerX.equalToSuperview()
-            make.top.equalToSuperview().offset(98)
+            make.leading.trailing.top.bottom.equalToSuperview().inset(scanGuideInset)
         }
 
         scanInstructionLabel.snp.makeConstraints { make in
             make.centerX.equalToSuperview()
-            make.top.equalTo(scanGuideView.snp.bottom).offset(20)
+            make.top.equalTo(scanGuideView.snp.bottom).offset(12)
         }
 
 
