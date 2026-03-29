@@ -38,7 +38,7 @@ final class ShelfRowView: UIView {
 
         booksStack.snp.makeConstraints { make in
             make.centerX.equalToSuperview()
-            make.top.equalToSuperview().offset(-2)
+            make.top.equalToSuperview().inset(2)
             make.bottom.equalToSuperview().inset(12)
         }
     }
