@@ -575,6 +575,7 @@ final class TimerDialView: UIView {
         pauseTimer()
         accumulatedSeconds = 0
         sessionStartRemainingSeconds = 0
+        clearSavedState()
         if elapsed > 0 { onTimerStopped?(elapsed) }
     }
 
@@ -584,6 +585,7 @@ final class TimerDialView: UIView {
         sessionStartRemainingSeconds = 0
         setMinutes       = 0
         remainingSeconds = 0
+        clearSavedState()
         updateTimerDisplay()
         updateDialArc(fraction: 0.0)
         updateNeedle(minutes: 0)
@@ -620,6 +622,84 @@ final class TimerDialView: UIView {
         UINotificationFeedbackGenerator().notificationOccurred(.warning)
     }
 
+    // MARK: - Persistence
+
+    var persistenceKey: String?
+
+    func saveState() {
+        guard let key = persistenceKey else { return }
+        let defaults = UserDefaults.standard
+        defaults.set(isRunning, forKey: key + ".isRunning")
+        defaults.set(setMinutes, forKey: key + ".setMinutes")
+        defaults.set(accumulatedSeconds, forKey: key + ".accumulated")
+        defaults.set(sessionStartRemainingSeconds, forKey: key + ".sessionStart")
+        defaults.set(remainingSeconds, forKey: key + ".remainingSeconds")
+        if let endDate = timerEndDate {
+            defaults.set(endDate, forKey: key + ".endDate")
+        } else {
+            defaults.removeObject(forKey: key + ".endDate")
+        }
+    }
+
+    private func clearSavedState() {
+        guard let key = persistenceKey else { return }
+        [".isRunning", ".setMinutes", ".accumulated", ".sessionStart", ".remainingSeconds", ".endDate"]
+            .forEach { UserDefaults.standard.removeObject(forKey: key + $0) }
+    }
+
+    func restoreStateIfNeeded() {
+        guard let key = persistenceKey,
+              UserDefaults.standard.object(forKey: key + ".isRunning") != nil else { return }
+
+        let defaults = UserDefaults.standard
+        let wasRunning    = defaults.bool(forKey: key + ".isRunning")
+        let endDate       = defaults.object(forKey: key + ".endDate") as? Date
+        let savedMinutes  = defaults.integer(forKey: key + ".setMinutes")
+        let savedAccum    = defaults.integer(forKey: key + ".accumulated")
+        let savedSessStart = defaults.integer(forKey: key + ".sessionStart")
+        let savedRemaining = defaults.integer(forKey: key + ".remainingSeconds")
+
+        clearSavedState()   // 복원했으므로 저장된 값 제거 (이후 live 상태로 관리)
+
+        setMinutes = savedMinutes
+        accumulatedSeconds = savedAccum
+        sessionStartRemainingSeconds = savedSessStart
+
+        if wasRunning, let end = endDate {
+            let remaining = max(0, Int(end.timeIntervalSinceNow))
+            if remaining > 0 {
+                timerEndDate     = end
+                remainingSeconds = remaining
+                isRunning        = true
+                let cfg = UIImage.SymbolConfiguration(pointSize: 18, weight: .medium)
+                playButton.setImage(UIImage(systemName: "pause.fill", withConfiguration: cfg), for: .normal)
+                updateTimerDisplay()
+                updateDialArc(fraction: CGFloat(remaining) / 3600.0)
+                updateNeedle(minutes: Int((CGFloat(remaining) / 60.0).rounded()))
+                scheduleCountdownTimer()
+                onTimerStateChanged?(true)
+            } else {
+                // 자리를 비운 사이 타이머 완료
+                remainingSeconds = 0
+                updateTimerDisplay()
+                updateDialArc(fraction: 0)
+                updateNeedle(minutes: 0)
+                let elapsed = savedAccum + savedSessStart
+                accumulatedSeconds = 0
+                sessionStartRemainingSeconds = 0
+                isRunning = false
+                if elapsed > 0 { onTimerStopped?(elapsed) }
+                playAlarm()
+            }
+        } else {
+            // 일시정지 상태로 복원
+            remainingSeconds = savedRemaining
+            updateTimerDisplay()
+            updateDialArc(fraction: CGFloat(remainingSeconds) / 3600.0)
+            updateNeedle(minutes: Int((CGFloat(remainingSeconds) / 60.0).rounded()))
+        }
+    }
+
     // MARK: - Background Handling
 
     private func setupBackgroundObservers() {
@@ -638,6 +718,7 @@ final class TimerDialView: UIView {
     }
 
     @objc private func appDidEnterBackground() {
+        saveState()
         guard isRunning else { return }
         countdownTimer?.invalidate()
         countdownTimer = nil

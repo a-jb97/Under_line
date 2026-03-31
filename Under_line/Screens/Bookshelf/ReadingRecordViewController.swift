@@ -162,7 +162,15 @@ final class ReadingRecordViewController: UIViewController {
             gridReady = true
             setupChartGrid()
         }
+        timerDialView.restoreStateIfNeeded()
         viewDidAppearRelay.accept(())
+    }
+
+    override func viewWillDisappear(_ animated: Bool) {
+        super.viewWillDisappear(animated)
+        if isMovingFromParent {
+            timerDialView.saveState()
+        }
     }
 
     override var preferredStatusBarStyle: UIStatusBarStyle { .darkContent }
@@ -172,6 +180,7 @@ final class ReadingRecordViewController: UIViewController {
     private func setupUI() {
         view.backgroundColor = UIColor.background
         bookTitleLabel.text = book.title
+        timerDialView.persistenceKey = "timer_\(book.isbn13)"
 
         view.addSubview(scrollView)
         scrollView.addSubview(contentView)
