@@ -348,6 +348,16 @@ final class BookshelfViewController: UIViewController {
         if layoutReady { rebuildShelfPages() }
     }
 
+    func showRestoreCompleteAlert() {
+        let alert = UIAlertController(
+            title: nil,
+            message: "내 밑줄 기록 불러오기가 완료되었습니다.",
+            preferredStyle: .alert
+        )
+        alert.addAction(UIAlertAction(title: "확인", style: .default))
+        present(alert, animated: true)
+    }
+
     private func deleteBook(_ book: Book) {
         let alert = UIAlertController(
             title: "알림",

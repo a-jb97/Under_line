@@ -222,6 +222,9 @@ final class SettingsViewController: UIViewController {
                 tabBar.selectedIndex = 0
                 if let nav = tabBar.viewControllers?.first as? UINavigationController {
                     nav.popToRootViewController(animated: false)
+                    if let bookshelf = nav.viewControllers.first as? BookshelfViewController {
+                        bookshelf.showRestoreCompleteAlert()
+                    }
                 }
             })
             .disposed(by: disposeBag)
