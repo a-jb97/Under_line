@@ -351,7 +351,7 @@ final class BookshelfViewController: UIViewController {
     private func deleteBook(_ book: Book) {
         let alert = UIAlertController(
             title: "알림",
-            message: "도서를 책장에서 꺼내면 수집한 밑줄도 함께 지워집니다.",
+            message: "도서를 책장에서 꺼내면 수집한 밑줄과 독서 데이터도 함께 삭제됩니다.",
             preferredStyle: .alert
         )
         alert.addAction(UIAlertAction(title: "그대로 두기", style: .cancel))

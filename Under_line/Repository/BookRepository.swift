@@ -93,11 +93,22 @@ final class BookRepository: BookRepositoryProtocol {
             guard let self else { completable(.completed); return Disposables.create() }
             do {
                 let isbn = book.isbn13
-                let descriptor = FetchDescriptor<BookRecord>(
+
+                let bookDescriptor = FetchDescriptor<BookRecord>(
                     predicate: #Predicate { $0.isbn13 == isbn }
                 )
-                let records = try self.modelContext.fetch(descriptor)
-                records.forEach { self.modelContext.delete($0) }
+                try self.modelContext.fetch(bookDescriptor).forEach { self.modelContext.delete($0) }
+
+                let sentenceDescriptor = FetchDescriptor<SentenceRecord>(
+                    predicate: #Predicate { $0.bookISBN == isbn }
+                )
+                try self.modelContext.fetch(sentenceDescriptor).forEach { self.modelContext.delete($0) }
+
+                let sessionDescriptor = FetchDescriptor<ReadingSessionRecord>(
+                    predicate: #Predicate { $0.bookISBN == isbn }
+                )
+                try self.modelContext.fetch(sessionDescriptor).forEach { self.modelContext.delete($0) }
+
                 try self.modelContext.save()
                 self.refreshRelay()
                 completable(.completed)
