@@ -20,6 +20,7 @@ final class SettingsViewModel {
     struct Output {
         let exportFileURL: Observable<URL>
         let toastMessage: Observable<String>
+        let restoreSucceeded: Observable<Void>
     }
 
     private let backupService: BackupService
@@ -84,9 +85,16 @@ final class SettingsViewModel {
 
         let toastMessage = Observable.merge(exportError, restoreSuccess, restoreError)
 
+        let restoreSucceeded = restoreResult
+            .compactMap { result -> Void? in
+                if case .success = result { return () }
+                return nil
+            }
+
         return Output(
-            exportFileURL: exportFileURL,
-            toastMessage:  toastMessage
+            exportFileURL:    exportFileURL,
+            toastMessage:     toastMessage,
+            restoreSucceeded: restoreSucceeded
         )
     }
 }

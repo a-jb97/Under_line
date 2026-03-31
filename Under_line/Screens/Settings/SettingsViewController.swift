@@ -215,6 +215,17 @@ final class SettingsViewController: UIViewController {
             })
             .disposed(by: disposeBag)
 
+        output.restoreSucceeded
+            .observe(on: MainScheduler.instance)
+            .subscribe(onNext: { [weak self] in
+                guard let tabBar = self?.tabBarController else { return }
+                tabBar.selectedIndex = 0
+                if let nav = tabBar.viewControllers?.first as? UINavigationController {
+                    nav.popToRootViewController(animated: false)
+                }
+            })
+            .disposed(by: disposeBag)
+
         restoreRow.rx.tap
             .subscribe(onNext: { [weak self] in
                 guard let self else { return }
