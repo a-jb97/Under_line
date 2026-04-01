@@ -216,7 +216,7 @@ final class DirectCollectViewController: UIViewController {
         setupKeyboardHandling()
 
         if let text = initialSentence, !text.isEmpty {
-            sentenceTextView.text    = text
+            sentenceTextView.text        = text
             sentencePlaceholder.isHidden = true
         }
     }
@@ -227,6 +227,8 @@ final class DirectCollectViewController: UIViewController {
     }
 
     // MARK: - Keyboard
+
+    private var isKeyboardVisible = false
 
     private func setupKeyboardHandling() {
         NotificationCenter.default.addObserver(
@@ -243,40 +245,22 @@ final class DirectCollectViewController: UIViewController {
         )
     }
 
-    private var keyboardHeight: CGFloat = 0
-    private weak var activeTextView: UITextView?
-
     @objc private func keyboardWillShow(_ notification: Notification) {
+        isKeyboardVisible = true
         guard let info = notification.userInfo,
               let keyboardFrame = info[UIResponder.keyboardFrameEndUserInfoKey] as? CGRect,
-              let duration = info[UIResponder.keyboardAnimationDurationUserInfoKey] as? TimeInterval
+              let duration = info[UIResponder.keyboardAnimationDurationUserInfoKey] as? TimeInterval,
+              memoTextView.isFirstResponder
         else { return }
 
-        keyboardHeight = keyboardFrame.height - view.safeAreaInsets.bottom
-        scrollView.contentInset.bottom = keyboardHeight
-        scrollView.verticalScrollIndicatorInsets.bottom = keyboardHeight
-
-        guard let active = activeTextView, active === memoTextView else { return }
+        let keyboardHeight = keyboardFrame.height - view.safeAreaInsets.bottom
         UIView.animate(withDuration: duration) {
-            self.scrollToActive(active, animated: false)
+            self.scrollView.contentOffset.y += keyboardHeight
         }
-    }
-
-    private func scrollToActive(_ active: UIView, animated: Bool) {
-        let activeRect = active.convert(active.bounds, to: scrollView)
-        let buttonRect = registerButton.convert(registerButton.bounds, to: scrollView)
-        let rect = activeRect.union(buttonRect).insetBy(dx: 0, dy: -16)
-        scrollView.scrollRectToVisible(rect, animated: animated)
     }
 
     @objc private func keyboardWillHide(_ notification: Notification) {
-        guard let duration = notification.userInfo?[UIResponder.keyboardAnimationDurationUserInfoKey] as? TimeInterval
-        else { return }
-        keyboardHeight = 0
-        UIView.animate(withDuration: duration) {
-            self.scrollView.contentInset.bottom = 0
-            self.scrollView.verticalScrollIndicatorInsets.bottom = 0
-        }
+        isKeyboardVisible = false
     }
 
     // MARK: - Sheet
@@ -344,9 +328,11 @@ final class DirectCollectViewController: UIViewController {
             make.height.equalTo(52)
         }
 
+        // keyboardLayoutGuide에 하단을 붙여 키보드가 올라오면 scrollView가 자동으로 줄어듦
         scrollView.snp.makeConstraints { make in
             make.top.equalTo(titleLabel.snp.bottom)
-            make.leading.trailing.bottom.equalToSuperview()
+            make.leading.trailing.equalToSuperview()
+            make.bottom.equalTo(view.keyboardLayoutGuide.snp.top)
         }
 
         formStack.snp.makeConstraints { make in
@@ -407,8 +393,13 @@ final class DirectCollectViewController: UIViewController {
             })
             .disposed(by: disposeBag)
 
-        pageTextField.rx.controlEvent(.editingDidBegin)
-            .subscribe(onNext: { [weak self] in self?.activeTextView = nil })
+        let backgroundTap = UITapGestureRecognizer()
+        backgroundTap.cancelsTouchesInView = false
+        view.addGestureRecognizer(backgroundTap)
+        backgroundTap.rx.event
+            .subscribe(onNext: { [weak self] _ in
+                self?.view.endEditing(true)
+            })
             .disposed(by: disposeBag)
 
         let chipTaps = zip(Emotion.allCases, emotionChips).map { (emotion, chip) in
@@ -436,17 +427,25 @@ final class DirectCollectViewController: UIViewController {
         l.textColor = UIColor.accent
         return l
     }
+
+    private func scrollToMemo() {
+        let memoRect   = memoTextView.convert(memoTextView.bounds, to: scrollView)
+        let buttonRect = registerButton.convert(registerButton.bounds, to: scrollView)
+        let rect = memoRect.union(buttonRect).insetBy(dx: 0, dy: -16)
+        scrollView.scrollRectToVisible(rect, animated: true)
+    }
 }
 
 // MARK: - UITextViewDelegate
 
 extension DirectCollectViewController: UITextViewDelegate {
     func textViewDidBeginEditing(_ textView: UITextView) {
-        activeTextView = textView
-        guard textView === memoTextView, keyboardHeight > 0 else { return }
+        // 키보드가 이미 올라와 있는 상태에서 memoTextView로 전환하는 경우
+        // (keyboardWillShow가 재발화하지 않으므로 여기서 처리)
+        guard textView === memoTextView, isKeyboardVisible else { return }
         DispatchQueue.main.async { [weak self] in
-            guard let self, self.activeTextView === textView else { return }
-            self.scrollToActive(textView, animated: true)
+            guard let self, self.memoTextView.isFirstResponder else { return }
+            self.scrollToMemo()
         }
     }
 
