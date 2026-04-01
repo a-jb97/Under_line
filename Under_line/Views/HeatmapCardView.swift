@@ -28,7 +28,7 @@ final class HeatmapCardView: UIView {
 
     private let titleLabel: UILabel = {
         let l = UILabel()
-        l.text = "독서량"
+        l.text = "독서 시간"
         l.font = UIFont(name: "GoyangIlsan R", size: 18)
             ?? .systemFont(ofSize: 18, weight: .semibold)
         l.textColor = .accent
@@ -103,6 +103,7 @@ final class HeatmapCardView: UIView {
         prevButton.rx.tap
             .subscribe(onNext: { [weak self] in
                 guard let self else { return }
+                self.clearSelection()
                 self.currentMonth -= 1
                 if self.currentMonth == 0 { self.currentMonth = 12; self.currentYear -= 1 }
                 self.updatePeriodLabel()
@@ -113,6 +114,7 @@ final class HeatmapCardView: UIView {
         nextButton.rx.tap
             .subscribe(onNext: { [weak self] in
                 guard let self else { return }
+                self.clearSelection()
                 self.currentMonth += 1
                 if self.currentMonth == 13 { self.currentMonth = 1; self.currentYear += 1 }
                 self.updatePeriodLabel()
@@ -358,6 +360,12 @@ final class HeatmapCardView: UIView {
 
     /// 튜토리얼 종료 후 데모 선택 상태와 툴팁을 초기화합니다.
     func hideDemoSelection() {
+        heatmapBody.deselectDemo()
+        hideTooltip()
+    }
+
+    /// 현재 선택된 셀과 툴팁을 초기화합니다.
+    func clearSelection() {
         heatmapBody.deselectDemo()
         hideTooltip()
     }

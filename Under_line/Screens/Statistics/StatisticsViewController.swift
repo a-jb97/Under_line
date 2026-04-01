@@ -68,6 +68,7 @@ final class StatisticsViewController: UIViewController {
 
     override func viewWillAppear(_ animated: Bool) {
         super.viewWillAppear(animated)
+        heatmapCard.clearSelection()
         viewWillAppearRelay.accept(())
     }
 
