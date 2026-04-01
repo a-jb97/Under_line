@@ -14,8 +14,9 @@ final class BookshelfViewModel {
     // MARK: - Input
 
     struct Input {
-        let deleteBook: Observable<Book>    // 삭제 버튼 탭
-        let deleteAll:  Observable<Void>    // 전부 삭제 버튼 탭
+        let deleteBook:   Observable<Book>     // 삭제 버튼 탭
+        let deleteAll:    Observable<Void>     // 전부 삭제 버튼 탭
+        let reorderBooks: Observable<[String]> // 드래그로 재정렬된 ISBN 배열
     }
 
     // MARK: - Output
@@ -62,6 +63,17 @@ final class BookshelfViewModel {
                         errorMessage.accept(error.localizedDescription)
                         return .empty()
                     }
+                    .asObservable()
+            }
+            .subscribe()
+            .disposed(by: disposeBag)
+
+        input.reorderBooks
+            .flatMapLatest { [weak self] isbns -> Observable<Void> in
+                guard let self else { return .empty() }
+                return self.repository.reorderBooks(orderedISBNs: isbns)
+                    .andThen(.just(()))
+                    .catch { _ in .empty() }
                     .asObservable()
             }
             .subscribe()

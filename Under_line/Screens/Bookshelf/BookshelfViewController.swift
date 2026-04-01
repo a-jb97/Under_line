@@ -9,17 +9,33 @@ import UIKit
 import SnapKit
 import RxSwift
 import RxCocoa
+import Kingfisher
 
 final class BookshelfViewController: UIViewController {
 
-    private let disposeBag  = DisposeBag()
-    private let viewModel   = BookshelfViewModel(repository: AppContainer.shared.bookRepository)
+    private let disposeBag      = DisposeBag()
+    private let viewModel       = BookshelfViewModel(repository: AppContainer.shared.bookRepository)
     private let deleteBookRelay = PublishRelay<Book>()
     private let deleteAllRelay  = PublishRelay<Void>()
+    private let reorderRelay    = PublishRelay<[String]>()
 
     private var layoutReady = false
     private var highlightLayers: [(view: UIView, layer: CAGradientLayer)] = []
     private var isEditMode = false
+
+    // MARK: - Drag & Drop
+
+    private struct DragState {
+        let book: Book
+        let fromIndex: Int
+        var currentIndex: Int
+        let ghostView: UIView
+        let touchOffsetInGhost: CGPoint
+    }
+
+    private var dragState: DragState?
+    private var isDragging = false
+    private var bookSlotFrames: [(globalIndex: Int, frameInScrollView: CGRect)] = []
 
     // MARK: - Saved Books
 
@@ -34,6 +50,7 @@ final class BookshelfViewController: UIViewController {
     }
 
     private func applyFilter() {
+        guard !isDragging else { return }
         if let query = activeFilterQuery, !query.isEmpty {
             savedBooks = allBooks.filter {
                 $0.title.localizedCaseInsensitiveContains(query) ||
@@ -127,7 +144,7 @@ final class BookshelfViewController: UIViewController {
 
     private lazy var deleteAllButton: UIButton = {
         let btn = UIButton(type: .system)
-        btn.setTitle("전부 삭제", for: .normal)
+        btn.setTitle("전부 꺼내기", for: .normal)
         btn.setTitleColor(UIColor.walnut, for: .normal)
         btn.titleLabel?.font = .systemFont(ofSize: 13, weight: .semibold)
         btn.layer.cornerRadius = 26
@@ -277,12 +294,17 @@ final class BookshelfViewController: UIViewController {
             height: pageHeight
         )
 
+        let draggingIndex = dragState?.currentIndex
+
         for pageIdx in 0..<pageCount {
             var rows: [ShelfPageView.RowData] = []
             for rowIdx in 0..<rowsPerPage {
                 let start = pageIdx * booksPerPage + rowIdx * booksPerRow
                 var rowBooks: [Book?] = start < savedBooks.count
-                    ? (start..<min(start + booksPerRow, savedBooks.count)).map { savedBooks[$0] as Book? }
+                    ? (start..<min(start + booksPerRow, savedBooks.count)).map { idx in
+                        if let di = draggingIndex, idx == di { return nil }
+                        return savedBooks[idx] as Book?
+                    }
                     : []
                 while rowBooks.count < booksPerRow { rowBooks.append(nil) }
                 rows.append(ShelfPageView.RowData(books: rowBooks))
@@ -302,6 +324,13 @@ final class BookshelfViewController: UIViewController {
                 height: pageHeight
             )
         }
+
+        rebuildBookSlotFrames(
+            pageWidth: pageWidth, pageHeight: pageHeight,
+            bookWidth: bookWidth, bookHeight: bookHeight,
+            booksPerRow: booksPerRow, rowsPerPage: rowsPerPage,
+            booksPerPage: booksPerPage, pageCount: pageCount
+        )
 
         setupFixedShelfBoards(pageHeight: pageHeight, bookHeight: bookHeight, isIPad: isIPad)
     }
@@ -362,6 +391,161 @@ final class BookshelfViewController: UIViewController {
             make.centerX.equalToSuperview()
             make.top.equalTo(shelfOverlayView).offset(lastShelfMaxY + 16)
         }
+    }
+
+    /// 책 위치 감지를 위한 슬롯 프레임 배열 재계산
+    private func rebuildBookSlotFrames(pageWidth: CGFloat, pageHeight: CGFloat, bookWidth: CGFloat, bookHeight: CGFloat, booksPerRow: Int, rowsPerPage: Int, booksPerPage: Int, pageCount: Int) {
+        var frames: [(globalIndex: Int, frameInScrollView: CGRect)] = []
+
+        // ShelfRowView 실제 높이 = top inset(2) + bookHeight + bottom inset(12)
+        let rowHeightActual: CGFloat = bookHeight + 14
+        let rowsHeightCalc: CGFloat  = CGFloat(rowsPerPage) * (10 + bookHeight + 22)
+        let stackHeight: CGFloat     = 0.5 * pageHeight + rowsHeightCalc / 2
+        let stackMinY: CGFloat       = (pageHeight - stackHeight) / 2
+        let spacing: CGFloat         = rowsPerPage > 1
+            ? (stackHeight - CGFloat(rowsPerPage) * rowHeightActual) / CGFloat(rowsPerPage - 1)
+            : 0
+
+        let totalBooksWidth = CGFloat(booksPerRow) * bookWidth + CGFloat(booksPerRow - 1) * 20
+
+        for pageIdx in 0..<pageCount {
+            let pageX  = pageWidth * CGFloat(pageIdx)
+            let startX = pageX + (pageWidth - totalBooksWidth) / 2
+
+            for rowIdx in 0..<rowsPerPage {
+                let rowTop  = stackMinY + CGFloat(rowIdx) * (rowHeightActual + spacing)
+                let bookTop = rowTop + 2
+
+                for colIdx in 0..<booksPerRow {
+                    let globalIndex = pageIdx * booksPerPage + rowIdx * booksPerRow + colIdx
+                    guard globalIndex < savedBooks.count else { continue }
+                    let bookX = startX + CGFloat(colIdx) * (bookWidth + 20)
+                    frames.append((
+                        globalIndex: globalIndex,
+                        frameInScrollView: CGRect(x: bookX, y: bookTop, width: bookWidth, height: bookHeight)
+                    ))
+                }
+            }
+        }
+        bookSlotFrames = frames
+    }
+
+    // MARK: - Drag & Drop
+
+    private func dragBegan(_ recognizer: UIGestureRecognizer) {
+        guard !isEditMode else { return }
+        guard activeFilterQuery == nil || activeFilterQuery!.isEmpty else { return }
+
+        let touchInScrollView = recognizer.location(in: bookshelfScrollView)
+        guard let slot = bookSlotFrames.first(where: { $0.frameInScrollView.contains(touchInScrollView) }) else { return }
+
+        let book = savedBooks[slot.globalIndex]
+        let slotFrameInView = bookshelfScrollView.convert(slot.frameInScrollView, to: view)
+
+        let ghost = makeGhostView(book: book, size: slot.frameInScrollView.size)
+        ghost.frame = slotFrameInView
+        view.addSubview(ghost)
+
+        let touchInView = recognizer.location(in: view)
+        let touchOffset = CGPoint(
+            x: touchInView.x - slotFrameInView.midX,
+            y: touchInView.y - slotFrameInView.midY
+        )
+
+        isDragging = true
+        dragState = DragState(
+            book: book,
+            fromIndex: slot.globalIndex,
+            currentIndex: slot.globalIndex,
+            ghostView: ghost,
+            touchOffsetInGhost: touchOffset
+        )
+
+        bookshelfScrollView.isScrollEnabled = false
+        rebuildShelfPages()   // 빈 슬롯 표시
+
+        UIView.animate(withDuration: 0.2, delay: 0,
+                       usingSpringWithDamping: 0.7, initialSpringVelocity: 0,
+                       options: [], animations: {
+            ghost.transform = CGAffineTransform(scaleX: 1.12, y: 1.12)
+            ghost.alpha = 0.88
+        })
+    }
+
+    private func dragMoved(_ recognizer: UIGestureRecognizer) {
+        guard var state = dragState else { return }
+
+        let touchInView = recognizer.location(in: view)
+        let ghostCenter = CGPoint(
+            x: touchInView.x - state.touchOffsetInGhost.x,
+            y: touchInView.y - state.touchOffsetInGhost.y
+        )
+        state.ghostView.center = ghostCenter
+
+        // 현재 손가락이 어느 슬롯 위에 있는지 계산
+        let ghostInScrollView = view.convert(ghostCenter, to: bookshelfScrollView)
+        if let target = bookSlotFrames.first(where: { $0.frameInScrollView.contains(ghostInScrollView) }),
+           target.globalIndex != state.currentIndex {
+            var books = savedBooks
+            let moved = books.remove(at: state.currentIndex)
+            books.insert(moved, at: target.globalIndex)
+            state.currentIndex = target.globalIndex
+            dragState = state
+            savedBooks = books   // didSet → rebuildShelfPages (빈 슬롯 + 새 배치)
+        } else {
+            dragState = state
+        }
+    }
+
+    private func dragEnded() {
+        guard let state = dragState else { return }
+
+        UIView.animate(withDuration: 0.15, animations: {
+            state.ghostView.alpha = 0
+            state.ghostView.transform = .identity
+        }, completion: { _ in
+            state.ghostView.removeFromSuperview()
+        })
+
+        isDragging = false
+        dragState = nil
+        bookshelfScrollView.isScrollEnabled = true
+        rebuildShelfPages()   // 빈 슬롯 제거
+
+        reorderRelay.accept(savedBooks.map { $0.isbn13 })
+    }
+
+    private func makeGhostView(book: Book, size: CGSize) -> UIView {
+        let ghost = UIView()
+        ghost.layer.cornerRadius = 3
+        ghost.clipsToBounds = false
+        ghost.layer.shadowColor   = UIColor.black.cgColor
+        ghost.layer.shadowOpacity = 0.45
+        ghost.layer.shadowRadius  = 12
+        ghost.layer.shadowOffset  = CGSize(width: 0, height: 8)
+
+        let imageView = UIImageView()
+        imageView.contentMode    = .scaleAspectFill
+        imageView.clipsToBounds  = true
+        imageView.layer.cornerRadius = 3
+        imageView.frame = CGRect(origin: .zero, size: size)
+        ghost.addSubview(imageView)
+        ghost.bounds = CGRect(origin: .zero, size: size)
+
+        if let url = book.coverURL {
+            imageView.kf.setImage(with: url)
+        } else {
+            imageView.backgroundColor = UIColor.appPrimary
+            let label = UILabel()
+            label.text          = book.title
+            label.font          = UIFont(name: "GowunBatang-Bold", size: 10) ?? .boldSystemFont(ofSize: 10)
+            label.textColor     = UIColor.background
+            label.textAlignment = .center
+            label.numberOfLines = 4
+            imageView.addSubview(label)
+            label.frame = imageView.bounds.insetBy(dx: 4, dy: 8)
+        }
+        return ghost
     }
 
     // MARK: - Edit Mode
@@ -482,9 +666,26 @@ final class BookshelfViewController: UIViewController {
 
     private func bindActions() {
         let output = viewModel.transform(input: BookshelfViewModel.Input(
-            deleteBook: deleteBookRelay.asObservable(),
-            deleteAll:  deleteAllRelay.asObservable()
+            deleteBook:   deleteBookRelay.asObservable(),
+            deleteAll:    deleteAllRelay.asObservable(),
+            reorderBooks: reorderRelay.asObservable()
         ))
+
+        // 길게 탭 → 드래그 & 드롭 재정렬
+        let longPress = UILongPressGestureRecognizer()
+        longPress.minimumPressDuration = 0.45
+        bookshelfScrollView.addGestureRecognizer(longPress)
+        longPress.rx.event
+            .subscribe(onNext: { [weak self] recognizer in
+                guard let self else { return }
+                switch recognizer.state {
+                case .began:                      self.dragBegan(recognizer)
+                case .changed:                    self.dragMoved(recognizer)
+                case .ended, .cancelled, .failed: self.dragEnded()
+                default: break
+                }
+            })
+            .disposed(by: disposeBag)
 
         // 저장된 도서 스트림 → 책장 자동 업데이트
         output.books
@@ -538,7 +739,7 @@ final class BookshelfViewController: UIViewController {
             .subscribe(onNext: { [weak self] in
                 guard let self else { return }
                 let alert = UIAlertController(
-                    title: "전부 삭제",
+                    title: "알림",
                     message: "책장의 모든 도서와 밑줄, 독서 데이터가 삭제됩니다.",
                     preferredStyle: .alert
                 )

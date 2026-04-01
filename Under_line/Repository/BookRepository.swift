@@ -24,6 +24,7 @@ protocol BookRepositoryProtocol {
     func deleteBook(_ book: Book) -> Completable
     func deleteAllBooks() -> Completable
     func updateCurrentPage(isbn13: String, page: Int) -> Completable
+    func reorderBooks(orderedISBNs: [String]) -> Completable
 }
 
 // MARK: - Concrete Implementation
@@ -77,8 +78,32 @@ final class BookRepository: BookRepositoryProtocol {
                     )))
                     return Disposables.create()
                 }
+                let allRecords = try self.modelContext.fetch(FetchDescriptor<BookRecord>())
+                let maxOrder = allRecords.map { $0.sortOrder }.max() ?? -1
                 let record = BookRecord(from: book)
+                record.sortOrder = maxOrder + 1
                 self.modelContext.insert(record)
+                try self.modelContext.save()
+                self.refreshRelay()
+                completable(.completed)
+            } catch {
+                completable(.error(error))
+            }
+            return Disposables.create()
+        }
+    }
+
+    func reorderBooks(orderedISBNs: [String]) -> Completable {
+        Completable.create { [weak self] (completable: @escaping (CompletableEvent) -> Void) -> Disposable in
+            guard let self else { completable(.completed); return Disposables.create() }
+            do {
+                let records = try self.modelContext.fetch(FetchDescriptor<BookRecord>())
+                let indexMap = Dictionary(uniqueKeysWithValues: orderedISBNs.enumerated().map { ($1, $0) })
+                for record in records {
+                    if let newOrder = indexMap[record.isbn13] {
+                        record.sortOrder = newOrder
+                    }
+                }
                 try self.modelContext.save()
                 self.refreshRelay()
                 completable(.completed)
@@ -166,8 +191,20 @@ final class BookRepository: BookRepositoryProtocol {
 
     private func refreshRelay() {
         do {
-            let descriptor = FetchDescriptor<BookRecord>(
+            // Initialize sortOrder for pre-existing records (migration: all sortOrder == 0)
+            let allDescriptor = FetchDescriptor<BookRecord>(
                 sortBy: [SortDescriptor(\BookRecord.savedAt, order: .reverse)]
+            )
+            let allRecords = try modelContext.fetch(allDescriptor)
+            if allRecords.count > 1 && allRecords.allSatisfy({ $0.sortOrder == 0 }) {
+                for (index, record) in allRecords.enumerated() {
+                    record.sortOrder = index
+                }
+                try modelContext.save()
+            }
+
+            let descriptor = FetchDescriptor<BookRecord>(
+                sortBy: [SortDescriptor(\BookRecord.sortOrder, order: .forward)]
             )
             let records = try modelContext.fetch(descriptor)
             savedBooksRelay.accept(records.map { $0.toDomain() })

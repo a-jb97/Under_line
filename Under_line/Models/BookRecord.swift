@@ -21,6 +21,7 @@ final class BookRecord {
     var itemPage: Int?
     var currentPage: Int?
     var savedAt: Date
+    var sortOrder: Int = 0
 
     init(from book: Book) {
         self.title           = book.title
