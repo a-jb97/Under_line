@@ -93,6 +93,11 @@ final class PageRecordViewController: UIViewController {
         configureSheet()
     }
 
+    override func viewDidAppear(_ animated: Bool) {
+        super.viewDidAppear(animated)
+        pageTextField.becomeFirstResponder()
+    }
+
     // MARK: - Setup
 
     private func setupUI() {
