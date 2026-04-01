@@ -266,8 +266,7 @@ final class SettingsViewController: UIViewController {
 
         reviewRow.rx.tap
             .subscribe(onNext: { _ in
-                // TODO: 실제 App Store ID로 교체
-                guard let url = URL(string: "https://apps.apple.com/app/id000000000") else { return }
+                guard let url = URL(string: "https://apps.apple.com/app/id6761336410") else { return }
                 UIApplication.shared.open(url)
             })
             .disposed(by: disposeBag)
