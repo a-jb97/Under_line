@@ -37,8 +37,9 @@ final class SettingsViewController: UIViewController {
         return v
     }()
 
-    private lazy var backupRow:  UIButton = makeChevronRow(title: "내 밑줄 기록 백업하기")
-    private lazy var restoreRow: UIButton = makeChevronRow(title: "내 밑줄 기록 불러오기")
+    private lazy var backupRow:   UIButton = makeChevronRow(title: "내 밑줄 기록 백업하기")
+    private lazy var restoreRow:  UIButton = makeChevronRow(title: "내 밑줄 기록 불러오기")
+    private lazy var tutorialRow: UIButton = makeChevronRow(title: "튜토리얼 다시 보기")
     private lazy var feedbackRow: UIButton = makeChevronRow(title: "의견 보내기")
     private lazy var reviewRow:   UIButton = makeChevronRow(title: "앱 리뷰 작성하기")
     private lazy var termsRow:    UIButton = makeChevronRow(title: "개인정보 처리방침")
@@ -65,6 +66,7 @@ final class SettingsViewController: UIViewController {
         let rows: [(UIView, Bool)] = [
             (backupRow,   true),
             (restoreRow,  true),
+            (tutorialRow, true),
             (feedbackRow, true),
             (reviewRow,   true),
             (termsRow,    true),
@@ -236,6 +238,19 @@ final class SettingsViewController: UIViewController {
                 picker.delegate = self
                 self.isImportMode = true
                 self.present(picker, animated: true)
+            })
+            .disposed(by: disposeBag)
+
+        tutorialRow.rx.tap
+            .subscribe(onNext: { [weak self] in
+                ["tutorial.bookshelf", "tutorial.bookDetail",
+                 "tutorial.readingRecord", "tutorial.statistics"]
+                    .forEach { UserDefaults.standard.removeObject(forKey: $0) }
+                guard let tabBar = self?.tabBarController else { return }
+                tabBar.selectedIndex = 0
+                if let nav = tabBar.viewControllers?.first as? UINavigationController {
+                    nav.popToRootViewController(animated: false)
+                }
             })
             .disposed(by: disposeBag)
 

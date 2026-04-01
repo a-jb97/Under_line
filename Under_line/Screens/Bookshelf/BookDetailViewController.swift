@@ -233,6 +233,11 @@ final class BookDetailViewController: UIViewController {
         viewWillAppearRelay.accept(())
     }
 
+    override func viewDidAppear(_ animated: Bool) {
+        super.viewDidAppear(animated)
+        showTutorialIfNeeded()
+    }
+
     override func viewDidLayoutSubviews() {
         super.viewDidLayoutSubviews()
         for (view, gradient) in highlightLayers {
@@ -884,6 +889,38 @@ final class BookDetailViewController: UIViewController {
             .disposed(by: disposeBag)
     }
 
+}
+
+// MARK: - Tutorial
+
+extension BookDetailViewController {
+    private func showTutorialIfNeeded() {
+        guard !UserDefaults.standard.bool(forKey: "tutorial.bookDetail") else { return }
+
+        let steps: [TutorialStep] = [
+            TutorialStep(
+                targetFrame: fabButton.convert(fabButton.bounds, to: nil),
+                message: "카메라 OCR이나 직접 입력으로\n밑줄을 수집해보세요!"
+            ),
+            TutorialStep(
+                targetFrame: quoteCard.convert(quoteCard.bounds, to: nil),
+                message: "카드를 탭하면 앞뒷면이 뒤집혀요\n앞면은 문장, 뒷면은 메모예요"
+            ),
+            TutorialStep(
+                targetFrame: timerButton.convert(timerButton.bounds, to: nil),
+                message: "독서 시간을 기록하고\n통계를 확인하세요"
+            ),
+        ]
+
+        let tutorialVC = TutorialOverlayViewController()
+        tutorialVC.steps = steps
+        tutorialVC.modalPresentationStyle = .overFullScreen
+        tutorialVC.modalTransitionStyle = .crossDissolve
+        tutorialVC.onFinished = {
+            UserDefaults.standard.set(true, forKey: "tutorial.bookDetail")
+        }
+        present(tutorialVC, animated: true)
+    }
 }
 
 // MARK: - UIScrollViewDelegate

@@ -347,6 +347,20 @@ final class HeatmapCardView: UIView {
     private func hideTooltip() {
         UIView.animate(withDuration: 0.15) { self.tooltipView.alpha = 0 }
     }
+
+    // MARK: - Tutorial Demo
+
+    /// 튜토리얼용: 셀을 선택 상태로 만들고 툴팁을 표시합니다.
+    func showDemoSelection() {
+        guard let (day, buttonFrame) = heatmapBody.selectDemoCell() else { return }
+        showTooltip(for: day, buttonFrame: buttonFrame)
+    }
+
+    /// 튜토리얼 종료 후 데모 선택 상태와 툴팁을 초기화합니다.
+    func hideDemoSelection() {
+        heatmapBody.deselectDemo()
+        hideTooltip()
+    }
 }
 
 // MARK: - HeatmapBodyView
@@ -493,6 +507,51 @@ final class HeatmapBodyView: UIView {
                 btn.layer.borderWidth = isSelected ? 2 : 0
             }
         }
+    }
+
+    // MARK: - Tutorial Demo
+
+    /// 튜토리얼용: 데이터가 있는 셀(없으면 중간 셀)을 선택 상태로 만들고 결과를 반환합니다.
+    func selectDemoCell() -> (day: HeatmapDay, buttonFrame: CGRect)? {
+        var demoRow: Int?
+        var demoCol: Int?
+
+        // 오른쪽 열(최근)부터 독서 기록이 있는 셀 탐색
+        let numCols = days.first?.count ?? 0
+        outer: for c in stride(from: numCols - 1, through: 0, by: -1) {
+            for r in 0..<days.count {
+                guard c < days[r].count, days[r][c].durationSeconds > 0,
+                      r < cellButtons.count, c < cellButtons[r].count else { continue }
+                demoRow = r; demoCol = c
+                break outer
+            }
+        }
+
+        // 기록 없으면 그리드 중간 셀 fallback
+        if demoRow == nil {
+            let midRow = min(3, max(0, cellButtons.count - 1))
+            let midCol = min(6, max(0, (cellButtons.first?.count ?? 1) - 1))
+            if midRow < cellButtons.count, midCol < cellButtons[midRow].count {
+                demoRow = midRow; demoCol = midCol
+            }
+        }
+
+        guard let r = demoRow, let c = demoCol,
+              r < cellButtons.count, c < cellButtons[r].count else { return nil }
+
+        selectedCell = (row: r, col: c)
+        applySelection()
+
+        let day = (r < days.count && c < days[r].count)
+            ? days[r][c]
+            : HeatmapDay(date: Date(), intensity: 0, isCurrentMonth: true, durationSeconds: 0)
+
+        return (day: day, buttonFrame: cellButtons[r][c].frame)
+    }
+
+    func deselectDemo() {
+        selectedCell = nil
+        applySelection()
     }
 }
 

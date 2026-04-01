@@ -175,6 +175,11 @@ final class BookshelfViewController: UIViewController {
         }
     }
 
+    override func viewDidAppear(_ animated: Bool) {
+        super.viewDidAppear(animated)
+        showTutorialIfNeeded()
+    }
+
     override var preferredStatusBarStyle: UIStatusBarStyle { .darkContent }
 
     override func viewWillTransition(to size: CGSize, with coordinator: UIViewControllerTransitionCoordinator) {
@@ -767,6 +772,36 @@ final class BookshelfViewController: UIViewController {
                 self.present(vc, animated: true)
             })
             .disposed(by: disposeBag)
+    }
+}
+
+// MARK: - BookshelfFilterDelegate
+
+// MARK: - Tutorial
+
+extension BookshelfViewController {
+    private func showTutorialIfNeeded() {
+        guard !UserDefaults.standard.bool(forKey: "tutorial.bookshelf") else { return }
+
+        let steps: [TutorialStep] = [
+            TutorialStep(
+                targetFrame: fabButton.convert(fabButton.bounds, to: nil),
+                message: "도서 검색으로 읽고 있는 책을\n책장에 추가해보세요!"
+            ),
+            TutorialStep(
+                targetFrame: sortButton.convert(sortButton.bounds, to: nil),
+                message: "정렬·필터로 원하는 책을\n빠르게 찾을 수 있어요"
+            ),
+        ]
+
+        let tutorialVC = TutorialOverlayViewController()
+        tutorialVC.steps = steps
+        tutorialVC.modalPresentationStyle = .overFullScreen
+        tutorialVC.modalTransitionStyle = .crossDissolve
+        tutorialVC.onFinished = {
+            UserDefaults.standard.set(true, forKey: "tutorial.bookshelf")
+        }
+        present(tutorialVC, animated: true)
     }
 }
 

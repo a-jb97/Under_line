@@ -71,6 +71,11 @@ final class StatisticsViewController: UIViewController {
         viewWillAppearRelay.accept(())
     }
 
+    override func viewDidAppear(_ animated: Bool) {
+        super.viewDidAppear(animated)
+        showTutorialIfNeeded()
+    }
+
     // MARK: - Setup
 
     private func setupUI() {
@@ -106,6 +111,32 @@ final class StatisticsViewController: UIViewController {
             make.width.equalTo(scrollView).offset(-48).priority(.high)
             make.centerX.equalTo(scrollView)
         }
+    }
+
+    // MARK: - Tutorial
+
+    private func showTutorialIfNeeded() {
+        guard !UserDefaults.standard.bool(forKey: "tutorial.statistics") else { return }
+
+        // 튜토리얼 시작 전에 셀 선택 + 툴팁을 미리 표시
+        heatmapCard.showDemoSelection()
+
+        let steps: [TutorialStep] = [
+            TutorialStep(
+                targetFrame: heatmapCard.convert(heatmapCard.bounds, to: nil),
+                message: "날짜 칸을 탭하면 해당 날의\n독서 시간을 확인할 수 있어요"
+            ),
+        ]
+
+        let tutorialVC = TutorialOverlayViewController()
+        tutorialVC.steps = steps
+        tutorialVC.modalPresentationStyle = .overFullScreen
+        tutorialVC.modalTransitionStyle = .crossDissolve
+        tutorialVC.onFinished = { [weak self] in
+            self?.heatmapCard.hideDemoSelection()
+            UserDefaults.standard.set(true, forKey: "tutorial.statistics")
+        }
+        present(tutorialVC, animated: true)
     }
 
     // MARK: - ViewModel Binding

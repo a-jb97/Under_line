@@ -164,6 +164,7 @@ final class ReadingRecordViewController: UIViewController {
         }
         timerDialView.restoreStateIfNeeded()
         viewDidAppearRelay.accept(())
+        showTutorialIfNeeded()
     }
 
     override func viewWillDisappear(_ animated: Bool) {
@@ -507,5 +508,28 @@ final class ReadingRecordViewController: UIViewController {
         btn.backgroundColor    = selected ? UIColor.appPrimary : .clear
         btn.setTitleColor(selected ? .background : UIColor.appPrimary, for: .normal)
         return btn
+    }
+
+    // MARK: - Tutorial
+
+    private func showTutorialIfNeeded() {
+        guard !UserDefaults.standard.bool(forKey: "tutorial.readingRecord") else { return }
+
+        let steps: [TutorialStep] = [
+            TutorialStep(
+                targetFrame: timerDialView.convert(timerDialView.bounds, to: nil),
+                message: "다이얼 바깥쪽을 돌려서 시간을 설정한 후\n시작 버튼을 탭해보세요",
+                animation: .dialRotation
+            ),
+        ]
+
+        let tutorialVC = TutorialOverlayViewController()
+        tutorialVC.steps = steps
+        tutorialVC.modalPresentationStyle = .overFullScreen
+        tutorialVC.modalTransitionStyle = .crossDissolve
+        tutorialVC.onFinished = {
+            UserDefaults.standard.set(true, forKey: "tutorial.readingRecord")
+        }
+        present(tutorialVC, animated: true)
     }
 }
