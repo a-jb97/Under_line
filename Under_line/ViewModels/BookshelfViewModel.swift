@@ -15,6 +15,7 @@ final class BookshelfViewModel {
 
     struct Input {
         let deleteBook: Observable<Book>    // 삭제 버튼 탭
+        let deleteAll:  Observable<Void>    // 전부 삭제 버튼 탭
     }
 
     // MARK: - Output
@@ -42,6 +43,20 @@ final class BookshelfViewModel {
             .flatMapLatest { [weak self] book -> Observable<Void> in
                 guard let self else { return .empty() }
                 return self.repository.deleteBook(book)
+                    .andThen(.just(()))
+                    .catch { error in
+                        errorMessage.accept(error.localizedDescription)
+                        return .empty()
+                    }
+                    .asObservable()
+            }
+            .subscribe()
+            .disposed(by: disposeBag)
+
+        input.deleteAll
+            .flatMapLatest { [weak self] _ -> Observable<Void> in
+                guard let self else { return .empty() }
+                return self.repository.deleteAllBooks()
                     .andThen(.just(()))
                     .catch { error in
                         errorMessage.accept(error.localizedDescription)

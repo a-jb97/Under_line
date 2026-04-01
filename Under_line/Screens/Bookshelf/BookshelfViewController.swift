@@ -15,6 +15,7 @@ final class BookshelfViewController: UIViewController {
     private let disposeBag  = DisposeBag()
     private let viewModel   = BookshelfViewModel(repository: AppContainer.shared.bookRepository)
     private let deleteBookRelay = PublishRelay<Book>()
+    private let deleteAllRelay  = PublishRelay<Void>()
 
     private var layoutReady = false
     private var highlightLayers: [(view: UIView, layer: CAGradientLayer)] = []
@@ -117,6 +118,23 @@ final class BookshelfViewController: UIViewController {
         return btn
     }()
 
+    // 전부 삭제 버튼 컨테이너 (편집 모드일 때만 표시)
+    private let deleteAllButtonContainer: UIView = {
+        let v = UIView()
+        v.isHidden = true
+        return v
+    }()
+
+    private lazy var deleteAllButton: UIButton = {
+        let btn = UIButton(type: .system)
+        btn.setTitle("전부 삭제", for: .normal)
+        btn.setTitleColor(UIColor.walnut, for: .normal)
+        btn.titleLabel?.font = .systemFont(ofSize: 13, weight: .semibold)
+        btn.layer.cornerRadius = 26
+        btn.clipsToBounds = true
+        return btn
+    }()
+
     // MARK: - Lifecycle
 
     override func viewDidLoad() {
@@ -163,9 +181,13 @@ final class BookshelfViewController: UIViewController {
 
         view.addSubview(editButton)
 
-        applyFabGlassStyle(to: sortButton, cornerRadius: 20)
-        applyFabGlassStyle(to: fabButton,    cornerRadius: 26)
-        applyFabGlassStyle(to: editButton,   cornerRadius: 26)
+        view.addSubview(deleteAllButtonContainer)
+        deleteAllButtonContainer.addSubview(deleteAllButton)
+
+        applyFabGlassStyle(to: sortButton,      cornerRadius: 20)
+        applyFabGlassStyle(to: fabButton,       cornerRadius: 26)
+        applyFabGlassStyle(to: editButton,      cornerRadius: 26)
+        applyFabGlassStyle(to: deleteAllButton, cornerRadius: 26)
     }
 
     private func setupConstraints() {
@@ -195,6 +217,17 @@ final class BookshelfViewController: UIViewController {
             make.leading.equalToSuperview().inset(24)
             make.centerY.equalTo(fabButton)
             make.size.equalTo(52)
+        }
+
+        deleteAllButtonContainer.snp.makeConstraints { make in
+            make.leading.equalTo(editButton.snp.trailing).offset(16)
+            make.centerY.equalTo(editButton)
+            make.width.equalTo(84)
+            make.height.equalTo(52)
+        }
+
+        deleteAllButton.snp.makeConstraints { make in
+            make.edges.equalToSuperview()
         }
 
         pageControl.snp.makeConstraints { make in
@@ -340,10 +373,12 @@ final class BookshelfViewController: UIViewController {
             editButton.setTitle("완료", for: .normal)
             editButton.setTitleColor(UIColor.walnut, for: .normal)
             editButton.titleLabel?.font = .systemFont(ofSize: 14, weight: .semibold)
+            deleteAllButtonContainer.isHidden = false
         } else {
             let cfg = UIImage.SymbolConfiguration(pointSize: 14, weight: .medium)
             editButton.setImage(UIImage(systemName: "square.and.pencil", withConfiguration: cfg), for: .normal)
             editButton.setTitle(nil, for: .normal)
+            deleteAllButtonContainer.isHidden = true
         }
         if layoutReady { rebuildShelfPages() }
     }
@@ -447,7 +482,8 @@ final class BookshelfViewController: UIViewController {
 
     private func bindActions() {
         let output = viewModel.transform(input: BookshelfViewModel.Input(
-            deleteBook: deleteBookRelay.asObservable()
+            deleteBook: deleteBookRelay.asObservable(),
+            deleteAll:  deleteAllRelay.asObservable()
         ))
 
         // 저장된 도서 스트림 → 책장 자동 업데이트
@@ -494,6 +530,24 @@ final class BookshelfViewController: UIViewController {
             .subscribe(onNext: { [weak self] in
                 guard let self else { return }
                 self.setEditMode(!self.isEditMode)
+            })
+            .disposed(by: disposeBag)
+
+        // 전부 삭제 버튼
+        deleteAllButton.rx.tap
+            .subscribe(onNext: { [weak self] in
+                guard let self else { return }
+                let alert = UIAlertController(
+                    title: "전부 삭제",
+                    message: "책장의 모든 도서와 밑줄, 독서 데이터가 삭제됩니다.",
+                    preferredStyle: .alert
+                )
+                alert.addAction(UIAlertAction(title: "취소", style: .cancel))
+                alert.addAction(UIAlertAction(title: "삭제", style: .destructive) { [weak self] _ in
+                    self?.deleteAllRelay.accept(())
+                    self?.setEditMode(false)
+                })
+                self.present(alert, animated: true)
             })
             .disposed(by: disposeBag)
 

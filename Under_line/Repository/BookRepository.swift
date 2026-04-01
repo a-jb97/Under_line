@@ -22,6 +22,7 @@ protocol BookRepositoryProtocol {
     func fetchSavedBooks() -> Observable<[Book]>
     func saveBook(_ book: Book) -> Completable
     func deleteBook(_ book: Book) -> Completable
+    func deleteAllBooks() -> Completable
     func updateCurrentPage(isbn13: String, page: Int) -> Completable
 }
 
@@ -109,6 +110,23 @@ final class BookRepository: BookRepositoryProtocol {
                 )
                 try self.modelContext.fetch(sessionDescriptor).forEach { self.modelContext.delete($0) }
 
+                try self.modelContext.save()
+                self.refreshRelay()
+                completable(.completed)
+            } catch {
+                completable(.error(error))
+            }
+            return Disposables.create()
+        }
+    }
+
+    func deleteAllBooks() -> Completable {
+        Completable.create { [weak self] (completable: @escaping (CompletableEvent) -> Void) -> Disposable in
+            guard let self else { completable(.completed); return Disposables.create() }
+            do {
+                try self.modelContext.fetch(FetchDescriptor<BookRecord>()).forEach { self.modelContext.delete($0) }
+                try self.modelContext.fetch(FetchDescriptor<SentenceRecord>()).forEach { self.modelContext.delete($0) }
+                try self.modelContext.fetch(FetchDescriptor<ReadingSessionRecord>()).forEach { self.modelContext.delete($0) }
                 try self.modelContext.save()
                 self.refreshRelay()
                 completable(.completed)
