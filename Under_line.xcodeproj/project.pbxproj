@@ -132,11 +132,11 @@
 				};
 			};
 			buildConfigurationList = 9E562C042F710D0500B65177 /* Build configuration list for PBXProject "Under_line" */;
-			developmentRegion = en;
+			developmentRegion = ko;
 			hasScannedForEncodings = 0;
 			knownRegions = (
-				en,
 				Base,
+				ko,
 			);
 			mainGroup = 9E562C002F710D0500B65177;
 			minimizedProjectReferenceProxies = 1;
