@@ -43,7 +43,10 @@ final class SettingsViewController: UIViewController {
     private lazy var feedbackRow: UIButton = makeChevronRow(title: "의견 보내기")
     private lazy var reviewRow:   UIButton = makeChevronRow(title: "앱 리뷰 작성하기")
     private lazy var termsRow:    UIButton = makeChevronRow(title: "개인정보 처리방침")
-    private lazy var versionRow:  UIView   = makeVersionRow(title: "앱 버전", version: "1.0.0")
+    private lazy var versionRow:  UIView   = makeVersionRow(
+        title: "앱 버전",
+        version: Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "-"
+    )
 
     // MARK: - Lifecycle
 
