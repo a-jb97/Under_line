@@ -183,6 +183,7 @@ final class HeatmapCardView: UIView {
         guard let vc = findViewController() else { return }
         let picker = MonthYearPickerViewController(year: currentYear, month: currentMonth)
         picker.onConfirm = { [weak self] year, month in
+            self?.clearSelection()
             self?.currentYear = year
             self?.currentMonth = month
             self?.updatePeriodLabel()
