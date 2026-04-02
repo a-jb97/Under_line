@@ -37,9 +37,10 @@ final class SettingsViewController: UIViewController {
         return v
     }()
 
-    private lazy var backupRow:   UIButton = makeChevronRow(title: "내 밑줄 기록 백업하기")
-    private lazy var restoreRow:  UIButton = makeChevronRow(title: "내 밑줄 기록 불러오기")
-    private lazy var tutorialRow: UIButton = makeChevronRow(title: "튜토리얼 다시 보기")
+    private lazy var backupRow:          UIButton = makeChevronRow(title: "내 밑줄 기록 백업하기")
+    private lazy var restoreRow:         UIButton = makeChevronRow(title: "내 밑줄 기록 불러오기")
+    private lazy var randomUnderLineRow: UIButton = makeChevronRow(title: "랜덤 밑줄 기능 켜기/끄기")
+    private lazy var tutorialRow:        UIButton = makeChevronRow(title: "튜토리얼 다시 보기")
     private lazy var feedbackRow: UIButton = makeChevronRow(title: "의견 보내기")
     private lazy var reviewRow:   UIButton = makeChevronRow(title: "앱 리뷰 작성하기")
     private lazy var termsRow:    UIButton = makeChevronRow(title: "개인정보 처리방침")
@@ -67,9 +68,10 @@ final class SettingsViewController: UIViewController {
         view.addSubview(tableSection)
 
         let rows: [(UIView, Bool)] = [
-            (backupRow,   true),
-            (restoreRow,  true),
-            (tutorialRow, true),
+            (backupRow,          true),
+            (restoreRow,         true),
+            (randomUnderLineRow, true),
+            (tutorialRow,        true),
             (feedbackRow, true),
             (reviewRow,   true),
             (termsRow,    true),
@@ -241,6 +243,28 @@ final class SettingsViewController: UIViewController {
                 picker.delegate = self
                 self.isImportMode = true
                 self.present(picker, animated: true)
+            })
+            .disposed(by: disposeBag)
+
+        randomUnderLineRow.rx.tap
+            .subscribe(onNext: { [weak self] in
+                guard let self else { return }
+                let isEnabled = !UserDefaults.standard.bool(forKey: "randomUnderLine.isDisabled")
+                let alert = UIAlertController(
+                    title:   "랜덤 밑줄 기능",
+                    message: isEnabled
+                        ? "앱 실행 시 감정을 선택해 랜덤 문장을 표시하는 기능을 끄시겠습니까?"
+                        : "앱 실행 시 감정을 선택해 랜덤 문장을 표시하는 기능을 켜시겠습니까?",
+                    preferredStyle: .alert
+                )
+                alert.addAction(UIAlertAction(title: "취소", style: .cancel))
+                alert.addAction(UIAlertAction(
+                    title: isEnabled ? "끄기" : "켜기",
+                    style: isEnabled ? .destructive : .default
+                ) { _ in
+                    UserDefaults.standard.set(isEnabled, forKey: "randomUnderLine.isDisabled")
+                })
+                self.present(alert, animated: true)
             })
             .disposed(by: disposeBag)
 
