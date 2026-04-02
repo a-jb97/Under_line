@@ -114,9 +114,15 @@ final class HeatmapCardView: UIView {
         nextButton.rx.tap
             .subscribe(onNext: { [weak self] in
                 guard let self else { return }
+                var nextMonth = self.currentMonth + 1
+                var nextYear = self.currentYear
+                if nextMonth == 13 { nextMonth = 1; nextYear += 1 }
+                let nowYear = Calendar.current.component(.year, from: Date())
+                let nowMonth = Calendar.current.component(.month, from: Date())
+                guard nextYear < nowYear || (nextYear == nowYear && nextMonth <= nowMonth) else { return }
                 self.clearSelection()
-                self.currentMonth += 1
-                if self.currentMonth == 13 { self.currentMonth = 1; self.currentYear += 1 }
+                self.currentMonth = nextMonth
+                self.currentYear = nextYear
                 self.updatePeriodLabel()
                 self.reloadHeatmap()
             })
@@ -193,7 +199,7 @@ final class HeatmapCardView: UIView {
         if let sheet = picker.sheetPresentationController {
             sheet.detents = [.custom { _ in 290 }]
             sheet.prefersGrabberVisible = true
-            sheet.preferredCornerRadius = 20
+            sheet.preferredCornerRadius = 52
         }
         vc.present(picker, animated: true)
     }

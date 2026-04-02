@@ -767,7 +767,7 @@ final class BookshelfViewController: UIViewController {
                 if let sheet = vc.sheetPresentationController {
                     sheet.detents               = [.custom { _ in BookshelfFilterViewController.preferredSheetHeight }]
                     sheet.prefersGrabberVisible = true
-                    sheet.preferredCornerRadius = 24
+                    sheet.preferredCornerRadius = 52
                 }
                 self.present(vc, animated: true)
             })

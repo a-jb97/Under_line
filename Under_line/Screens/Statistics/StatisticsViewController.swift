@@ -119,6 +119,8 @@ final class StatisticsViewController: UIViewController {
     private func showTutorialIfNeeded() {
         guard !UserDefaults.standard.bool(forKey: "tutorial.statistics") else { return }
 
+        scrollView.setContentOffset(.zero, animated: false)
+
         // 튜토리얼 시작 전에 셀 선택 + 툴팁을 미리 표시
         heatmapCard.showDemoSelection()
 
