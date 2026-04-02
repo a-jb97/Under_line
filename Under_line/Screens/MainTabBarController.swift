@@ -70,7 +70,9 @@ final class MainTabBarController: UITabBarController {
 
         output.shouldPresentEmotionPicker
             .emit(onNext: { [weak self] enabledEmotions in
-                guard let self, !enabledEmotions.isEmpty else { return }
+                guard let self,
+                      !enabledEmotions.isEmpty,
+                      !UserDefaults.standard.bool(forKey: "randomUnderLine.isDisabled") else { return }
                 let vc = RandomUnderLineEmotionViewController(
                     enabledEmotions: enabledEmotions,
                     onEmotionSelected: { [weak self] emotion in
