@@ -4,13 +4,32 @@
 //
 
 import UIKit
+import RxSwift
+import RxCocoa
 
 final class MainTabBarController: UITabBarController {
+
+    private let disposeBag             = DisposeBag()
+    private let emotionSelectedRelay   = PublishRelay<Emotion>()
+    private let viewDidAppearOnceRelay = PublishRelay<Void>()
+    private var hasAppeared            = false
+
+    private lazy var randomVM = RandomUnderLineViewModel(
+        repository: AppContainer.shared.sentenceRepository
+    )
 
     override func viewDidLoad() {
         super.viewDidLoad()
         setupTabs()
         setupAppearance()
+        bindRandomUnderLine()
+    }
+
+    override func viewDidAppear(_ animated: Bool) {
+        super.viewDidAppear(animated)
+        guard !hasAppeared else { return }
+        hasAppeared = true
+        viewDidAppearOnceRelay.accept(())
     }
 
     private func setupTabs() {
@@ -39,6 +58,39 @@ final class MainTabBarController: UITabBarController {
         )
 
         viewControllers = [booksNav, statsVC, settingsVC]
+    }
+
+    // MARK: - Random UnderLine
+
+    private func bindRandomUnderLine() {
+        let output = randomVM.transform(input: RandomUnderLineViewModel.Input(
+            viewDidLoad:     viewDidAppearOnceRelay.asObservable(),
+            emotionSelected: emotionSelectedRelay.asObservable()
+        ))
+
+        output.shouldPresentEmotionPicker
+            .emit(onNext: { [weak self] enabledEmotions in
+                guard let self, !enabledEmotions.isEmpty else { return }
+                let vc = RandomUnderLineEmotionViewController(
+                    enabledEmotions: enabledEmotions,
+                    onEmotionSelected: { [weak self] emotion in
+                        self?.emotionSelectedRelay.accept(emotion)
+                    }
+                )
+                vc.modalPresentationStyle = .pageSheet
+                self.present(vc, animated: true)
+            })
+            .disposed(by: disposeBag)
+
+        output.randomSentence
+            .emit(onNext: { [weak self] sentence in
+                guard let self else { return }
+                let vc = RandomUnderLineViewController(sentence: sentence)
+                vc.modalPresentationStyle = .overFullScreen
+                vc.modalTransitionStyle   = .crossDissolve
+                self.present(vc, animated: true)
+            })
+            .disposed(by: disposeBag)
     }
 
     private func setupAppearance() {
