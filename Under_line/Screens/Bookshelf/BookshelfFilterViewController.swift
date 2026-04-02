@@ -85,12 +85,11 @@ final class BookshelfFilterViewController: UIViewController {
     private lazy var showAllButton: UIButton = {
         let btn = UIButton(type: .system)
         btn.setTitle("전부 표시", for: .normal)
-        btn.setTitleColor(UIColor.appPrimary, for: .normal)
-        btn.titleLabel?.font = UIFont(name: "GowunBatang-Regular", size: 16)
-            ?? .systemFont(ofSize: 16)
-        btn.backgroundColor    = UIColor.appPrimary.withAlphaComponent(0.1)
+        btn.setTitleColor(UIColor.background, for: .normal)
+        btn.titleLabel?.font = UIFont(name: "GowunBatang-Bold", size: 18)
+            ?? .boldSystemFont(ofSize: 18)
+        btn.backgroundColor    = UIColor.walnut
         btn.layer.cornerRadius = 12
-        btn.clipsToBounds      = true
         return btn
     }()
 
