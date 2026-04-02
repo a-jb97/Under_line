@@ -193,7 +193,7 @@ final class HeatmapCardView: UIView {
         if let sheet = picker.sheetPresentationController {
             sheet.detents = [.custom { _ in 290 }]
             sheet.prefersGrabberVisible = true
-            sheet.preferredCornerRadius = 20
+            sheet.preferredCornerRadius = 52
         }
         vc.present(picker, animated: true)
     }
