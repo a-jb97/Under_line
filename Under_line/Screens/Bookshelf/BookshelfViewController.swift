@@ -41,6 +41,7 @@ final class BookshelfViewController: UIViewController {
 
     private var allBooks: [Book] = []
     private var activeFilterQuery: String?
+    private var tutorialBooks: [Book] = []
 
     private var savedBooks: [Book] = [] {
         didSet {
@@ -289,7 +290,8 @@ final class BookshelfViewController: UIViewController {
 
         let rowsPerPage  = 3
         let booksPerPage = booksPerRow * rowsPerPage
-        let pageCount    = max(1, Int(ceil(Double(savedBooks.count) / Double(booksPerPage))))
+        let displayBooks: [Book] = tutorialBooks.isEmpty ? savedBooks : Array(tutorialBooks.prefix(booksPerPage))
+        let pageCount    = max(1, Int(ceil(Double(displayBooks.count) / Double(booksPerPage))))
 
         pageControl.numberOfPages = pageCount
         pageControl.isHidden = pageCount <= 1
@@ -305,10 +307,10 @@ final class BookshelfViewController: UIViewController {
             var rows: [ShelfPageView.RowData] = []
             for rowIdx in 0..<rowsPerPage {
                 let start = pageIdx * booksPerPage + rowIdx * booksPerRow
-                var rowBooks: [Book?] = start < savedBooks.count
-                    ? (start..<min(start + booksPerRow, savedBooks.count)).map { idx in
+                var rowBooks: [Book?] = start < displayBooks.count
+                    ? (start..<min(start + booksPerRow, displayBooks.count)).map { idx in
                         if let di = draggingIndex, idx == di { return nil }
-                        return savedBooks[idx] as Book?
+                        return displayBooks[idx] as Book?
                     }
                     : []
                 while rowBooks.count < booksPerRow { rowBooks.append(nil) }
@@ -334,7 +336,8 @@ final class BookshelfViewController: UIViewController {
             pageWidth: pageWidth, pageHeight: pageHeight,
             bookWidth: bookWidth, bookHeight: bookHeight,
             booksPerRow: booksPerRow, rowsPerPage: rowsPerPage,
-            booksPerPage: booksPerPage, pageCount: pageCount
+            booksPerPage: booksPerPage, pageCount: pageCount,
+            booksCount: displayBooks.count
         )
 
         setupFixedShelfBoards(pageHeight: pageHeight, bookHeight: bookHeight, isIPad: isIPad)
@@ -399,7 +402,7 @@ final class BookshelfViewController: UIViewController {
     }
 
     /// 책 위치 감지를 위한 슬롯 프레임 배열 재계산
-    private func rebuildBookSlotFrames(pageWidth: CGFloat, pageHeight: CGFloat, bookWidth: CGFloat, bookHeight: CGFloat, booksPerRow: Int, rowsPerPage: Int, booksPerPage: Int, pageCount: Int) {
+    private func rebuildBookSlotFrames(pageWidth: CGFloat, pageHeight: CGFloat, bookWidth: CGFloat, bookHeight: CGFloat, booksPerRow: Int, rowsPerPage: Int, booksPerPage: Int, pageCount: Int, booksCount: Int) {
         var frames: [(globalIndex: Int, frameInScrollView: CGRect)] = []
 
         // ShelfRowView 실제 높이 = top inset(2) + bookHeight + bottom inset(12)
@@ -423,7 +426,7 @@ final class BookshelfViewController: UIViewController {
 
                 for colIdx in 0..<booksPerRow {
                     let globalIndex = pageIdx * booksPerPage + rowIdx * booksPerRow + colIdx
-                    guard globalIndex < savedBooks.count else { continue }
+                    guard globalIndex < booksCount else { continue }
                     let bookX = startX + CGFloat(colIdx) * (bookWidth + 20)
                     frames.append((
                         globalIndex: globalIndex,
@@ -783,6 +786,20 @@ extension BookshelfViewController {
     private func showTutorialIfNeeded() {
         guard !UserDefaults.standard.bool(forKey: "tutorial.bookshelf") else { return }
 
+        // 베스트셀러 표지로 책장 미리채우기
+        AppContainer.shared.bookRepository
+            .fetchBestsellers()
+            .observe(on: MainScheduler.instance)
+            .subscribe(
+                onSuccess: { [weak self] books in
+                    guard let self else { return }
+                    self.tutorialBooks = books
+                    if self.layoutReady { self.rebuildShelfPages() }
+                },
+                onFailure: { _ in }
+            )
+            .disposed(by: disposeBag)
+
         let steps: [TutorialStep] = [
             TutorialStep(
                 targetFrame: fabButton.convert(fabButton.bounds, to: nil),
@@ -798,8 +815,10 @@ extension BookshelfViewController {
         tutorialVC.steps = steps
         tutorialVC.modalPresentationStyle = .overFullScreen
         tutorialVC.modalTransitionStyle = .crossDissolve
-        tutorialVC.onFinished = {
+        tutorialVC.onFinished = { [weak self] in
             UserDefaults.standard.set(true, forKey: "tutorial.bookshelf")
+            self?.tutorialBooks = []
+            if self?.layoutReady == true { self?.rebuildShelfPages() }
         }
         present(tutorialVC, animated: true)
     }
