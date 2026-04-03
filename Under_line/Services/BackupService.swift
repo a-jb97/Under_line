@@ -31,6 +31,7 @@ struct BookBackup: Codable {
     let itemPage: Int?
     let currentPage: Int?
     let savedAt: Date
+    let sortOrder: Int?
 }
 
 struct SentenceBackup: Codable {
@@ -66,7 +67,10 @@ final class BackupService {
         Single.create { [weak self] single in
             guard let self else { single(.failure(BackupError.unknown)); return Disposables.create() }
             do {
-                let books = try self.modelContext.fetch(FetchDescriptor<BookRecord>()).map {
+                let bookDescriptor = FetchDescriptor<BookRecord>(
+                    sortBy: [SortDescriptor(\BookRecord.sortOrder, order: .forward)]
+                )
+                let books = try self.modelContext.fetch(bookDescriptor).map {
                     BookBackup(
                         title:           $0.title,
                         author:          $0.author,
@@ -78,7 +82,8 @@ final class BackupService {
                         bookDescription: $0.bookDescription,
                         itemPage:        $0.itemPage,
                         currentPage:     $0.currentPage,
-                        savedAt:         $0.savedAt
+                        savedAt:         $0.savedAt,
+                        sortOrder:       $0.sortOrder
                     )
                 }
                 let sentences = try self.modelContext.fetch(FetchDescriptor<SentenceRecord>()).map {
@@ -146,7 +151,7 @@ final class BackupService {
                 try self.modelContext.delete(model: SentenceRecord.self)
                 try self.modelContext.delete(model: ReadingSessionRecord.self)
 
-                for b in payload.books {
+                for (index, b) in payload.books.enumerated() {
                     let book = Book(
                         title:       b.title,
                         author:      b.author,
@@ -161,7 +166,8 @@ final class BackupService {
                         currentPage: b.currentPage
                     )
                     let record = BookRecord(from: book)
-                    record.savedAt = b.savedAt
+                    record.savedAt   = b.savedAt
+                    record.sortOrder = b.sortOrder ?? index
                     self.modelContext.insert(record)
                 }
 
