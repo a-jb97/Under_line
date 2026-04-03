@@ -70,11 +70,20 @@ final class StatisticsViewController: UIViewController {
         super.viewWillAppear(animated)
         heatmapCard.clearSelection()
         viewWillAppearRelay.accept(())
+        lockTabBarBriefly()
     }
 
     override func viewDidAppear(_ animated: Bool) {
         super.viewDidAppear(animated)
         showTutorialIfNeeded()
+    }
+
+    private func lockTabBarBriefly() {
+        guard !UserDefaults.standard.bool(forKey: "tutorial.statistics") else { return }
+        tabBarController?.tabBar.isUserInteractionEnabled = false
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1) { [weak self] in
+            self?.tabBarController?.tabBar.isUserInteractionEnabled = true
+        }
     }
 
     // MARK: - Setup
