@@ -29,6 +29,25 @@ struct TutorialStep {
     var animation: TutorialAnimation? = nil
 }
 
+// MARK: - TutorialBlockingView
+
+/// 튜토리얼 루트 뷰: 허용된 뷰(이전/다음/확인 버튼)에 대한 터치만 전달하고
+/// 나머지 터치는 self를 반환해 흡수합니다. (nil 반환 시 하위 레이어로 pass-through됨)
+private final class TutorialBlockingView: UIView {
+    var interactableViews: [UIView] = []
+
+    override func hitTest(_ point: CGPoint, with event: UIEvent?) -> UIView? {
+        guard isUserInteractionEnabled, !isHidden, alpha > 0.01,
+              bounds.contains(point) else { return nil }
+        if let hit = super.hitTest(point, with: event) {
+            for allowed in interactableViews where hit === allowed || hit.isDescendant(of: allowed) {
+                return hit
+            }
+        }
+        return self
+    }
+}
+
 // MARK: - TutorialOverlayViewController
 
 final class TutorialOverlayViewController: UIViewController {
@@ -39,6 +58,9 @@ final class TutorialOverlayViewController: UIViewController {
     private var currentIndex = 0
     private let disposeBag = DisposeBag()
     private var fingerHintView: UIImageView?
+
+    private let blockingView = TutorialBlockingView()
+    private weak var presentingTabBarController: UITabBarController?
 
     // MARK: - UI
 
@@ -91,10 +113,27 @@ final class TutorialOverlayViewController: UIViewController {
 
     // MARK: - Lifecycle
 
+    override func loadView() {
+        blockingView.backgroundColor = .clear
+        view = blockingView
+    }
+
     override func viewDidLoad() {
         super.viewDidLoad()
         setupUI()
         bindActions()
+    }
+
+    override func viewWillAppear(_ animated: Bool) {
+        super.viewWillAppear(animated)
+        let tbc = presentingViewController?.tabBarController
+        presentingTabBarController = tbc
+        tbc?.tabBar.isUserInteractionEnabled = false
+    }
+
+    override func viewWillDisappear(_ animated: Bool) {
+        super.viewWillDisappear(animated)
+        presentingTabBarController?.tabBar.isUserInteractionEnabled = true
     }
 
     override func viewDidAppear(_ animated: Bool) {
@@ -152,6 +191,9 @@ final class TutorialOverlayViewController: UIViewController {
             make.trailing.equalToSuperview().inset(24)
             make.centerY.equalToSuperview()
         }
+
+        // 튜토리얼 버튼만 터치를 허용
+        blockingView.interactableViews = [prevButton, nextButton]
     }
 
     private func bindActions() {

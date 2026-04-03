@@ -9,6 +9,7 @@ import UIKit
 import SnapKit
 import AVFoundation
 import AudioToolbox
+import UserNotifications
 
 final class TimerDialView: UIView {
 
@@ -555,6 +556,7 @@ final class TimerDialView: UIView {
             self?.tickTimer()
         }
         RunLoop.current.add(countdownTimer!, forMode: .common)
+        scheduleTimerNotification()
     }
 
     private func pauseTimer() {
@@ -567,6 +569,7 @@ final class TimerDialView: UIView {
         playButton.setImage(UIImage(systemName: "play.fill", withConfiguration: cfg), for: .normal)
         countdownTimer?.invalidate()
         countdownTimer = nil
+        cancelTimerNotification()
         onTimerStateChanged?(false)
     }
 
@@ -620,6 +623,32 @@ final class TimerDialView: UIView {
         try? AVAudioSession.sharedInstance().setActive(true)
         AudioServicesPlayAlertSound(SystemSoundID(1005))
         UINotificationFeedbackGenerator().notificationOccurred(.warning)
+    }
+
+    private func scheduleTimerNotification() {
+        guard let key = persistenceKey, let end = timerEndDate else { return }
+        let interval = end.timeIntervalSinceNow
+        guard interval > 0 else { return }
+
+        let content = UNMutableNotificationContent()
+        content.title = "타이머 종료"
+        content.body  = "독서 타이머가 종료되었습니다."
+        content.sound = .default
+
+        let trigger = UNTimeIntervalNotificationTrigger(timeInterval: interval, repeats: false)
+        let request  = UNNotificationRequest(
+            identifier: "timer_notification_\(key)",
+            content: content,
+            trigger: trigger
+        )
+        UNUserNotificationCenter.current().add(request, withCompletionHandler: nil)
+    }
+
+    private func cancelTimerNotification() {
+        guard let key = persistenceKey else { return }
+        let id = "timer_notification_\(key)"
+        UNUserNotificationCenter.current().removePendingNotificationRequests(withIdentifiers: [id])
+        UNUserNotificationCenter.current().removeDeliveredNotifications(withIdentifiers: [id])
     }
 
     // MARK: - Persistence
@@ -688,6 +717,7 @@ final class TimerDialView: UIView {
                 accumulatedSeconds = 0
                 sessionStartRemainingSeconds = 0
                 isRunning = false
+                cancelTimerNotification()
                 if elapsed > 0 { onTimerStopped?(elapsed) }
                 playAlarm()
             }
@@ -715,6 +745,7 @@ final class TimerDialView: UIView {
             name: UIApplication.willEnterForegroundNotification,
             object: nil
         )
+        UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound]) { _, _ in }
     }
 
     @objc private func appDidEnterBackground() {
