@@ -139,8 +139,9 @@ final class ReadingRecordViewModel {
                 let total     = sessions
                     .filter { $0.date >= weekStart && $0.date < weekEnd }
                     .reduce(0) { $0 + $1.durationSeconds }
-                let month = calendar.component(.month, from: weekStart)
-                let day   = calendar.component(.day, from: weekStart)
+                let labelDate = weeksAgo == 0 ? now : weekStart
+                let month = calendar.component(.month, from: labelDate)
+                let day   = calendar.component(.day, from: labelDate)
                 return ChartPoint(label: "\(month)/\(day)", seconds: total)
             }
 
