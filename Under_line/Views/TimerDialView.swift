@@ -596,7 +596,7 @@ final class TimerDialView: UIView {
 
     private func tickTimer() {
         guard let endDate = timerEndDate else { stopTimer(); return }
-        let remaining = max(0, Int(endDate.timeIntervalSinceNow))
+        let remaining = max(0, Int(endDate.timeIntervalSinceNow.rounded()))
         guard remaining > 0 else {
             remainingSeconds = 0
             updateTimerDisplay()
@@ -695,7 +695,7 @@ final class TimerDialView: UIView {
         sessionStartRemainingSeconds = savedSessStart
 
         if wasRunning, let end = endDate {
-            let remaining = max(0, Int(end.timeIntervalSinceNow))
+            let remaining = max(0, Int(end.timeIntervalSinceNow.rounded()))
             if remaining > 0 {
                 timerEndDate     = end
                 remainingSeconds = remaining
@@ -757,7 +757,7 @@ final class TimerDialView: UIView {
 
     @objc private func appWillEnterForeground() {
         guard isRunning, let endDate = timerEndDate else { return }
-        let remaining = max(0, Int(endDate.timeIntervalSinceNow))
+        let remaining = max(0, Int(endDate.timeIntervalSinceNow.rounded()))
         if remaining <= 0 {
             remainingSeconds = 0
             updateTimerDisplay()
