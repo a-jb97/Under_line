@@ -19,6 +19,10 @@ final class QuoteCardEditorViewController: UIViewController {
     private let sentence: Sentence
     private let bookTitle: String
     private var highlightLayers: [(view: UIView, layer: CAGradientLayer)] = []
+    private let ciContext = CIContext(options: [.useSoftwareRenderer: false])
+    private var isDominantColorEnabled = false
+    private var dominantTextColor: UIColor = .appPrimary
+    private var colorSyncDecorations: [UIView] = []
 
     init(sentence: Sentence, bookTitle: String) {
         self.sentence  = sentence
@@ -82,13 +86,34 @@ final class QuoteCardEditorViewController: UIViewController {
         return l
     }()
 
+    // MARK: - Text Blur Backgrounds (사진 배경 설정 시 가독성 보조)
+
+    private let sentenceBlur  = QuoteCardEditorViewController.makeTextBlurView()
+    private let bookTitleBlur = QuoteCardEditorViewController.makeTextBlurView()
+
+    private static func makeTextBlurView() -> UIVisualEffectView {
+        let v = UIVisualEffectView(effect: UIBlurEffect(style: .systemUltraThinMaterial))
+        v.isHidden = true
+        v.isUserInteractionEnabled = false
+        return v
+    }
+
     private let pageLabel: UILabel = {
         let l = UILabel()
         l.font = UIFont(name: "GoyangIlsan R", size: 13) ?? .systemFont(ofSize: 13)
-        l.textColor = UIColor.appPrimary.withAlphaComponent(0.5)
+        l.textColor = UIColor.appPrimary
         l.textAlignment = .right
         l.isUserInteractionEnabled = false
         return l
+    }()
+
+    private let labelStack: UIStackView = {
+        let sv = UIStackView()
+        sv.axis = .vertical
+        sv.alignment = .fill
+        sv.spacing = 12
+        sv.isUserInteractionEnabled = false
+        return sv
     }()
 
     private let bookTitleLabel: UILabel = {
@@ -123,6 +148,17 @@ final class QuoteCardEditorViewController: UIViewController {
         return btn
     }()
 
+    lazy var colorSyncButton: UIButton = {
+        let btn = UIButton(type: .system)
+        let cfg = UIImage.SymbolConfiguration(pointSize: 14, weight: .medium)
+        btn.setImage(UIImage(systemName: "paintpalette.fill", withConfiguration: cfg), for: .normal)
+        btn.tintColor = UIColor.walnut
+        btn.layer.cornerRadius = 26
+        btn.clipsToBounds = true
+        btn.isHidden = true
+        return btn
+    }()
+
     lazy var saveButton: UIButton = {
         let btn = UIButton(type: .system)
         let cfg = UIImage.SymbolConfiguration(pointSize: 14, weight: .medium)
@@ -135,6 +171,7 @@ final class QuoteCardEditorViewController: UIViewController {
 
     private let removeLogoLabel = QuoteCardEditorViewController.makeActionLabel("로고 제거")
     private let backgroundLabel = QuoteCardEditorViewController.makeActionLabel("배경 지정")
+    private let colorSyncLabel  = QuoteCardEditorViewController.makeActionLabel("색상 동기화")
     private let saveLabel       = QuoteCardEditorViewController.makeActionLabel("카드 생성")
 
     private static func makeActionLabel(_ text: String) -> UILabel {
@@ -162,6 +199,8 @@ final class QuoteCardEditorViewController: UIViewController {
         for (view, gradient) in highlightLayers {
             gradient.frame = view.bounds
         }
+        [bookTitleBlur].forEach { applyFadeMask(to: $0) }
+        applyFadeMask(to: sentenceBlur, cornerRadius: 24)
     }
 
     override var preferredStatusBarStyle: UIStatusBarStyle { .lightContent }
@@ -174,21 +213,30 @@ final class QuoteCardEditorViewController: UIViewController {
         view.addSubview(dimView)
         view.addSubview(cardView)
 
+        labelStack.addArrangedSubview(sentenceLabel)
+        labelStack.addArrangedSubview(pageLabel)
+
         cardView.addSubview(backgroundImageView)
+        cardView.addSubview(sentenceBlur)
+        cardView.addSubview(bookTitleBlur)
         cardView.addSubview(logoImageView)
-        cardView.addSubview(sentenceLabel)
-        cardView.addSubview(pageLabel)
+        cardView.addSubview(labelStack)
         cardView.addSubview(bookTitleLabel)
 
         view.addSubview(removeLogoButton)
         view.addSubview(backgroundButton)
+        view.addSubview(colorSyncButton)
         view.addSubview(saveButton)
         view.addSubview(removeLogoLabel)
         view.addSubview(backgroundLabel)
+        colorSyncLabel.isHidden = true
+        view.addSubview(colorSyncLabel)
         view.addSubview(saveLabel)
 
         applyFabGlassStyle(to: removeLogoButton, cornerRadius: 26)
         applyFabGlassStyle(to: backgroundButton, cornerRadius: 26)
+        colorSyncDecorations = applyFabGlassStyle(to: colorSyncButton, cornerRadius: 26)
+        colorSyncDecorations.forEach { $0.isHidden = true }
         applyFabGlassStyle(to: saveButton,        cornerRadius: 26)
     }
 
@@ -203,6 +251,10 @@ final class QuoteCardEditorViewController: UIViewController {
         }
         backgroundLabel.snp.makeConstraints { make in
             make.centerX.equalTo(backgroundButton)
+            make.bottom.equalTo(removeLogoLabel)
+        }
+        colorSyncLabel.snp.makeConstraints { make in
+            make.centerX.equalTo(colorSyncButton)
             make.bottom.equalTo(removeLogoLabel)
         }
         saveLabel.snp.makeConstraints { make in
@@ -221,6 +273,11 @@ final class QuoteCardEditorViewController: UIViewController {
             make.centerY.equalTo(removeLogoButton)
             make.size.equalTo(52)
         }
+        colorSyncButton.snp.makeConstraints { make in
+            make.leading.equalTo(backgroundButton.snp.trailing).offset(12)
+            make.centerY.equalTo(removeLogoButton)
+            make.size.equalTo(52)
+        }
         saveButton.snp.makeConstraints { make in
             make.trailing.equalToSuperview().inset(24)
             make.centerY.equalTo(removeLogoButton)
@@ -232,11 +289,17 @@ final class QuoteCardEditorViewController: UIViewController {
             make.leading.trailing.equalToSuperview().inset(32)
             make.height.equalTo(cardView.snp.width).multipliedBy(1.586)
             make.center.equalToSuperview()
-//            make.bottom.equalTo(removeLogoButton.snp.top).offset(-24)
         }
 
         // 카드 내부
         backgroundImageView.snp.makeConstraints { $0.edges.equalToSuperview() }
+
+        sentenceBlur.snp.makeConstraints { make in
+            make.leading.trailing.equalTo(labelStack).inset(-40)
+            make.top.equalTo(labelStack).inset(-24)
+            make.bottom.equalTo(labelStack.snp.bottom).inset(-44)
+        }
+        bookTitleBlur.snp.makeConstraints { $0.edges.equalTo(bookTitleLabel).inset(-28) }
 
         logoImageView.snp.makeConstraints { make in
             make.leading.equalToSuperview().inset(17)
@@ -245,26 +308,33 @@ final class QuoteCardEditorViewController: UIViewController {
             make.height.equalTo(26)
         }
 
-        sentenceLabel.snp.makeConstraints { make in
+        labelStack.snp.makeConstraints { make in
             make.leading.trailing.equalToSuperview().inset(24)
-            make.center.equalToSuperview()
+            make.centerY.equalToSuperview()
             make.bottom.lessThanOrEqualTo(bookTitleLabel.snp.top).offset(-8)
         }
 
-        pageLabel.snp.makeConstraints { make in
-            make.trailing.equalToSuperview().inset(24)
-            make.top.equalTo(sentenceLabel.snp.bottom).offset(20)
-        }
-
         bookTitleLabel.snp.makeConstraints { make in
-            make.leading.trailing.equalToSuperview().inset(24)
+            make.centerX.equalToSuperview()
+            make.width.lessThanOrEqualToSuperview().inset(24)
             make.bottom.equalToSuperview().inset(16)
         }
+        bookTitleLabel.setContentHuggingPriority(.required, for: .horizontal)
     }
 
     // MARK: - Configure
 
     private func configure() {
+        updateTextColor(nil)
+        pageLabel.text = "p.\(sentence.page)"
+    }
+
+    /// dominant가 nil이면 기본 색상(sentence/page → appPrimary, bookTitle → accent),
+    /// non-nil이면 세 레이블 모두 dominant color를 적용
+    private func updateTextColor(_ dominant: UIColor?) {
+        let bodyColor  = dominant ?? .appPrimary
+        let titleColor = dominant ?? .accent
+
         let style = NSMutableParagraphStyle()
         style.lineHeightMultiple = 1.7
         style.alignment = .center
@@ -273,18 +343,17 @@ final class QuoteCardEditorViewController: UIViewController {
             string: sentence.sentence,
             attributes: [
                 .font:            UIFont(name: "GowunBatang-Regular", size: 18) ?? .systemFont(ofSize: 18),
-                .foregroundColor: UIColor.appPrimary,
+                .foregroundColor: bodyColor,
                 .paragraphStyle:  style,
             ]
         )
-
-        pageLabel.text = "p.\(sentence.page)"
+        pageLabel.textColor = bodyColor
 
         bookTitleLabel.attributedText = NSAttributedString(
             string: bookTitle,
             attributes: [
                 .font:            UIFont(name: "GowunBatang-Regular", size: 13) ?? .systemFont(ofSize: 13),
-                .foregroundColor: UIColor.appPrimary.withAlphaComponent(0.6),
+                .foregroundColor: titleColor,
             ]
         )
     }
@@ -311,15 +380,60 @@ final class QuoteCardEditorViewController: UIViewController {
             .subscribe(onNext: { [weak self] in self?.presentImagePicker() })
             .disposed(by: disposeBag)
 
+        colorSyncButton.rx.tap
+            .subscribe(onNext: { [weak self] in
+                guard let self else { return }
+                self.isDominantColorEnabled.toggle()
+                let icon = self.isDominantColorEnabled ? "paintpalette.fill" : "paintpalette"
+                let cfg = UIImage.SymbolConfiguration(pointSize: 14, weight: .medium)
+                self.colorSyncButton.setImage(UIImage(systemName: icon, withConfiguration: cfg), for: .normal)
+                self.updateTextColor(self.isDominantColorEnabled ? self.dominantTextColor : nil)
+            })
+            .disposed(by: disposeBag)
+
         saveButton.rx.tap
             .subscribe(onNext: { [weak self] in self?.saveCardToPhotos() })
             .disposed(by: disposeBag)
     }
 
+    // MARK: - Blur Fade Mask
+
+    /// 둥근 사각형 마스크를 Gaussian blur로 부드럽게 처리해 자연스러운 pill 형태로 만듦
+    /// - parameter cornerRadius: nil이면 pill(height/2), 값을 넘기면 지정 반경의 둥근 사각형
+    private func applyFadeMask(to blurView: UIVisualEffectView, cornerRadius: CGFloat? = nil) {
+        let s = blurView.bounds.size
+        guard s.width > 0, s.height > 0 else { return }
+
+        let feather: CGFloat = 25
+        let innerRect = CGRect(origin: .zero, size: s).insetBy(dx: feather, dy: feather)
+        let cr = cornerRadius ?? innerRect.height / 2
+
+        // 1. 안쪽에 둥근 사각형을 검정으로 그려 날카로운 마스크 이미지 생성
+        let renderer = UIGraphicsImageRenderer(size: s)
+        let sharpImage = renderer.image { _ in
+            UIColor.black.setFill()
+            UIBezierPath(roundedRect: innerRect, cornerRadius: cr).fill()
+        }
+
+        // 2. CIGaussianBlur로 가장자리를 부드럽게 처리
+        guard let ciImage = CIImage(image: sharpImage),
+              let blurFilter = CIFilter(name: "CIGaussianBlur") else { return }
+        blurFilter.setValue(ciImage, forKey: kCIInputImageKey)
+        blurFilter.setValue(feather * 1.0, forKey: kCIInputRadiusKey)
+        guard let output = blurFilter.outputImage,
+              let cgImage = ciContext.createCGImage(output, from: ciImage.extent) else { return }
+
+        let maskLayer = CALayer()
+        maskLayer.frame = CGRect(origin: .zero, size: s)
+        maskLayer.contents = cgImage
+        blurView.layer.mask = maskLayer
+    }
+
     // MARK: - FAB Glass Style (BookDetailViewController와 동일한 스펙)
 
-    private func applyFabGlassStyle(to button: UIButton, cornerRadius: CGFloat) {
-        guard let superview = button.superview else { return }
+    @discardableResult
+    private func applyFabGlassStyle(to button: UIButton, cornerRadius: CGFloat) -> [UIView] {
+        guard let superview = button.superview else { return [] }
 
         let shadowView = UIView()
         shadowView.isUserInteractionEnabled = false
@@ -386,6 +500,7 @@ final class QuoteCardEditorViewController: UIViewController {
         highlightLayers.append((bottomWarm, bottomGrad))
 
         button.backgroundColor = .clear
+        return [shadowView, glassContainer]
     }
 
     // MARK: - Save Card
@@ -399,25 +514,75 @@ final class QuoteCardEditorViewController: UIViewController {
                 }
                 return
             }
-            let format = UIGraphicsImageRendererFormat()
-            format.scale = UIScreen.main.scale
-            let renderer = UIGraphicsImageRenderer(bounds: self.cardView.bounds, format: format)
-            let image = renderer.image { ctx in
-                self.cardView.layer.render(in: ctx.cgContext)
-            }
-            PHPhotoLibrary.shared().performChanges({
-                PHAssetChangeRequest.creationRequestForAsset(from: image)
-            }) { [weak self] success, _ in
-                DispatchQueue.main.async {
-                    guard let self else { return }
-                    self.view.makeToast(
-                        success ? "카드가 저장되었습니다." : "저장에 실패했습니다.",
-                        duration: 2.0,
-                        position: .center
-                    )
+            // drawHierarchy 등 UI 작업은 반드시 메인 스레드에서 실행
+            DispatchQueue.main.async { [weak self] in
+                guard let self else { return }
+                let format = UIGraphicsImageRendererFormat()
+                format.scale = UIScreen.main.scale
+                let renderer = UIGraphicsImageRenderer(bounds: self.cardView.bounds, format: format)
+                let image = renderer.image { _ in
+                    self.cardView.drawHierarchy(in: self.cardView.bounds, afterScreenUpdates: true)
+                }
+                PHPhotoLibrary.shared().performChanges({
+                    PHAssetChangeRequest.creationRequestForAsset(from: image)
+                }) { [weak self] success, _ in
+                    DispatchQueue.main.async {
+                        guard let self else { return }
+                        if success {
+                            self.view.makeToast("카드가 저장되었습니다.", duration: 1.5, position: .center) { _ in
+                                self.dismiss(animated: true)
+                            }
+                        } else {
+                            self.view.makeToast("저장에 실패했습니다.", duration: 2.0, position: .center)
+                        }
+                    }
                 }
             }
         }
+    }
+
+    private func setColorSyncVisible(_ visible: Bool) {
+        colorSyncButton.isHidden = !visible
+        colorSyncLabel.isHidden  = !visible
+        colorSyncDecorations.forEach { $0.isHidden = !visible }
+    }
+
+    // MARK: - Dominant Color
+
+    /// 이미지를 50×50으로 축소해 픽셀을 32단계로 양자화한 뒤 가장 빈번한 색을 반환
+    private func dominantColor(from image: UIImage) -> UIColor {
+        let size = CGSize(width: 50, height: 50)
+        let bytesPerPixel = 4
+        let bytesPerRow = bytesPerPixel * Int(size.width)
+        var pixelData = [UInt8](repeating: 0, count: Int(size.width) * Int(size.height) * bytesPerPixel)
+
+        guard let context = CGContext(
+            data: &pixelData,
+            width: Int(size.width),
+            height: Int(size.height),
+            bitsPerComponent: 8,
+            bytesPerRow: bytesPerRow,
+            space: CGColorSpaceCreateDeviceRGB(),
+            bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+        ), let cgImage = image.cgImage else { return .appPrimary }
+
+        context.draw(cgImage, in: CGRect(origin: .zero, size: size))
+
+        var counts: [UInt32: Int] = [:]
+        for i in 0 ..< Int(size.width) * Int(size.height) {
+            let o = i * bytesPerPixel
+            guard pixelData[o + 3] > 10 else { continue }
+            let r = UInt32(pixelData[o])     / 32
+            let g = UInt32(pixelData[o + 1]) / 32
+            let b = UInt32(pixelData[o + 2]) / 32
+            counts[(r << 16) | (g << 8) | b, default: 0] += 1
+        }
+
+        guard let key = counts.max(by: { $0.value < $1.value })?.key else { return .appPrimary }
+        let r = CGFloat((key >> 16) * 32 + 16) / 255
+        let g = CGFloat(((key >> 8) & 0xFF) * 32 + 16) / 255
+        let b = CGFloat((key & 0xFF) * 32 + 16) / 255
+        return UIColor(red: r, green: g, blue: b, alpha: 1)
     }
 
     // MARK: - Image Picker
@@ -441,9 +606,20 @@ extension QuoteCardEditorViewController: PHPickerViewControllerDelegate {
               provider.canLoadObject(ofClass: UIImage.self) else { return }
         provider.loadObject(ofClass: UIImage.self) { [weak self] object, _ in
             guard let self, let image = object as? UIImage else { return }
+            let dominant = self.dominantColor(from: image)
             DispatchQueue.main.async {
+                self.dominantTextColor = dominant
+                self.isDominantColorEnabled = false
+                let cfg = UIImage.SymbolConfiguration(pointSize: 14, weight: .medium)
+                self.colorSyncButton.setImage(
+                    UIImage(systemName: "paintpalette", withConfiguration: cfg), for: .normal
+                )
                 self.backgroundImageView.image = image
                 self.backgroundImageView.isHidden = false
+                [self.sentenceBlur, self.bookTitleBlur]
+                    .forEach { $0.isHidden = false }
+                self.setColorSyncVisible(true)
+                self.updateTextColor(nil)
             }
         }
     }
