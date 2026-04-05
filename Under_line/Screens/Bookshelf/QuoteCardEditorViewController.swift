@@ -6,10 +6,12 @@
 //
 
 import UIKit
+import Photos
 import PhotosUI
 import SnapKit
 import RxSwift
 import RxCocoa
+import Toast
 
 final class QuoteCardEditorViewController: UIViewController {
 
@@ -76,6 +78,15 @@ final class QuoteCardEditorViewController: UIViewController {
         let l = UILabel()
         l.numberOfLines = 0
         l.textAlignment = .center
+        l.isUserInteractionEnabled = false
+        return l
+    }()
+
+    private let pageLabel: UILabel = {
+        let l = UILabel()
+        l.font = UIFont(name: "GoyangIlsan R", size: 13) ?? .systemFont(ofSize: 13)
+        l.textColor = UIColor.appPrimary.withAlphaComponent(0.5)
+        l.textAlignment = .right
         l.isUserInteractionEnabled = false
         return l
     }()
@@ -166,6 +177,7 @@ final class QuoteCardEditorViewController: UIViewController {
         cardView.addSubview(backgroundImageView)
         cardView.addSubview(logoImageView)
         cardView.addSubview(sentenceLabel)
+        cardView.addSubview(pageLabel)
         cardView.addSubview(bookTitleLabel)
 
         view.addSubview(removeLogoButton)
@@ -219,7 +231,8 @@ final class QuoteCardEditorViewController: UIViewController {
         cardView.snp.makeConstraints { make in
             make.leading.trailing.equalToSuperview().inset(32)
             make.height.equalTo(cardView.snp.width).multipliedBy(1.586)
-            make.bottom.equalTo(removeLogoButton.snp.top).offset(-24)
+            make.center.equalToSuperview()
+//            make.bottom.equalTo(removeLogoButton.snp.top).offset(-24)
         }
 
         // 카드 내부
@@ -238,6 +251,11 @@ final class QuoteCardEditorViewController: UIViewController {
             make.bottom.lessThanOrEqualTo(bookTitleLabel.snp.top).offset(-8)
         }
 
+        pageLabel.snp.makeConstraints { make in
+            make.trailing.equalToSuperview().inset(24)
+            make.top.equalTo(sentenceLabel.snp.bottom).offset(20)
+        }
+
         bookTitleLabel.snp.makeConstraints { make in
             make.leading.trailing.equalToSuperview().inset(24)
             make.bottom.equalToSuperview().inset(16)
@@ -250,6 +268,7 @@ final class QuoteCardEditorViewController: UIViewController {
         let style = NSMutableParagraphStyle()
         style.lineHeightMultiple = 1.7
         style.alignment = .center
+        style.lineBreakStrategy = .hangulWordPriority
         sentenceLabel.attributedText = NSAttributedString(
             string: sentence.sentence,
             attributes: [
@@ -258,6 +277,8 @@ final class QuoteCardEditorViewController: UIViewController {
                 .paragraphStyle:  style,
             ]
         )
+
+        pageLabel.text = "p.\(sentence.page)"
 
         bookTitleLabel.attributedText = NSAttributedString(
             string: bookTitle,
@@ -291,7 +312,7 @@ final class QuoteCardEditorViewController: UIViewController {
             .disposed(by: disposeBag)
 
         saveButton.rx.tap
-            .subscribe(onNext: { })
+            .subscribe(onNext: { [weak self] in self?.saveCardToPhotos() })
             .disposed(by: disposeBag)
     }
 
@@ -365,6 +386,38 @@ final class QuoteCardEditorViewController: UIViewController {
         highlightLayers.append((bottomWarm, bottomGrad))
 
         button.backgroundColor = .clear
+    }
+
+    // MARK: - Save Card
+
+    private func saveCardToPhotos() {
+        PHPhotoLibrary.requestAuthorization(for: .addOnly) { [weak self] status in
+            guard let self else { return }
+            guard status == .authorized || status == .limited else {
+                DispatchQueue.main.async {
+                    self.view.makeToast("사진 저장 권한이 필요합니다.", duration: 2.0, position: .center)
+                }
+                return
+            }
+            let format = UIGraphicsImageRendererFormat()
+            format.scale = UIScreen.main.scale
+            let renderer = UIGraphicsImageRenderer(bounds: self.cardView.bounds, format: format)
+            let image = renderer.image { ctx in
+                self.cardView.layer.render(in: ctx.cgContext)
+            }
+            PHPhotoLibrary.shared().performChanges({
+                PHAssetChangeRequest.creationRequestForAsset(from: image)
+            }) { [weak self] success, _ in
+                DispatchQueue.main.async {
+                    guard let self else { return }
+                    self.view.makeToast(
+                        success ? "카드가 저장되었습니다." : "저장에 실패했습니다.",
+                        duration: 2.0,
+                        position: .center
+                    )
+                }
+            }
+        }
     }
 
     // MARK: - Image Picker
