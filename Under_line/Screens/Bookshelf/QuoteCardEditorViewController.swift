@@ -3,10 +3,10 @@
 //  Under_line
 //
 //  quoteCard 길게 탭 시 표시되는 카드 편집 오버레이
-//  Step 1: 기본 UI — 카드 레이아웃 + 하단 액션 버튼 (동작은 이후 단계에서 구현)
 //
 
 import UIKit
+import PhotosUI
 import SnapKit
 import RxSwift
 import RxCocoa
@@ -281,7 +281,7 @@ final class QuoteCardEditorViewController: UIViewController {
             .disposed(by: disposeBag)
 
         backgroundButton.rx.tap
-            .subscribe(onNext: { })
+            .subscribe(onNext: { [weak self] in self?.presentImagePicker() })
             .disposed(by: disposeBag)
 
         saveButton.rx.tap
@@ -359,5 +359,33 @@ final class QuoteCardEditorViewController: UIViewController {
         highlightLayers.append((bottomWarm, bottomGrad))
 
         button.backgroundColor = .clear
+    }
+
+    // MARK: - Image Picker
+
+    private func presentImagePicker() {
+        var config = PHPickerConfiguration()
+        config.selectionLimit = 1
+        config.filter = .images
+        let picker = PHPickerViewController(configuration: config)
+        picker.delegate = self
+        present(picker, animated: true)
+    }
+}
+
+// MARK: - PHPickerViewControllerDelegate
+
+extension QuoteCardEditorViewController: PHPickerViewControllerDelegate {
+    func picker(_ picker: PHPickerViewController, didFinishPicking results: [PHPickerResult]) {
+        dismiss(animated: true)
+        guard let provider = results.first?.itemProvider,
+              provider.canLoadObject(ofClass: UIImage.self) else { return }
+        provider.loadObject(ofClass: UIImage.self) { [weak self] object, _ in
+            guard let self, let image = object as? UIImage else { return }
+            DispatchQueue.main.async {
+                self.backgroundImageView.image = image
+                self.backgroundImageView.isHidden = false
+            }
+        }
     }
 }
