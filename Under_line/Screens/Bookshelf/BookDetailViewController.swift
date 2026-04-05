@@ -924,6 +924,10 @@ extension BookDetailViewController {
                 message: "카드를 탭하면 앞뒷면이 뒤집혀요\n앞면은 문장, 뒷면은 메모예요"
             ),
             TutorialStep(
+                targetFrame: quoteCard.convert(quoteCard.bounds, to: nil),
+                message: "카드를 길게 탭하면\n이미지 카드로 만들어 저장할 수 있어요"
+            ),
+            TutorialStep(
                 targetFrame: timerButton.convert(timerButton.bounds, to: nil),
                 message: "독서 시간을 기록하고\n통계를 확인하세요"
             ),

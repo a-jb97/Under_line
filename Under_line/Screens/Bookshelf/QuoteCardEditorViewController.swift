@@ -205,6 +205,11 @@ final class QuoteCardEditorViewController: UIViewController {
 
     override var preferredStatusBarStyle: UIStatusBarStyle { .lightContent }
 
+    override func viewDidAppear(_ animated: Bool) {
+        super.viewDidAppear(animated)
+        showTutorialIfNeeded()
+    }
+
     // MARK: - Setup
 
     private func setupUI() {
@@ -622,5 +627,37 @@ extension QuoteCardEditorViewController: PHPickerViewControllerDelegate {
                 self.updateTextColor(nil)
             }
         }
+    }
+}
+
+// MARK: - Tutorial
+
+extension QuoteCardEditorViewController {
+    private func showTutorialIfNeeded() {
+        guard !UserDefaults.standard.bool(forKey: "tutorial.cardEditor") else { return }
+
+        let steps: [TutorialStep] = [
+            TutorialStep(
+                targetFrame: removeLogoButton.convert(removeLogoButton.bounds, to: nil),
+                message: "로고를 숨기거나\n다시 표시할 수 있어요"
+            ),
+            TutorialStep(
+                targetFrame: backgroundButton.convert(backgroundButton.bounds, to: nil),
+                message: "사진을 배경으로 설정해\n카드를 꾸밀 수 있어요\n\n배경을 지정하면 색상 동기화 버튼이 나타나\n텍스트 색상을 사진의 주요 색상으로 바꿀 수 있어요"
+            ),
+            TutorialStep(
+                targetFrame: saveButton.convert(saveButton.bounds, to: nil),
+                message: "카드를 이미지로 저장해요\n저장되면 자동으로 닫혀요"
+            ),
+        ]
+
+        let tutorialVC = TutorialOverlayViewController()
+        tutorialVC.steps = steps
+        tutorialVC.modalPresentationStyle = .overFullScreen
+        tutorialVC.modalTransitionStyle = .crossDissolve
+        tutorialVC.onFinished = {
+            UserDefaults.standard.set(true, forKey: "tutorial.cardEditor")
+        }
+        present(tutorialVC, animated: true)
     }
 }
