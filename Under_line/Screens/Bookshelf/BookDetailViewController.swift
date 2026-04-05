@@ -887,6 +887,23 @@ final class BookDetailViewController: UIViewController {
                 self.setEditMode(!self.isEditMode)
             })
             .disposed(by: disposeBag)
+
+        // quoteCard 길게 탭 → 카드 편집 오버레이
+        // Rule 1 예외: long press는 UIButton으로 대체 불가 → UILongPressGestureRecognizer + rx.event 사용
+        let longPress = UILongPressGestureRecognizer()
+        longPress.minimumPressDuration = 0.5
+        quoteCard.addGestureRecognizer(longPress)
+        longPress.rx.event
+            .filter { $0.state == .began }
+            .subscribe(onNext: { [weak self] _ in
+                guard let self, !self.sentences.isEmpty else { return }
+                let sentence = self.sentences[self.pageControl.currentPage]
+                let editorVC = QuoteCardEditorViewController(sentence: sentence, bookTitle: self.book.title)
+                editorVC.modalPresentationStyle = .overFullScreen
+                editorVC.modalTransitionStyle   = .crossDissolve
+                self.present(editorVC, animated: true)
+            })
+            .disposed(by: disposeBag)
     }
 
 }
