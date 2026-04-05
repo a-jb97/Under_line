@@ -275,9 +275,15 @@ final class QuoteCardEditorViewController: UIViewController {
             .subscribe(onNext: { [weak self] in self?.dismiss(animated: true) })
             .disposed(by: disposeBag)
 
-        // Step 2~5에서 구현 예정
         removeLogoButton.rx.tap
-            .subscribe(onNext: { })
+            .subscribe(onNext: { [weak self] in
+                guard let self else { return }
+                let hide = !self.logoImageView.isHidden
+                self.logoImageView.isHidden = hide
+                let symbolName = hide ? "eye" : "eye.slash"
+                let cfg = UIImage.SymbolConfiguration(pointSize: 14, weight: .medium)
+                self.removeLogoButton.setImage(UIImage(systemName: symbolName, withConfiguration: cfg), for: .normal)
+            })
             .disposed(by: disposeBag)
 
         backgroundButton.rx.tap
