@@ -271,7 +271,8 @@ final class SettingsViewController: UIViewController {
         tutorialRow.rx.tap
             .subscribe(onNext: { [weak self] in
                 ["tutorial.bookshelf", "tutorial.bookDetail",
-                 "tutorial.readingRecord", "tutorial.statistics"]
+                 "tutorial.readingRecord", "tutorial.statistics",
+                 "tutorial.cardEditor"]
                     .forEach { UserDefaults.standard.removeObject(forKey: $0) }
                 guard let tabBar = self?.tabBarController else { return }
                 tabBar.selectedIndex = 0
