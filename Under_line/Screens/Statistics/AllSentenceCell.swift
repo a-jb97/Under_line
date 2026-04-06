@@ -27,7 +27,7 @@ final class AllSentenceCell: UITableViewCell {
         let l = UILabel()
         l.font = UIFont(name: "GoyangIlsan R", size: 12) ?? .systemFont(ofSize: 12)
         l.textColor = UIColor.appPrimary.withAlphaComponent(0.6)
-        l.numberOfLines = 1
+        l.numberOfLines = 0
         return l
     }()
 
@@ -53,8 +53,8 @@ final class AllSentenceCell: UITableViewCell {
 
     private let memoLabel: UILabel = {
         let l = UILabel()
-        l.font = UIFont(name: "GowunBatang-Regular", size: 13) ?? .systemFont(ofSize: 13)
-        l.textColor = UIColor.accent.withAlphaComponent(0.7)
+        l.font = UIFont(name: "GoyangIlsan R", size: 13) ?? .systemFont(ofSize: 13)
+        l.textColor = UIColor.accent.withAlphaComponent(0.5)
         l.numberOfLines = 0
         return l
     }()
@@ -116,7 +116,7 @@ final class AllSentenceCell: UITableViewCell {
         pageLabel.text         = "p. \(item.sentence.page)"
 
         if let memo = item.sentence.memo, !memo.isEmpty {
-            memoLabel.text     = memo
+            memoLabel.text     = "메모 : \(memo)"
             memoLabel.isHidden = false
         } else {
             memoLabel.text     = nil
