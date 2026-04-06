@@ -289,11 +289,13 @@ final class QuoteCardEditorViewController: UIViewController {
             make.size.equalTo(52)
         }
 
-        // 카드: 버튼 그룹 위 24pt 간격, 좌우 inset 32, 비율 1:1.586
+        // 카드: 비율 1:1.586, 고정 너비 311pt (iPhone SE 기준 375 - 64)
+        // - .required 우선순위로 고정해 배경 이미지의 intrinsic size와 충돌 방지
+        // - iOS 17.6+ 최소 기기(iPhone SE 2세대, 375pt) 이상에서 항상 안전
         cardView.snp.makeConstraints { make in
-            make.leading.trailing.equalToSuperview().inset(32)
-            make.height.equalTo(cardView.snp.width).multipliedBy(1.586)
             make.center.equalToSuperview()
+            make.width.equalTo(311)
+            make.height.equalTo(cardView.snp.width).multipliedBy(1.586)
         }
 
         // 카드 내부
