@@ -43,17 +43,39 @@ final class AllSentenceViewController: UIViewController {
         return l
     }()
 
-    private let searchBar: UISearchBar = {
-        let sb = UISearchBar()
-        sb.placeholder    = "책 제목 또는 저자 검색"
-        sb.searchBarStyle = .minimal
-        sb.tintColor      = .appPrimary
-        sb.backgroundImage = UIImage()
-        if let tf = sb.searchTextField as UITextField? {
-            tf.font = UIFont(name: "GoyangIlsan R", size: 14) ?? .systemFont(ofSize: 14)
-            tf.textColor = .accent
-        }
-        return sb
+    private let searchBarView: UIView = {
+        let v = UIView()
+        v.backgroundColor    = UIColor.background
+        v.layer.cornerRadius = 10
+        v.layer.borderWidth  = 1
+        v.layer.borderColor  = UIColor.walnut.cgColor
+        return v
+    }()
+
+    private let searchIconView: UIImageView = {
+        let iv = UIImageView()
+        let cfg = UIImage.SymbolConfiguration(pointSize: 16, weight: .regular)
+        iv.image       = UIImage(systemName: "magnifyingglass", withConfiguration: cfg)
+        iv.tintColor   = UIColor.walnut
+        iv.contentMode = .scaleAspectFit
+        return iv
+    }()
+
+    private let searchTextField: UITextField = {
+        let tf = UITextField()
+        let placeholderFont = UIFont(name: "GoyangIlsan R", size: 14) ?? .systemFont(ofSize: 14)
+        tf.attributedPlaceholder = NSAttributedString(
+            string: "책 제목 또는 저자 검색",
+            attributes: [
+                .font:            placeholderFont,
+                .foregroundColor: UIColor.accent.withAlphaComponent(0.5),
+            ]
+        )
+        tf.font            = placeholderFont
+        tf.textColor       = UIColor.accent
+        tf.backgroundColor = .clear
+        tf.returnKeyType   = .search
+        return tf
     }()
 
     private let tableView: UITableView = {
@@ -103,8 +125,11 @@ final class AllSentenceViewController: UIViewController {
         headerView.addSubview(backButton)
         headerView.addSubview(titleLabel)
 
+        searchBarView.addSubview(searchIconView)
+        searchBarView.addSubview(searchTextField)
+
         view.addSubview(headerView)
-        view.addSubview(searchBar)
+        view.addSubview(searchBarView)
         view.addSubview(tableView)
         view.addSubview(emptyLabel)
 
@@ -129,17 +154,27 @@ final class AllSentenceViewController: UIViewController {
     }
 
     private func setupConstraints() {
-        searchBar.snp.makeConstraints { make in
-            make.top.equalTo(view.safeAreaLayoutGuide).offset(54)
-            make.leading.equalToSuperview().inset(16)
+        searchBarView.snp.makeConstraints { make in
+            make.top.equalTo(view.safeAreaLayoutGuide).offset(60)
+            make.leading.trailing.equalToSuperview().inset(24)
+            make.height.equalTo(48)
+        }
+        searchIconView.snp.makeConstraints { make in
+            make.leading.equalToSuperview().offset(16)
+            make.centerY.equalToSuperview()
+            make.size.equalTo(18)
+        }
+        searchTextField.snp.makeConstraints { make in
+            make.leading.equalTo(searchIconView.snp.trailing).offset(10)
             make.trailing.equalToSuperview().inset(16)
+            make.centerY.equalToSuperview()
         }
         tableView.snp.makeConstraints { make in
-            make.top.equalTo(searchBar.snp.bottom)
+            make.top.equalTo(searchBarView.snp.bottom)
             make.leading.trailing.bottom.equalToSuperview()
         }
         emptyLabel.snp.makeConstraints { make in
-            make.center.equalTo(tableView)
+            make.center.equalTo(view.safeAreaLayoutGuide)
         }
     }
 
@@ -148,7 +183,7 @@ final class AllSentenceViewController: UIViewController {
     private func bindViewModel() {
         let output = viewModel.transform(input: AllSentenceViewModel.Input(
             viewWillAppear: viewWillAppearRelay.asObservable(),
-            searchQuery:    searchBar.rx.text.orEmpty.distinctUntilChanged().asObservable()
+            searchQuery:    searchTextField.rx.text.orEmpty.distinctUntilChanged().asObservable()
         ))
 
         output.items
