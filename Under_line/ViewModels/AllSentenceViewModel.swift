@@ -22,8 +22,9 @@ struct AllSentenceDisplayItem {
 final class AllSentenceViewModel {
 
     struct Input {
-        let viewWillAppear: Observable<Void>
-        let searchQuery:    Observable<String>
+        let viewWillAppear:  Observable<Void>
+        let searchQuery:     Observable<String>
+        let deleteSentence:  Observable<Sentence>
     }
 
     struct Output {
@@ -45,6 +46,17 @@ final class AllSentenceViewModel {
 
     func transform(input: Input) -> Output {
         let errorMessage = PublishRelay<String>()
+
+        // 삭제 처리
+        input.deleteSentence
+            .flatMapLatest { [weak self] sentence -> Completable in
+                guard let self else { return .empty() }
+                return self.sentenceRepository.deleteSentence(sentence)
+            }
+            .subscribe(onError: { error in
+                errorMessage.accept(error.localizedDescription)
+            })
+            .disposed(by: disposeBag)
 
         // viewWillAppear마다 sentences + books를 zip해 display item 배열 생성
         let rawItems: Observable<[AllSentenceDisplayItem]> = input.viewWillAppear

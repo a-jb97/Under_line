@@ -12,8 +12,9 @@ import RxCocoa
 
 final class AllSentenceViewController: UIViewController {
 
-    private let disposeBag          = DisposeBag()
-    private let viewWillAppearRelay = PublishRelay<Void>()
+    private let disposeBag            = DisposeBag()
+    private let viewWillAppearRelay   = PublishRelay<Void>()
+    private let deleteSentenceRelay   = PublishRelay<Sentence>()
 
     private lazy var viewModel = AllSentenceViewModel(
         sentenceRepository: AppContainer.shared.sentenceRepository,
@@ -182,8 +183,9 @@ final class AllSentenceViewController: UIViewController {
 
     private func bindViewModel() {
         let output = viewModel.transform(input: AllSentenceViewModel.Input(
-            viewWillAppear: viewWillAppearRelay.asObservable(),
-            searchQuery:    searchTextField.rx.text.orEmpty.distinctUntilChanged().asObservable()
+            viewWillAppear:  viewWillAppearRelay.asObservable(),
+            searchQuery:     searchTextField.rx.text.orEmpty.distinctUntilChanged().asObservable(),
+            deleteSentence:  deleteSentenceRelay.asObservable()
         ))
 
         output.items
@@ -228,6 +230,23 @@ extension AllSentenceViewController: UITableViewDataSource, UITableViewDelegate 
         let item = items[indexPath.row]
         cell.configure(with: item, isExpanded: expandedIDs.contains(item.sentence.id))
         return cell
+    }
+
+    func tableView(
+        _ tableView: UITableView,
+        trailingSwipeActionsConfigurationForRowAt indexPath: IndexPath
+    ) -> UISwipeActionsConfiguration? {
+        let delete = UIContextualAction(style: .destructive, title: "삭제") { [weak self] _, _, completion in
+            guard let self else { completion(false); return }
+            let item = self.items[indexPath.row]
+            self.expandedIDs.remove(item.sentence.id)
+            self.items.remove(at: indexPath.row)
+            tableView.deleteRows(at: [indexPath], with: .automatic)
+            self.emptyLabel.isHidden = !self.items.isEmpty
+            self.deleteSentenceRelay.accept(item.sentence)
+            completion(true)
+        }
+        return UISwipeActionsConfiguration(actions: [delete])
     }
 
     func tableView(_ tableView: UITableView, didSelectRowAt indexPath: IndexPath) {
