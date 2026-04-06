@@ -49,6 +49,9 @@ final class MainTabBarController: UITabBarController {
             image: UIImage(systemName: "chart.pie"),
             selectedImage: UIImage(systemName: "chart.pie.fill")
         )
+        let statsNav = UINavigationController(rootViewController: statsVC)
+        statsNav.setNavigationBarHidden(true, animated: false)
+        statsNav.tabBarItem = statsVC.tabBarItem
 
         let settingsVC = SettingsViewController()
         settingsVC.tabBarItem = UITabBarItem(
@@ -57,7 +60,7 @@ final class MainTabBarController: UITabBarController {
             selectedImage: UIImage(systemName: "gearshape.fill")
         )
 
-        viewControllers = [booksNav, statsVC, settingsVC]
+        viewControllers = [booksNav, statsNav, settingsVC]
     }
 
     // MARK: - Random UnderLine
