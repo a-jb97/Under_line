@@ -924,6 +924,18 @@ final class BookDetailViewController: UIViewController {
             })
             .disposed(by: disposeBag)
 
+        sentenceUpdateButton.rx.tap
+            .subscribe(onNext: { [weak self] in
+                guard let self else { return }
+                let idx = self.pageControl.currentPage
+                guard idx < self.sentences.count else { return }
+                let vc = DirectCollectViewController(editing: self.sentences[idx])
+                vc.onSaved = { [weak self] in self?.loadSentences() }
+                vc.modalPresentationStyle = .pageSheet
+                self.present(vc, animated: true)
+            })
+            .disposed(by: disposeBag)
+
         // quoteCard 길게 탭 → 카드 편집 오버레이
         // Rule 1 예외: long press는 UIButton으로 대체 불가 → UILongPressGestureRecognizer + rx.event 사용
         let longPress = UILongPressGestureRecognizer()
