@@ -14,12 +14,14 @@ import RxCocoa
 
 final class DirectCollectViewController: UIViewController {
 
-    private let disposeBag      = DisposeBag()
+    private let disposeBag        = DisposeBag()
     private let bookISBN: String
     private let initialSentence: String?
-    private lazy var viewModel  = DirectCollectViewModel(
-        bookISBN:   bookISBN,
-        repository: AppContainer.shared.sentenceRepository
+    private let editingSentence: Sentence?
+    private lazy var viewModel    = DirectCollectViewModel(
+        bookISBN:        bookISBN,
+        repository:      AppContainer.shared.sentenceRepository,
+        editingSentence: editingSentence
     )
 
     var onSaved: (() -> Void)?
@@ -27,6 +29,14 @@ final class DirectCollectViewController: UIViewController {
     init(bookISBN: String, initialSentence: String? = nil) {
         self.bookISBN        = bookISBN
         self.initialSentence = initialSentence
+        self.editingSentence = nil
+        super.init(nibName: nil, bundle: nil)
+    }
+
+    init(editing sentence: Sentence) {
+        self.bookISBN        = sentence.bookISBN
+        self.initialSentence = nil
+        self.editingSentence = sentence
         super.init(nibName: nil, bundle: nil)
     }
 
@@ -218,6 +228,26 @@ final class DirectCollectViewController: UIViewController {
         if let text = initialSentence, !text.isEmpty {
             sentenceTextView.text        = text
             sentencePlaceholder.isHidden = true
+        }
+
+        if let sentence = editingSentence {
+            registerButton.setTitle("수정하기", for: .normal)
+
+            sentenceTextView.text        = sentence.sentence
+            sentencePlaceholder.isHidden = true
+
+            pageTextField.text = "\(sentence.page)"
+
+            if let memo = sentence.memo, !memo.isEmpty {
+                memoTextView.text        = memo
+                memoPlaceholder.isHidden = true
+            }
+
+            selectedEmotion = sentence.emotion
+            selectedEmotionRelay.accept(sentence.emotion)
+            emotionChips.forEach { chip in
+                chip.isSelected = chip.emotion == sentence.emotion
+            }
         }
     }
 
