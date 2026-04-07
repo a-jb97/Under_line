@@ -204,6 +204,28 @@ final class BookDetailViewController: UIViewController {
         return btn
     }()
 
+    private let sentenceUpdateContainer: UIView = {
+        let v = UIView()
+        v.isHidden = true
+        return v
+    }()
+
+    private lazy var sentenceUpdateButton: UIButton = {
+        var config = UIButton.Configuration.plain()
+        config.title = "밑줄 수정"
+        config.baseForegroundColor = UIColor.walnut
+        config.titleTextAttributesTransformer = UIConfigurationTextAttributesTransformer { attrs in
+            var attrs = attrs
+            attrs.font = .systemFont(ofSize: 14, weight: .semibold)
+            return attrs
+        }
+        config.contentInsets = NSDirectionalEdgeInsets(top: 0, leading: 16, bottom: 0, trailing: 16)
+        let btn = UIButton(configuration: config)
+        btn.layer.cornerRadius = 26
+        btn.clipsToBounds = true
+        return btn
+    }()
+
     // FAB
     private lazy var fabButton: UIButton = {
         let btn = UIButton(type: .system)
@@ -283,10 +305,13 @@ final class BookDetailViewController: UIViewController {
         // FAB
         view.addSubview(fabButton)
         view.addSubview(sentenceEditButton)
+        view.addSubview(sentenceUpdateContainer)
+        sentenceUpdateContainer.addSubview(sentenceUpdateButton)
 
-        applyFabGlassStyle(to: timerButton,        cornerRadius: 20)
-        applyFabGlassStyle(to: fabButton,          cornerRadius: 26)
-        applyFabGlassStyle(to: sentenceEditButton, cornerRadius: 26)
+        applyFabGlassStyle(to: timerButton,          cornerRadius: 20)
+        applyFabGlassStyle(to: fabButton,            cornerRadius: 26)
+        applyFabGlassStyle(to: sentenceEditButton,   cornerRadius: 26)
+        applyFabGlassStyle(to: sentenceUpdateButton, cornerRadius: 26)
     }
 
     private func setupConstraints() {
@@ -409,6 +434,16 @@ final class BookDetailViewController: UIViewController {
             make.leading.equalToSuperview().inset(24)
             make.centerY.equalTo(fabButton)
             make.size.equalTo(52)
+        }
+
+        sentenceUpdateContainer.snp.makeConstraints { make in
+            make.leading.equalTo(sentenceEditButton.snp.trailing).offset(12)
+            make.centerY.equalTo(sentenceEditButton)
+            make.height.equalTo(52)
+        }
+
+        sentenceUpdateButton.snp.makeConstraints { make in
+            make.edges.equalToSuperview()
         }
     }
 
@@ -538,6 +573,7 @@ final class BookDetailViewController: UIViewController {
             sentenceEditButton.setImage(UIImage(systemName: "square.and.pencil", withConfiguration: cfg), for: .normal)
             sentenceEditButton.setTitle(nil, for: .normal)
         }
+        sentenceUpdateContainer.isHidden = !editing
         renderQuotePages()
     }
 
