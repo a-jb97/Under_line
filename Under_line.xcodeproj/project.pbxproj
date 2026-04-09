@@ -17,7 +17,38 @@
 		9E562CDC2F71299500B65177 /* 고양일산 R.TTF in Resources */ = {isa = PBXBuildFile; fileRef = 9E562CDA2F71299500B65177 /* 고양일산 R.TTF */; };
 		9E562CDF2F7129A400B65177 /* GowunBatang-Bold.ttf in Resources */ = {isa = PBXBuildFile; fileRef = 9E562CDD2F7129A400B65177 /* GowunBatang-Bold.ttf */; };
 		9E562CE02F7129A400B65177 /* GowunBatang-Regular.ttf in Resources */ = {isa = PBXBuildFile; fileRef = 9E562CDE2F7129A400B65177 /* GowunBatang-Regular.ttf */; };
+		9EBA918F2F865000000EE9D1 /* WidgetKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 9EBA918E2F865000000EE9D1 /* WidgetKit.framework */; };
+		9EBA91912F865000000EE9D1 /* SwiftUI.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 9EBA91902F865000000EE9D1 /* SwiftUI.framework */; };
+		9EBA919C2F865001000EE9D1 /* UnderLineWidgetExtension.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 9EBA918C2F865000000EE9D1 /* UnderLineWidgetExtension.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		9EBA91AC2F86545F000EE9D1 /* 고양일산 L.TTF in Resources */ = {isa = PBXBuildFile; fileRef = 9E562CD92F71299500B65177 /* 고양일산 L.TTF */; };
+		9EBA91AD2F86545F000EE9D1 /* 고양일산 R.TTF in Resources */ = {isa = PBXBuildFile; fileRef = 9E562CDA2F71299500B65177 /* 고양일산 R.TTF */; };
+		9EBA91AE2F86545F000EE9D1 /* GowunBatang-Bold.ttf in Resources */ = {isa = PBXBuildFile; fileRef = 9E562CDD2F7129A400B65177 /* GowunBatang-Bold.ttf */; };
+		9EBA91AF2F86545F000EE9D1 /* GowunBatang-Regular.ttf in Resources */ = {isa = PBXBuildFile; fileRef = 9E562CDE2F7129A400B65177 /* GowunBatang-Regular.ttf */; };
 /* End PBXBuildFile section */
+
+/* Begin PBXContainerItemProxy section */
+		9EBA919A2F865001000EE9D1 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 9E562C012F710D0500B65177 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 9EBA918B2F865000000EE9D1;
+			remoteInfo = UnderLineWidgetExtension;
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXCopyFilesBuildPhase section */
+		9EBA91A12F865001000EE9D1 /* Embed Foundation Extensions */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 13;
+			files = (
+				9EBA919C2F865001000EE9D1 /* UnderLineWidgetExtension.appex in Embed Foundation Extensions */,
+			);
+			name = "Embed Foundation Extensions";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
 		9E562C092F710D0500B65177 /* Under_line.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Under_line.app; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -25,6 +56,10 @@
 		9E562CDA2F71299500B65177 /* 고양일산 R.TTF */ = {isa = PBXFileReference; lastKnownFileType = file; path = "고양일산 R.TTF"; sourceTree = "<group>"; };
 		9E562CDD2F7129A400B65177 /* GowunBatang-Bold.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "GowunBatang-Bold.ttf"; sourceTree = "<group>"; };
 		9E562CDE2F7129A400B65177 /* GowunBatang-Regular.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "GowunBatang-Regular.ttf"; sourceTree = "<group>"; };
+		9EBA918C2F865000000EE9D1 /* UnderLineWidgetExtension.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = UnderLineWidgetExtension.appex; sourceTree = BUILT_PRODUCTS_DIR; };
+		9EBA918E2F865000000EE9D1 /* WidgetKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = WidgetKit.framework; path = System/Library/Frameworks/WidgetKit.framework; sourceTree = SDKROOT; };
+		9EBA91902F865000000EE9D1 /* SwiftUI.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = SwiftUI.framework; path = System/Library/Frameworks/SwiftUI.framework; sourceTree = SDKROOT; };
+		9EBA91A82F86501B000EE9D1 /* UnderLineWidgetExtension.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = UnderLineWidgetExtension.entitlements; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
@@ -35,6 +70,13 @@
 			);
 			target = 9E562C082F710D0500B65177 /* Under_line */;
 		};
+		9EBA91A02F865001000EE9D1 /* Exceptions for "UnderLineWidget" folder in "UnderLineWidgetExtension" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Info.plist,
+			);
+			target = 9EBA918B2F865000000EE9D1 /* UnderLineWidgetExtension */;
+		};
 /* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
@@ -44,6 +86,14 @@
 				9E562C1B2F710D0700B65177 /* Exceptions for "Under_line" folder in "Under_line" target */,
 			);
 			path = Under_line;
+			sourceTree = "<group>";
+		};
+		9EBA91922F865000000EE9D1 /* UnderLineWidget */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				9EBA91A02F865001000EE9D1 /* Exceptions for "UnderLineWidget" folder in "UnderLineWidgetExtension" target */,
+			);
+			path = UnderLineWidget;
 			sourceTree = "<group>";
 		};
 /* End PBXFileSystemSynchronizedRootGroup section */
@@ -62,13 +112,25 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		9EBA91892F865000000EE9D1 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				9EBA91912F865000000EE9D1 /* SwiftUI.framework in Frameworks */,
+				9EBA918F2F865000000EE9D1 /* WidgetKit.framework in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
 		9E562C002F710D0500B65177 = {
 			isa = PBXGroup;
 			children = (
+				9EBA91A82F86501B000EE9D1 /* UnderLineWidgetExtension.entitlements */,
 				9E562C0B2F710D0500B65177 /* Under_line */,
+				9EBA91922F865000000EE9D1 /* UnderLineWidget */,
+				9EBA918D2F865000000EE9D1 /* Frameworks */,
 				9E562C0A2F710D0500B65177 /* Products */,
 				9E562CD92F71299500B65177 /* 고양일산 L.TTF */,
 				9E562CDA2F71299500B65177 /* 고양일산 R.TTF */,
@@ -81,8 +143,18 @@
 			isa = PBXGroup;
 			children = (
 				9E562C092F710D0500B65177 /* Under_line.app */,
+				9EBA918C2F865000000EE9D1 /* UnderLineWidgetExtension.appex */,
 			);
 			name = Products;
+			sourceTree = "<group>";
+		};
+		9EBA918D2F865000000EE9D1 /* Frameworks */ = {
+			isa = PBXGroup;
+			children = (
+				9EBA918E2F865000000EE9D1 /* WidgetKit.framework */,
+				9EBA91902F865000000EE9D1 /* SwiftUI.framework */,
+			);
+			name = Frameworks;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -95,10 +167,12 @@
 				9E562C052F710D0500B65177 /* Sources */,
 				9E562C062F710D0500B65177 /* Frameworks */,
 				9E562C072F710D0500B65177 /* Resources */,
+				9EBA91A12F865001000EE9D1 /* Embed Foundation Extensions */,
 			);
 			buildRules = (
 			);
 			dependencies = (
+				9EBA919B2F865001000EE9D1 /* PBXTargetDependency */,
 			);
 			fileSystemSynchronizedGroups = (
 				9E562C0B2F710D0500B65177 /* Under_line */,
@@ -116,6 +190,28 @@
 			productReference = 9E562C092F710D0500B65177 /* Under_line.app */;
 			productType = "com.apple.product-type.application";
 		};
+		9EBA918B2F865000000EE9D1 /* UnderLineWidgetExtension */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 9EBA919D2F865001000EE9D1 /* Build configuration list for PBXNativeTarget "UnderLineWidgetExtension" */;
+			buildPhases = (
+				9EBA91882F865000000EE9D1 /* Sources */,
+				9EBA91892F865000000EE9D1 /* Frameworks */,
+				9EBA918A2F865000000EE9D1 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			fileSystemSynchronizedGroups = (
+				9EBA91922F865000000EE9D1 /* UnderLineWidget */,
+			);
+			name = UnderLineWidgetExtension;
+			packageProductDependencies = (
+			);
+			productName = UnderLineWidgetExtension;
+			productReference = 9EBA918C2F865000000EE9D1 /* UnderLineWidgetExtension.appex */;
+			productType = "com.apple.product-type.app-extension";
+		};
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
@@ -127,6 +223,9 @@
 				LastUpgradeCheck = 2630;
 				TargetAttributes = {
 					9E562C082F710D0500B65177 = {
+						CreatedOnToolsVersion = 26.3;
+					};
+					9EBA918B2F865000000EE9D1 = {
 						CreatedOnToolsVersion = 26.3;
 					};
 				};
@@ -153,6 +252,7 @@
 			projectRoot = "";
 			targets = (
 				9E562C082F710D0500B65177 /* Under_line */,
+				9EBA918B2F865000000EE9D1 /* UnderLineWidgetExtension */,
 			);
 		};
 /* End PBXProject section */
@@ -169,6 +269,17 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		9EBA918A2F865000000EE9D1 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				9EBA91AC2F86545F000EE9D1 /* 고양일산 L.TTF in Resources */,
+				9EBA91AD2F86545F000EE9D1 /* 고양일산 R.TTF in Resources */,
+				9EBA91AE2F86545F000EE9D1 /* GowunBatang-Bold.ttf in Resources */,
+				9EBA91AF2F86545F000EE9D1 /* GowunBatang-Regular.ttf in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
@@ -179,7 +290,22 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		9EBA91882F865000000EE9D1 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		9EBA919B2F865001000EE9D1 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 9EBA918B2F865000000EE9D1 /* UnderLineWidgetExtension */;
+			targetProxy = 9EBA919A2F865001000EE9D1 /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
 
 /* Begin XCBuildConfiguration section */
 		9E562C1D2F710D0700B65177 /* Debug */ = {
@@ -187,6 +313,7 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_ENTITLEMENTS = Under_line/Under_line.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = VR5Z389FF7;
@@ -208,7 +335,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 1.1;
+				MARKETING_VERSION = 1.2;
 				PRODUCT_BUNDLE_IDENTIFIER = com.jade.UnderLine;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
@@ -230,6 +357,7 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_ENTITLEMENTS = Under_line/Under_line.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = VR5Z389FF7;
@@ -251,7 +379,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 1.1;
+				MARKETING_VERSION = 1.2;
 				PRODUCT_BUNDLE_IDENTIFIER = com.jade.UnderLine;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
@@ -389,6 +517,76 @@
 			};
 			name = Release;
 		};
+		9EBA919E2F865001000EE9D1 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				ASSETCATALOG_COMPILER_WIDGET_BACKGROUND_COLOR_NAME = WidgetBackground;
+				CODE_SIGN_ENTITLEMENTS = UnderLineWidgetExtension.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_ASSET_PATHS = "GowunBatang-Regular.ttf 고양일산\\ L.TTF GowunBatang-Bold.ttf 고양일산\\ R.TTF";
+				DEVELOPMENT_TEAM = VR5Z389FF7;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = UnderLineWidget/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = UnderLineWidget;
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 1.2;
+				PRODUCT_BUNDLE_IDENTIFIER = com.jade.UnderLine.UnderLineWidget;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SUPPORTS_MACCATALYST = NO;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.6;
+				SUPPORTS_XR_DESIGNED_FOR_IPHONE_IPAD = NO;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		9EBA919F2F865001000EE9D1 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				ASSETCATALOG_COMPILER_WIDGET_BACKGROUND_COLOR_NAME = WidgetBackground;
+				CODE_SIGN_ENTITLEMENTS = UnderLineWidgetExtension.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_ASSET_PATHS = "GowunBatang-Regular.ttf 고양일산\\ L.TTF GowunBatang-Bold.ttf 고양일산\\ R.TTF";
+				DEVELOPMENT_TEAM = VR5Z389FF7;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = UnderLineWidget/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = UnderLineWidget;
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 1.2;
+				PRODUCT_BUNDLE_IDENTIFIER = com.jade.UnderLine.UnderLineWidget;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SUPPORTS_MACCATALYST = NO;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.6;
+				SUPPORTS_XR_DESIGNED_FOR_IPHONE_IPAD = NO;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
@@ -406,6 +604,15 @@
 			buildConfigurations = (
 				9E562C1D2F710D0700B65177 /* Debug */,
 				9E562C1E2F710D0700B65177 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		9EBA919D2F865001000EE9D1 /* Build configuration list for PBXNativeTarget "UnderLineWidgetExtension" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				9EBA919E2F865001000EE9D1 /* Debug */,
+				9EBA919F2F865001000EE9D1 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
