@@ -579,6 +579,7 @@ final class BookDetailViewController: UIViewController {
 
     private func deleteSentence(_ sentence: Sentence) {
         deleteSentenceRelay.accept(sentence)
+        WidgetCacheService.shared.refreshCache()
     }
 
     private func makePageView(for sentence: Sentence) -> UIView {
