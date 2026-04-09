@@ -31,4 +31,15 @@ enum Emotion: Int, CaseIterable {
         case .tense:   return "긴장"
         }
     }
+
+    var assetName: String {
+        switch self {
+        case .joy:     return "Happy"
+        case .calm:    return "Calm"
+        case .sad:     return "Sad"
+        case .touched: return "Moved"
+        case .pensive: return "Meditation"
+        case .tense:   return "Nervous"
+        }
+    }
 }
