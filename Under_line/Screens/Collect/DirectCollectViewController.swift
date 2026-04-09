@@ -419,6 +419,7 @@ final class DirectCollectViewController: UIViewController {
             .emit(onNext: { [weak self] in
                 guard let self else { return }
                 let onSaved = self.onSaved
+                WidgetCacheService.shared.refreshCache()
                 self.dismiss(animated: true) { onSaved?() }
             })
             .disposed(by: disposeBag)
