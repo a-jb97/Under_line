@@ -85,28 +85,47 @@ struct ReadingTimerLockScreenView: View {
     }
 }
 
-// MARK: - Dynamic Island Compact Leading
+// MARK: - Dynamic Island Compact Leading (원형 프로그레스 링)
 
 struct ReadingTimerCompactLeadingView: View {
+    let context: ActivityViewContext<ReadingTimerAttributes>
+
+    private let size: CGFloat      = 22
+    private let lineWidth: CGFloat = 2
+
     var body: some View {
-        Image(systemName: "book.closed.fill")
-            .foregroundStyle(timerBg)
-            .font(.system(size: 14, weight: .medium))
+        // compact DI에서 커스텀 뷰는 스냅샷으로 렌더링됨
+        // Activity 마지막 업데이트 시점의 remainingSeconds로 분율 표시
+        let fraction = CGFloat(context.state.remainingSeconds) / CGFloat(max(1, context.attributes.totalSeconds))
+        ZStack {
+            Circle()
+                .stroke(timerBg.opacity(0.3), lineWidth: lineWidth)
+            Circle()
+                .trim(from: 0, to: fraction)
+                .stroke(timerBg, style: StrokeStyle(lineWidth: lineWidth, lineCap: .round))
+                .rotationEffect(.degrees(-90))
+            Text("\(context.attributes.totalSeconds / 60)")
+                .font(.system(size: 8, weight: .bold, design: .monospaced))
+                .foregroundStyle(timerBg)
+        }
+        .frame(width: size - lineWidth, height: size - lineWidth)
+        .padding(lineWidth / 2)
     }
 }
 
-// MARK: - Dynamic Island Compact Trailing
+// MARK: - Dynamic Island Compact Trailing (아이콘 + 타이머 통합, leading 없음)
 
 struct ReadingTimerCompactTrailingView: View {
     let context: ActivityViewContext<ReadingTimerAttributes>
 
     var body: some View {
-        Group {
+        HStack(spacing: 4) {
+            Image(systemName: "book.closed.fill")
+                .font(.system(size: 12, weight: .medium))
             if context.state.isRunning, let end = context.state.timerEndDate {
                 Text(timerInterval: Date.now...max(end, Date.now), countsDown: true)
                     .monospacedDigit()
-                    .multilineTextAlignment(.trailing)
-                    .frame(minWidth: 44)
+                    .frame(width: 44)
             } else {
                 Text(formatSeconds(context.state.remainingSeconds))
                     .monospacedDigit()
@@ -231,7 +250,7 @@ struct ReadingTimerActivityWidget: Widget {
                     )
                 }
             } compactLeading: {
-                ReadingTimerCompactLeadingView()
+                ReadingTimerCompactLeadingView(context: context)
             } compactTrailing: {
                 ReadingTimerCompactTrailingView(context: context)
             } minimal: {
