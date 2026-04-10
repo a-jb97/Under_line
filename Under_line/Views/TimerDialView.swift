@@ -11,11 +11,21 @@ import AVFoundation
 import AudioToolbox
 import UserNotifications
 
+// MARK: - TimerActivityEvent
+
+enum TimerActivityEvent {
+    case started(totalSeconds: Int, remainingSeconds: Int, endDate: Date)
+    case paused(remainingSeconds: Int)
+    case resumed(remainingSeconds: Int, endDate: Date)
+    case ended(remainingSeconds: Int)
+}
+
 final class TimerDialView: UIView {
 
     // MARK: - Callbacks
-    var onTimerStateChanged: ((Bool) -> Void)?   // isRunning 변화 시 호출
-    var onTimerStopped: ((Int) -> Void)?         // 정지/완료 시 경과 초(elapsed seconds) 전달
+    var onTimerStateChanged: ((Bool) -> Void)?          // isRunning 변화 시 호출
+    var onTimerStopped: ((Int) -> Void)?                // 정지/완료 시 경과 초(elapsed seconds) 전달
+    var onTimerActivityEvent: ((TimerActivityEvent) -> Void)?  // Live Activity 연동용
 
     // MARK: - Timer State
     private(set) var setMinutes: Int = 0
@@ -548,6 +558,13 @@ final class TimerDialView: UIView {
         playButton.setImage(UIImage(systemName: "pause.fill", withConfiguration: cfg), for: .normal)
         scheduleCountdownTimer()
         onTimerStateChanged?(true)
+        if accumulatedSeconds > 0 {
+            onTimerActivityEvent?(.resumed(remainingSeconds: remainingSeconds, endDate: timerEndDate!))
+        } else {
+            onTimerActivityEvent?(.started(totalSeconds: setMinutes * 60,
+                                           remainingSeconds: remainingSeconds,
+                                           endDate: timerEndDate!))
+        }
     }
 
     private func scheduleCountdownTimer() {
@@ -559,7 +576,7 @@ final class TimerDialView: UIView {
         scheduleTimerNotification()
     }
 
-    private func pauseTimer() {
+    private func pauseTimer(suppressActivityEvent: Bool = false) {
         if isRunning {
             accumulatedSeconds += sessionStartRemainingSeconds - remainingSeconds
         }
@@ -571,24 +588,30 @@ final class TimerDialView: UIView {
         countdownTimer = nil
         cancelTimerNotification()
         onTimerStateChanged?(false)
+        if !suppressActivityEvent {
+            onTimerActivityEvent?(.paused(remainingSeconds: remainingSeconds))
+        }
     }
 
     private func stopTimer() {
         let elapsed = accumulatedSeconds + (isRunning ? sessionStartRemainingSeconds - remainingSeconds : 0)
-        pauseTimer()
+        let currentRemaining = remainingSeconds
+        pauseTimer(suppressActivityEvent: true)
         accumulatedSeconds = 0
         sessionStartRemainingSeconds = 0
         clearSavedState()
+        onTimerActivityEvent?(.ended(remainingSeconds: currentRemaining))
         if elapsed > 0 { onTimerStopped?(elapsed) }
     }
 
     private func resetTimer() {
-        pauseTimer()
+        pauseTimer(suppressActivityEvent: true)
         accumulatedSeconds = 0
         sessionStartRemainingSeconds = 0
         setMinutes       = 0
         remainingSeconds = 0
         clearSavedState()
+        onTimerActivityEvent?(.ended(remainingSeconds: 0))
         updateTimerDisplay()
         updateDialArc(fraction: 0.0)
         updateNeedle(minutes: 0)
@@ -707,6 +730,7 @@ final class TimerDialView: UIView {
                 updateNeedle(minutes: Int((CGFloat(remaining) / 60.0).rounded()))
                 scheduleCountdownTimer()
                 onTimerStateChanged?(true)
+                onTimerActivityEvent?(.resumed(remainingSeconds: remaining, endDate: end))
             } else {
                 // 자리를 비운 사이 타이머 완료
                 remainingSeconds = 0
@@ -718,6 +742,7 @@ final class TimerDialView: UIView {
                 sessionStartRemainingSeconds = 0
                 isRunning = false
                 cancelTimerNotification()
+                onTimerActivityEvent?(.ended(remainingSeconds: 0))
                 if elapsed > 0 { onTimerStopped?(elapsed) }
                 playAlarm()
             }
