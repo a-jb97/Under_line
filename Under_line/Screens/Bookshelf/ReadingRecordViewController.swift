@@ -471,6 +471,25 @@ final class ReadingRecordViewController: UIViewController {
             self?.timerStoppedRelay.accept(elapsed)
         }
 
+        if #available(iOS 16.2, *) {
+            timerDialView.onTimerActivityEvent = { [weak self] event in
+                guard let self else { return }
+                let mgr = ReadingActivityManager.shared
+                switch event {
+                case .started(let total, let remaining, let end):
+                    mgr.startActivity(bookTitle: self.book.title, isbn13: self.book.isbn13,
+                                      totalSeconds: total, remainingSeconds: remaining,
+                                      timerEndDate: end)
+                case .paused(let remaining):
+                    mgr.updateActivity(remainingSeconds: remaining, isRunning: false, timerEndDate: nil)
+                case .resumed(let remaining, let end):
+                    mgr.updateActivity(remainingSeconds: remaining, isRunning: true, timerEndDate: end)
+                case .ended(let remaining):
+                    mgr.endActivity(remainingSeconds: remaining)
+                }
+            }
+        }
+
         tabDailyButton.rx.tap
             .subscribe(onNext: { [weak self] in self?.selectTab(0) })
             .disposed(by: disposeBag)
