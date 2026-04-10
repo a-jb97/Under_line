@@ -35,23 +35,23 @@ struct ReadingTimerLockScreenView: View {
 
     var body: some View {
         HStack(alignment: .center, spacing: 16) {
-            // 프로그레스 링 + 책 아이콘
-            ZStack {
+            // 프로그레스 링 + 로고
+            ZStack(alignment: .center) {
                 Circle()
                     .stroke(timerPrimary.opacity(0.2), lineWidth: 4)
-                    .frame(width: 52, height: 52)
                 Circle()
                     .trim(from: 0, to: progressFraction(remaining: context.state.remainingSeconds,
                                                         total: context.attributes.totalSeconds))
                     .stroke(timerPrimary,
                             style: StrokeStyle(lineWidth: 4, lineCap: .round))
                     .rotationEffect(.degrees(-90))
-                    .frame(width: 52, height: 52)
                     .animation(.linear(duration: 1), value: context.state.remainingSeconds)
-                Image(systemName: "book.closed.fill")
-                    .foregroundStyle(timerPrimary)
-                    .font(.system(size: 18))
+                Image("Under_line_Logo")
+                    .resizable()
+                    .scaledToFit()
+                    .frame(width: 28, height: 28)
             }
+            .frame(width: 52, height: 52)
 
             // 책 제목 + 카운트다운
             VStack(alignment: .leading, spacing: 4) {
@@ -168,9 +168,10 @@ private struct ExpandedLeadingView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
-            Image(systemName: "book.closed.fill")
-                .foregroundStyle(timerBg)
-                .font(.system(size: 16))
+            Image("Under_line_Logo")
+                .resizable()
+                .scaledToFit()
+                .frame(width: 20, height: 20)
             Text(bookTitle)
                 .font(.custom("GowunBatang-Bold", size: 12))
                 .foregroundStyle(timerBg)
