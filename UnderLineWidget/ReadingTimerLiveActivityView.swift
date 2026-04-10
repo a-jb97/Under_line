@@ -90,7 +90,7 @@ struct ReadingTimerLockScreenView: View {
 struct ReadingTimerCompactLeadingView: View {
     var body: some View {
         Image(systemName: "book.closed.fill")
-            .foregroundStyle(timerPrimary)
+            .foregroundStyle(timerBg)
             .font(.system(size: 14, weight: .medium))
     }
 }
@@ -113,7 +113,7 @@ struct ReadingTimerCompactTrailingView: View {
             }
         }
         .font(.system(size: 14, weight: .semibold))
-        .foregroundStyle(timerPrimary)
+        .foregroundStyle(timerBg)
     }
 }
 
@@ -125,19 +125,19 @@ struct ReadingTimerMinimalView: View {
     var body: some View {
         ZStack {
             Circle()
-                .stroke(timerPrimary.opacity(0.25), lineWidth: 2.5)
+                .stroke(timerBg.opacity(0.25), lineWidth: 2.5)
                 .frame(width: 22, height: 22)
             Circle()
                 .trim(from: 0, to: progressFraction(remaining: context.state.remainingSeconds,
                                                     total: context.attributes.totalSeconds))
-                .stroke(timerPrimary,
+                .stroke(timerBg,
                         style: StrokeStyle(lineWidth: 2.5, lineCap: .round))
                 .rotationEffect(.degrees(-90))
                 .frame(width: 22, height: 22)
                 .animation(.linear(duration: 1), value: context.state.remainingSeconds)
             Text("\(context.state.remainingSeconds / 60)")
                 .font(.system(size: 9, weight: .bold, design: .monospaced))
-                .foregroundStyle(timerPrimary)
+                .foregroundStyle(timerBg)
         }
     }
 }
@@ -150,11 +150,11 @@ private struct ExpandedLeadingView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
             Image(systemName: "book.closed.fill")
-                .foregroundStyle(timerPrimary)
+                .foregroundStyle(timerBg)
                 .font(.system(size: 16))
             Text(bookTitle)
                 .font(.custom("GowunBatang-Bold", size: 12))
-                .foregroundStyle(timerPrimary)
+                .foregroundStyle(timerBg)
                 .lineLimit(2)
                 .fixedSize(horizontal: false, vertical: true)
         }
@@ -170,16 +170,16 @@ private struct ExpandedTrailingView: View {
             if state.isRunning, let end = state.timerEndDate {
                 Text(timerInterval: Date.now...max(end, Date.now), countsDown: true)
                     .font(.system(size: 22, weight: .bold, design: .monospaced))
-                    .foregroundStyle(timerPrimary)
+                    .foregroundStyle(timerBg)
                     .monospacedDigit()
             } else {
                 Text(formatSeconds(state.remainingSeconds))
                     .font(.system(size: 22, weight: .bold, design: .monospaced))
-                    .foregroundStyle(timerPrimary)
+                    .foregroundStyle(timerBg)
             }
             Text(state.isRunning ? "독서 중" : "일시정지")
                 .font(.system(size: 10))
-                .foregroundStyle(timerPrimary.opacity(0.6))
+                .foregroundStyle(timerBg.opacity(0.6))
         }
         .padding(.trailing, 4)
     }
@@ -193,10 +193,10 @@ private struct ExpandedBottomView: View {
         GeometryReader { geo in
             ZStack(alignment: .leading) {
                 RoundedRectangle(cornerRadius: 4)
-                    .fill(timerPrimary.opacity(0.15))
+                    .fill(timerBg.opacity(0.25))
                     .frame(height: 6)
                 RoundedRectangle(cornerRadius: 4)
-                    .fill(timerPrimary)
+                    .fill(timerBg)
                     .frame(
                         width: geo.size.width * progressFraction(remaining: remaining, total: total),
                         height: 6
