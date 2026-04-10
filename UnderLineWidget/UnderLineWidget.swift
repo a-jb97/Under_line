@@ -161,5 +161,6 @@ struct UnderLineWidget: Widget {
 struct UnderLineWidgetBundle: WidgetBundle {
     var body: some Widget {
         UnderLineWidget()
+        ReadingTimerActivityWidget()
     }
 }

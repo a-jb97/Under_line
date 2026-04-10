@@ -70,6 +70,21 @@
 			);
 			target = 9E562C082F710D0500B65177 /* Under_line */;
 		};
+		9EB62EC72F89434200C4486B /* Exceptions for "Under_line" folder in "UnderLineWidgetExtension" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Services/ReadingActivityManager.swift,
+				Shared/ReadingTimerAttributes.swift,
+			);
+			target = 9EBA918B2F865000000EE9D1 /* UnderLineWidgetExtension */;
+		};
+		9EB62EC92F89448200C4486B /* Exceptions for "UnderLineWidget" folder in "Under_line" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				ReadingTimerLiveActivityView.swift,
+			);
+			target = 9E562C082F710D0500B65177 /* Under_line */;
+		};
 		9EBA91A02F865001000EE9D1 /* Exceptions for "UnderLineWidget" folder in "UnderLineWidgetExtension" target */ = {
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
 			membershipExceptions = (
@@ -84,6 +99,7 @@
 			isa = PBXFileSystemSynchronizedRootGroup;
 			exceptions = (
 				9E562C1B2F710D0700B65177 /* Exceptions for "Under_line" folder in "Under_line" target */,
+				9EB62EC72F89434200C4486B /* Exceptions for "Under_line" folder in "UnderLineWidgetExtension" target */,
 			);
 			path = Under_line;
 			sourceTree = "<group>";
@@ -91,6 +107,7 @@
 		9EBA91922F865000000EE9D1 /* UnderLineWidget */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
 			exceptions = (
+				9EB62EC92F89448200C4486B /* Exceptions for "UnderLineWidget" folder in "Under_line" target */,
 				9EBA91A02F865001000EE9D1 /* Exceptions for "UnderLineWidget" folder in "UnderLineWidgetExtension" target */,
 			);
 			path = UnderLineWidget;
@@ -531,6 +548,7 @@
 				INFOPLIST_FILE = UnderLineWidget/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = UnderLineWidget;
 				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				IPHONEOS_DEPLOYMENT_TARGET = 17.6;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
@@ -543,7 +561,6 @@
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
 				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
 				SUPPORTS_MACCATALYST = NO;
-				IPHONEOS_DEPLOYMENT_TARGET = 17.6;
 				SUPPORTS_XR_DESIGNED_FOR_IPHONE_IPAD = NO;
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
@@ -566,6 +583,7 @@
 				INFOPLIST_FILE = UnderLineWidget/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = UnderLineWidget;
 				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				IPHONEOS_DEPLOYMENT_TARGET = 17.6;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
@@ -578,7 +596,6 @@
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
 				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
 				SUPPORTS_MACCATALYST = NO;
-				IPHONEOS_DEPLOYMENT_TARGET = 17.6;
 				SUPPORTS_XR_DESIGNED_FOR_IPHONE_IPAD = NO;
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
