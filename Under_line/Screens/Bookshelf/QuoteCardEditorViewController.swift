@@ -517,7 +517,10 @@ final class QuoteCardEditorViewController: UIViewController {
             guard let self else { return }
             guard status == .authorized || status == .limited else {
                 DispatchQueue.main.async {
-                    self.view.makeToast("사진 저장 권한이 필요합니다.", duration: 2.0, position: .center)
+                    var style = ToastStyle()
+                    style.backgroundColor = UIColor.appPrimary.withAlphaComponent(0.9)
+                    style.messageFont = UIFont(name: "GowunBatang-Regular", size: 14) ?? .systemFont(ofSize: 14)
+                    self.view.makeToast("사진 저장 권한이 필요합니다.", duration: 1.2, position: .center, style: style)
                 }
                 return
             }
@@ -536,11 +539,17 @@ final class QuoteCardEditorViewController: UIViewController {
                     DispatchQueue.main.async {
                         guard let self else { return }
                         if success {
-                            self.view.makeToast("카드가 저장되었습니다.", duration: 1.5, position: .center) { _ in
+                            var style = ToastStyle()
+                            style.backgroundColor = UIColor.appPrimary.withAlphaComponent(0.9)
+                            style.messageFont = UIFont(name: "GowunBatang-Regular", size: 14) ?? .systemFont(ofSize: 14)
+                            self.view.makeToast("카드가 저장되었습니다.", duration: 1.2, position: .center, style: style) { _ in
                                 self.dismiss(animated: true)
                             }
                         } else {
-                            self.view.makeToast("저장에 실패했습니다.", duration: 2.0, position: .center)
+                            var style = ToastStyle()
+                            style.backgroundColor = UIColor.appPrimary.withAlphaComponent(0.9)
+                            style.messageFont = UIFont(name: "GowunBatang-Regular", size: 14) ?? .systemFont(ofSize: 14)
+                            self.view.makeToast("저장에 실패했습니다.", duration: 1.2, position: .center, style: style)
                         }
                     }
                 }

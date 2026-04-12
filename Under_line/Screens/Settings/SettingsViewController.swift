@@ -218,7 +218,10 @@ final class SettingsViewController: UIViewController {
         output.toastMessage
             .observe(on: MainScheduler.instance)
             .subscribe(onNext: { [weak self] message in
-                self?.view.makeToast(message, duration: 2.5, position: .bottom)
+                var style = ToastStyle()
+                style.backgroundColor = UIColor.appPrimary.withAlphaComponent(0.9)
+                style.messageFont = UIFont(name: "GowunBatang-Regular", size: 14) ?? .systemFont(ofSize: 14)
+                self?.view.makeToast(message, duration: 1.2, position: .center, style: style)
             })
             .disposed(by: disposeBag)
 
@@ -314,7 +317,10 @@ extension SettingsViewController: UIDocumentPickerDelegate {
             guard let url = urls.first else { return }
             showRestoreConfirmAlert(url: url)
         } else {
-            view.makeToast("백업 파일이 저장되었습니다.", duration: 2.5, position: .bottom)
+            var style = ToastStyle()
+            style.backgroundColor = UIColor.appPrimary.withAlphaComponent(0.9)
+            style.messageFont = UIFont(name: "GowunBatang-Regular", size: 14) ?? .systemFont(ofSize: 14)
+            view.makeToast("백업 파일이 저장되었습니다.", duration: 1.2, position: .center, style: style)
         }
     }
 
