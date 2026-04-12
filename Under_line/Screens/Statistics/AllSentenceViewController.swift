@@ -244,6 +244,7 @@ extension AllSentenceViewController: UITableViewDataSource, UITableViewDelegate 
             tableView.deleteRows(at: [indexPath], with: .automatic)
             self.emptyLabel.isHidden = !self.items.isEmpty
             self.deleteSentenceRelay.accept(item.sentence)
+            WidgetCacheService.shared.refreshCache()
             completion(true)
         }
         return UISwipeActionsConfiguration(actions: [delete])

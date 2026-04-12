@@ -159,6 +159,9 @@ final class TutorialOverlayViewController: UIViewController {
         view.addSubview(bubbleContainer)
         bubbleContainer.addSubview(messageLabel)
 
+        arrowImageView.alpha = 0
+        bubbleContainer.alpha = 0
+
         messageLabel.snp.makeConstraints { make in
             make.edges.equalToSuperview().inset(16)
         }
@@ -230,8 +233,14 @@ final class TutorialOverlayViewController: UIViewController {
         updateNavigation()
 
         if animated {
-            UIView.animate(withDuration: 0.25) { self.view.layoutIfNeeded() }
+            UIView.animate(withDuration: 0.25) {
+                self.arrowImageView.alpha = 1
+                self.bubbleContainer.alpha = 1
+                self.view.layoutIfNeeded()
+            }
         } else {
+            arrowImageView.alpha = 1
+            bubbleContainer.alpha = 1
             view.layoutIfNeeded()
         }
 
