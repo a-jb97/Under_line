@@ -33,11 +33,13 @@ final class DirectCollectViewModel {
 
     private let bookISBN: String
     private let repository: SentenceRepositoryProtocol
+    private let editingSentence: Sentence?
     private let disposeBag = DisposeBag()
 
-    init(bookISBN: String, repository: SentenceRepositoryProtocol) {
-        self.bookISBN   = bookISBN
-        self.repository = repository
+    init(bookISBN: String, repository: SentenceRepositoryProtocol, editingSentence: Sentence? = nil) {
+        self.bookISBN        = bookISBN
+        self.repository      = repository
+        self.editingSentence = editingSentence
     }
 
     // MARK: - Transform
@@ -72,17 +74,34 @@ final class DirectCollectViewModel {
                       let localEmotion = emotion else { return .empty() }
 
                 let memoText = memo.trimmingCharacters(in: .whitespacesAndNewlines)
-                let newSentence = Sentence(
-                    id:       UUID(),
-                    bookISBN: self.bookISBN,
-                    sentence: sentence.trimmingCharacters(in: .whitespacesAndNewlines),
-                    page:     pageNum,
-                    emotion:  localEmotion,
-                    memo:     memoText.isEmpty ? nil : memoText,
-                    date:     Date()
-                )
+                let trimmedSentence = sentence.trimmingCharacters(in: .whitespacesAndNewlines)
 
-                return self.repository.saveSentence(newSentence)
+                let operation: Completable
+                if let existing = self.editingSentence {
+                    let updated = Sentence(
+                        id:       existing.id,
+                        bookISBN: existing.bookISBN,
+                        sentence: trimmedSentence,
+                        page:     pageNum,
+                        emotion:  localEmotion,
+                        memo:     memoText.isEmpty ? nil : memoText,
+                        date:     existing.date
+                    )
+                    operation = self.repository.updateSentence(updated)
+                } else {
+                    let newSentence = Sentence(
+                        id:       UUID(),
+                        bookISBN: self.bookISBN,
+                        sentence: trimmedSentence,
+                        page:     pageNum,
+                        emotion:  localEmotion,
+                        memo:     memoText.isEmpty ? nil : memoText,
+                        date:     Date()
+                    )
+                    operation = self.repository.saveSentence(newSentence)
+                }
+
+                return operation
                     .andThen(.just(()))
                     .catch { error in
                         errorMessage.accept(error.localizedDescription)

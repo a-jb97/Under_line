@@ -13,6 +13,7 @@ import RxSwift
 
 protocol SentenceRepositoryProtocol {
     func saveSentence(_ sentence: Sentence) -> Completable
+    func updateSentence(_ sentence: Sentence) -> Completable
     func fetchSentences(for bookISBN: String) -> Single<[Sentence]>
     func deleteSentence(_ sentence: Sentence) -> Completable
     func fetchAllSentences() -> Single<[Sentence]>
@@ -34,6 +35,29 @@ final class SentenceRepository: SentenceRepositoryProtocol {
             do {
                 self.modelContext.insert(SentenceRecord(from: sentence))
                 try self.modelContext.save()
+                completable(.completed)
+            } catch {
+                completable(.error(error))
+            }
+            return Disposables.create()
+        }
+    }
+
+    func updateSentence(_ sentence: Sentence) -> Completable {
+        Completable.create { [weak self] completable in
+            guard let self else { completable(.completed); return Disposables.create() }
+            do {
+                let targetID = sentence.id
+                let descriptor = FetchDescriptor<SentenceRecord>(
+                    predicate: #Predicate { $0.id == targetID }
+                )
+                if let record = try self.modelContext.fetch(descriptor).first {
+                    record.sentence        = sentence.sentence
+                    record.page            = sentence.page
+                    record.emotionRawValue = sentence.emotion.rawValue
+                    record.memo            = sentence.memo
+                    try self.modelContext.save()
+                }
                 completable(.completed)
             } catch {
                 completable(.error(error))
