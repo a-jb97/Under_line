@@ -556,6 +556,20 @@ final class BookshelfViewController: UIViewController {
         return ghost
     }
 
+    /// 책장에 마지막으로 배치된 책 wrapper 뷰 반환 (새 도서 등장 애니메이션용)
+    /// ShelfPageView → UIStackView(vertical) → ShelfRowView → UIStackView(horizontal) → wrapper
+    private func findLastBookView() -> UIView? {
+        guard let lastPage = bookshelfScrollView.subviews.last,
+              let vStack   = lastPage.subviews.first as? UIStackView else { return nil }
+        for rowView in vStack.arrangedSubviews.reversed() {
+            guard let hStack = rowView.subviews.first as? UIStackView else { continue }
+            for wrapper in hStack.arrangedSubviews.reversed() {
+                if wrapper.layer.shadowOpacity > 0 { return wrapper }
+            }
+        }
+        return nil
+    }
+
     // MARK: - Edit Mode
 
     private func setEditMode(_ editing: Bool) {
@@ -699,8 +713,44 @@ final class BookshelfViewController: UIViewController {
         output.books
             .drive(onNext: { [weak self] books in
                 guard let self else { return }
+                let previousCount     = self.allBooks.count
+                let previousSavedCount = self.savedBooks.count
                 self.allBooks = books
                 self.applyFilter()
+
+                // 새 도서 추가 시: 페이지 이동 후 책 등장 애니메이션
+                let newBookAdded = previousCount > 0
+                    && books.count > previousCount
+                    && self.savedBooks.count > previousSavedCount
+                    && self.layoutReady
+                guard newBookAdded else { return }
+
+                let lastPage  = self.pageControl.numberOfPages - 1
+                let pageWidth = self.bookshelfScrollView.bounds.width
+                let targetOffset = CGPoint(x: pageWidth * CGFloat(lastPage), y: 0)
+
+                // 신규 도서 뷰를 미리 숨겨두기 (레이아웃 먼저 확정)
+                self.bookshelfScrollView.layoutIfNeeded()
+                let newBookView = self.findLastBookView()
+                newBookView?.alpha     = 0
+                newBookView?.transform = CGAffineTransform(scaleX: 0.7, y: 0.7)
+
+                let showNewBook = {
+                    UIView.animate(withDuration: 0.3, delay: 0.05,
+                                   usingSpringWithDamping: 0.65, initialSpringVelocity: 0.5,
+                                   options: [], animations: {
+                        newBookView?.alpha     = 1
+                        newBookView?.transform = .identity
+                    })
+                }
+
+                if lastPage > 0 {
+                    UIView.animate(withDuration: 0.4, delay: 0, options: .curveEaseInOut, animations: {
+                        self.bookshelfScrollView.contentOffset = targetOffset
+                    }, completion: { _ in showNewBook() })
+                } else {
+                    showNewBook()
+                }
             })
             .disposed(by: disposeBag)
 
