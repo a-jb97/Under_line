@@ -545,6 +545,34 @@ final class BookshelfViewController: UIViewController {
         reorderRelay.accept(savedBooks.map { $0.isbn13 })
     }
 
+    private func startPageFlipTimer(direction: Int) {
+        guard pageFlipDirection != direction || pageFlipTimer == nil else { return }
+        cancelPageFlipTimer()
+        pageFlipDirection = direction
+        pageFlipTimer = Timer.scheduledTimer(withTimeInterval: pageFlipDelay, repeats: false) { [weak self] _ in
+            self?.flipPage(direction: direction)
+        }
+    }
+
+    private func cancelPageFlipTimer() {
+        pageFlipTimer?.invalidate()
+        pageFlipTimer = nil
+        pageFlipDirection = 0
+    }
+
+    private func flipPage(direction: Int) {
+        cancelPageFlipTimer()
+        let pageWidth = bookshelfScrollView.bounds.width
+        let currentPage = Int(round(bookshelfScrollView.contentOffset.x / pageWidth))
+        let targetPage = currentPage + direction
+        guard targetPage >= 0, targetPage < pageControl.numberOfPages else { return }
+
+        let targetOffset = CGPoint(x: pageWidth * CGFloat(targetPage), y: 0)
+        UIView.animate(withDuration: 0.35, delay: 0, options: .curveEaseInOut) {
+            self.bookshelfScrollView.contentOffset = targetOffset
+        }
+    }
+
     private func makeGhostView(book: Book, size: CGSize) -> UIView {
         let ghost = UIView()
         ghost.layer.cornerRadius = 3
