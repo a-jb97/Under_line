@@ -37,6 +37,12 @@ final class BookshelfViewController: UIViewController {
     private var isDragging = false
     private var bookSlotFrames: [(globalIndex: Int, frameInScrollView: CGRect)] = []
 
+    // 페이지 플립 (가장자리 드래그 → 인접 페이지 전환)
+    private var pageFlipTimer: Timer?
+    private var pageFlipDirection: Int = 0       // -1 = 왼쪽, 0 = 없음, +1 = 오른쪽
+    private let pageFlipZoneWidth: CGFloat = 72  // 가장자리 감지 폭 (pt)
+    private let pageFlipDelay: TimeInterval = 0.75
+
     // MARK: - Saved Books
 
     private var allBooks: [Book] = []
