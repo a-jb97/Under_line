@@ -509,9 +509,25 @@ final class BookshelfViewController: UIViewController {
         } else {
             dragState = state
         }
+
+        // 가장자리 감지 → 페이지 플립 타이머
+        let svFrame = bookshelfScrollView.frame
+        let ghostX = state.ghostView.center.x
+        let pageWidth = bookshelfScrollView.bounds.width
+        let currentPage = Int(round(bookshelfScrollView.contentOffset.x / pageWidth))
+        let totalPages = pageControl.numberOfPages
+
+        if ghostX < svFrame.minX + pageFlipZoneWidth, currentPage > 0 {
+            startPageFlipTimer(direction: -1)
+        } else if ghostX > svFrame.maxX - pageFlipZoneWidth, currentPage < totalPages - 1 {
+            startPageFlipTimer(direction: +1)
+        } else {
+            cancelPageFlipTimer()
+        }
     }
 
     private func dragEnded() {
+        cancelPageFlipTimer()
         guard let state = dragState else { return }
 
         UIView.animate(withDuration: 0.15, animations: {
