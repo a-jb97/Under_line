@@ -612,14 +612,26 @@ final class BookDetailViewController: UIViewController {
         let emotionImageView = UIImageView(image: sentence.emotion.emoji)
         emotionImageView.contentMode = .scaleAspectFit
 
-        frontView.addSubview(textLabel)
+        // ── Step 1: textAreaView로 감정/페이지 겹침 방지 ──────────
+        // ── Step 2: UIScrollView로 긴 문장 스크롤 지원 ─────────────
+        let textScrollView = UIScrollView()
+        textScrollView.showsVerticalScrollIndicator = false
+        textScrollView.showsHorizontalScrollIndicator = false
+        textScrollView.alwaysBounceVertical = false
+
+        let textContentView = UIView()
+        textScrollView.addSubview(textContentView)
+        textContentView.addSubview(textLabel)
+
+        // textAreaView: pageLabel/emotionImageView 위쪽 공간만 차지
+        let textAreaView = UIView()
+        textAreaView.clipsToBounds = true
+        textAreaView.addSubview(textScrollView)
+
         frontView.addSubview(pageLabel)
         frontView.addSubview(emotionImageView)
+        frontView.addSubview(textAreaView)
 
-        textLabel.snp.makeConstraints { make in
-            make.leading.trailing.equalToSuperview().inset(24)
-            make.center.equalToSuperview()
-        }
         pageLabel.snp.makeConstraints { make in
             make.trailing.equalToSuperview().inset(24)
             make.bottom.equalToSuperview().inset(20)
