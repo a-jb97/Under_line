@@ -641,6 +641,29 @@ final class BookDetailViewController: UIViewController {
             make.bottom.equalToSuperview().inset(16)
             make.size.equalTo(18)
         }
+        // textAreaView: 상단 20pt ~ pageLabel 위 8pt
+        textAreaView.snp.makeConstraints { make in
+            make.top.equalToSuperview().inset(20)
+            make.leading.trailing.equalToSuperview()
+            make.bottom.equalTo(pageLabel.snp.top).offset(-8)
+        }
+        // textContentView: 스크롤 콘텐츠 영역, 너비는 scrollView frame에 고정
+        textContentView.snp.makeConstraints { make in
+            make.edges.equalTo(textScrollView.contentLayoutGuide)
+            make.width.equalTo(textScrollView.frameLayoutGuide)
+        }
+        textLabel.snp.makeConstraints { make in
+            make.leading.trailing.equalToSuperview().inset(24)
+            make.top.bottom.equalToSuperview()
+        }
+        // textScrollView: 콘텐츠 높이에 맞추되(medium), textAreaView 초과 불가
+        // 짧은 문장은 textAreaView 내 수직 중앙, 긴 문장은 전체 영역 채우고 스크롤
+        textScrollView.snp.makeConstraints { make in
+            make.leading.trailing.equalToSuperview()
+            make.centerY.equalToSuperview()
+            make.height.lessThanOrEqualToSuperview()
+            make.height.equalTo(textContentView).priority(.medium)
+        }
 
         page.addSubview(frontView)
         frontView.snp.makeConstraints { make in make.edges.equalToSuperview() }
@@ -690,14 +713,15 @@ final class BookDetailViewController: UIViewController {
         frontView.isHidden = isFlipped
         backView.isHidden  = !isFlipped
 
-        // ── 탭 버튼 (전체 영역, 편집 모드에서는 비활성) ──────────
-        let tapButton = UIButton(type: .system)
-        tapButton.backgroundColor = .clear
-        page.addSubview(tapButton)
-        tapButton.snp.makeConstraints { make in make.edges.equalToSuperview() }
+        // ── 카드 플립 탭 제스처 ────────────────────────────────────
+        // UIButton(edges: equalToSuperview)은 textScrollView의 pan 제스처를 가로채므로
+        // cancelsTouchesInView = false 인 UITapGestureRecognizer 사용
+        let tapGesture = UITapGestureRecognizer()
+        tapGesture.cancelsTouchesInView = false
+        page.addGestureRecognizer(tapGesture)
 
-        tapButton.rx.tap
-            .subscribe(onNext: { [weak self, weak page, weak frontView, weak backView] in
+        tapGesture.rx.event
+            .subscribe(onNext: { [weak self, weak page, weak frontView, weak backView] _ in
                 guard let self, let page, let frontView, let backView,
                       !self.isEditMode else { return }
                 let nowFlipped = self.flippedSentenceIDs.contains(sentence.id)
