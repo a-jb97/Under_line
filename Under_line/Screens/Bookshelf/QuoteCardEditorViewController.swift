@@ -6,7 +6,6 @@
 //
 
 import UIKit
-import Photos
 import PhotosUI
 import SnapKit
 import RxSwift
@@ -162,7 +161,7 @@ final class QuoteCardEditorViewController: UIViewController {
     lazy var saveButton: UIButton = {
         let btn = UIButton(type: .system)
         let cfg = UIImage.SymbolConfiguration(pointSize: 14, weight: .medium)
-        btn.setImage(UIImage(systemName: "square.and.arrow.down", withConfiguration: cfg), for: .normal)
+        btn.setImage(UIImage(systemName: "square.and.arrow.up", withConfiguration: cfg), for: .normal)
         btn.tintColor = UIColor.walnut
         btn.layer.cornerRadius = 26
         btn.clipsToBounds = true
@@ -172,7 +171,7 @@ final class QuoteCardEditorViewController: UIViewController {
     private let removeLogoLabel = QuoteCardEditorViewController.makeActionLabel("로고 제거")
     private let backgroundLabel = QuoteCardEditorViewController.makeActionLabel("배경 지정")
     private let colorSyncLabel  = QuoteCardEditorViewController.makeActionLabel("색상 동기화")
-    private let saveLabel       = QuoteCardEditorViewController.makeActionLabel("카드 생성")
+    private let saveLabel       = QuoteCardEditorViewController.makeActionLabel("공유하기")
 
     private static func makeActionLabel(_ text: String) -> UILabel {
         let l = UILabel()
@@ -399,7 +398,7 @@ final class QuoteCardEditorViewController: UIViewController {
             .disposed(by: disposeBag)
 
         saveButton.rx.tap
-            .subscribe(onNext: { [weak self] in self?.saveCardToPhotos() })
+            .subscribe(onNext: { [weak self] in self?.shareCard() })
             .disposed(by: disposeBag)
     }
 
@@ -510,51 +509,19 @@ final class QuoteCardEditorViewController: UIViewController {
         return [shadowView, glassContainer]
     }
 
-    // MARK: - Save Card
+    // MARK: - Share Card
 
-    private func saveCardToPhotos() {
-        PHPhotoLibrary.requestAuthorization(for: .addOnly) { [weak self] status in
-            guard let self else { return }
-            guard status == .authorized || status == .limited else {
-                DispatchQueue.main.async {
-                    var style = ToastStyle()
-                    style.backgroundColor = UIColor.appPrimary.withAlphaComponent(0.9)
-                    style.messageFont = UIFont(name: "GowunBatang-Regular", size: 14) ?? .systemFont(ofSize: 14)
-                    self.view.makeToast("사진 저장 권한이 필요합니다.", duration: 1.2, position: .center, style: style)
-                }
-                return
-            }
-            // drawHierarchy 등 UI 작업은 반드시 메인 스레드에서 실행
-            DispatchQueue.main.async { [weak self] in
-                guard let self else { return }
-                let format = UIGraphicsImageRendererFormat()
-                format.scale = UIScreen.main.scale
-                let renderer = UIGraphicsImageRenderer(bounds: self.cardView.bounds, format: format)
-                let image = renderer.image { _ in
-                    self.cardView.drawHierarchy(in: self.cardView.bounds, afterScreenUpdates: true)
-                }
-                PHPhotoLibrary.shared().performChanges({
-                    PHAssetChangeRequest.creationRequestForAsset(from: image)
-                }) { [weak self] success, _ in
-                    DispatchQueue.main.async {
-                        guard let self else { return }
-                        if success {
-                            var style = ToastStyle()
-                            style.backgroundColor = UIColor.appPrimary.withAlphaComponent(0.9)
-                            style.messageFont = UIFont(name: "GowunBatang-Regular", size: 14) ?? .systemFont(ofSize: 14)
-                            self.view.makeToast("카드가 저장되었습니다.", duration: 1.2, position: .center, style: style) { _ in
-                                self.dismiss(animated: true)
-                            }
-                        } else {
-                            var style = ToastStyle()
-                            style.backgroundColor = UIColor.appPrimary.withAlphaComponent(0.9)
-                            style.messageFont = UIFont(name: "GowunBatang-Regular", size: 14) ?? .systemFont(ofSize: 14)
-                            self.view.makeToast("저장에 실패했습니다.", duration: 1.2, position: .center, style: style)
-                        }
-                    }
-                }
-            }
+    private func shareCard() {
+        let format = UIGraphicsImageRendererFormat()
+        format.scale = UIScreen.main.scale
+        let renderer = UIGraphicsImageRenderer(bounds: cardView.bounds, format: format)
+        let image = renderer.image { _ in
+            cardView.drawHierarchy(in: cardView.bounds, afterScreenUpdates: true)
         }
+
+        let activityVC = UIActivityViewController(activityItems: [image], applicationActivities: nil)
+        activityVC.popoverPresentationController?.sourceView = saveButton
+        present(activityVC, animated: true)
     }
 
     private func setColorSyncVisible(_ visible: Bool) {
