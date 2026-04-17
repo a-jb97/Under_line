@@ -2,55 +2,97 @@
 //  SceneDelegate.swift
 //  Under_line
 //
-//  Created by 전민돌 on 3/23/26.
-//
 
 import UIKit
+import RxSwift
 
 class SceneDelegate: UIResponder, UIWindowSceneDelegate {
 
     var window: UIWindow?
-
+    private var reminderObserver: NSObjectProtocol?
+    private let disposeBag = DisposeBag()
 
     func scene(_ scene: UIScene, willConnectTo session: UISceneSession, options connectionOptions: UIScene.ConnectionOptions) {
-        // Use this method to optionally configure and attach the UIWindow `window` to the provided UIWindowScene `scene`.
-        // If using a storyboard, the `window` property will automatically be initialized and attached to the scene.
-        // This delegate does not imply the connecting scene or session are new (see `application:configurationForConnectingSceneSession` instead).
         guard let scene = (scene as? UIWindowScene) else { return }
-        
+
         window = UIWindow(windowScene: scene)
         window?.rootViewController = MainTabBarController()
         window?.makeKeyAndVisible()
+
+        setupReminderObserver()
     }
 
     func sceneDidDisconnect(_ scene: UIScene) {
-        // Called as the scene is being released by the system.
-        // This occurs shortly after the scene enters the background, or when its session is discarded.
-        // Release any resources associated with this scene that can be re-created the next time the scene connects.
-        // The scene may re-connect later, as its session was not necessarily discarded (see `application:didDiscardSceneSessions` instead).
+        if let observer = reminderObserver {
+            NotificationCenter.default.removeObserver(observer)
+            reminderObserver = nil
+        }
     }
 
-    func sceneDidBecomeActive(_ scene: UIScene) {
-        // Called when the scene has moved from an inactive state to an active state.
-        // Use this method to restart any tasks that were paused (or not yet started) when the scene was inactive.
-    }
+    func sceneDidBecomeActive(_ scene: UIScene) { }
 
-    func sceneWillResignActive(_ scene: UIScene) {
-        // Called when the scene will move from an active state to an inactive state.
-        // This may occur due to temporary interruptions (ex. an incoming phone call).
-    }
+    func sceneWillResignActive(_ scene: UIScene) { }
 
     func sceneWillEnterForeground(_ scene: UIScene) {
         WidgetCacheService.shared.refreshCache()
     }
 
     func sceneDidEnterBackground(_ scene: UIScene) {
-        // Called as the scene transitions from the foreground to the background.
-        // Use this method to save data, release shared resources, and store enough scene-specific state information
-        // to restore the scene back to its current state.
         WidgetCacheService.shared.refreshCache()
     }
 
+    // MARK: - Reminder Notification
 
+    private func setupReminderObserver() {
+        reminderObserver = NotificationCenter.default.addObserver(
+            forName: .reminderNotificationTapped,
+            object: nil,
+            queue: .main
+        ) { [weak self] notification in
+            guard let self, let period = notification.object as? String else { return }
+            self.handleReminderNotification(period: period)
+        }
+    }
+
+    private func handleReminderNotification(period: String) {
+        let now = Date()
+        let cal = Calendar.current
+        let targetDate: Date
+
+        switch period {
+        case "day":   targetDate = cal.date(byAdding: .day,   value: -1, to: now) ?? now
+        case "week":  targetDate = cal.date(byAdding: .day,   value: -7, to: now) ?? now
+        case "month": targetDate = cal.date(byAdding: .month, value: -1, to: now) ?? now
+        case "year":  targetDate = cal.date(byAdding: .year,  value: -1, to: now) ?? now
+        default:      return
+        }
+
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "ko_KR")
+        formatter.dateFormat = "yyyy년 M월 d일"
+        let dateLabel = "\(formatter.string(from: targetDate)) 밑줄"
+
+        AppContainer.shared.sentenceRepository
+            .fetchSentences(addedOn: targetDate)
+            .observe(on: MainScheduler.instance)
+            .subscribe(onSuccess: { [weak self] sentences in
+                self?.presentReminderVC(sentences: sentences, dateLabel: dateLabel)
+            })
+            .disposed(by: disposeBag)
+    }
+
+    private func presentReminderVC(sentences: [Sentence], dateLabel: String) {
+        guard let root = window?.rootViewController else { return }
+        var topVC = root
+        while let presented = topVC.presentedViewController {
+            topVC = presented
+        }
+        let vc = ReminderSentenceViewController(sentences: sentences, dateLabel: dateLabel)
+        vc.modalPresentationStyle = .pageSheet
+        if let sheet = vc.sheetPresentationController {
+            sheet.detents               = [.large()]
+            sheet.preferredCornerRadius = 24
+        }
+        topVC.present(vc, animated: true)
+    }
 }
-
