@@ -40,6 +40,7 @@ final class SettingsViewController: UIViewController {
     private lazy var backupRow:          UIButton = makeChevronRow(title: "내 밑줄 기록 백업하기")
     private lazy var restoreRow:         UIButton = makeChevronRow(title: "내 밑줄 기록 불러오기")
     private lazy var randomUnderLineRow: UIButton = makeChevronRow(title: "랜덤 밑줄 기능 켜기/끄기")
+    private lazy var remindRow:          UIButton = makeChevronRow(title: "리마인드 알림 설정하기")
     private lazy var tutorialRow:        UIButton = makeChevronRow(title: "튜토리얼 다시 보기")
     private lazy var feedbackRow: UIButton = makeChevronRow(title: "의견 보내기")
     private lazy var reviewRow:   UIButton = makeChevronRow(title: "앱 리뷰 작성하기")
@@ -71,6 +72,7 @@ final class SettingsViewController: UIViewController {
             (backupRow,          true),
             (restoreRow,         true),
             (randomUnderLineRow, true),
+            (remindRow,          true),
             (tutorialRow,        true),
             (feedbackRow, true),
             (reviewRow,   true),
@@ -246,6 +248,20 @@ final class SettingsViewController: UIViewController {
                 picker.delegate = self
                 self.isImportMode = true
                 self.present(picker, animated: true)
+            })
+            .disposed(by: disposeBag)
+
+        remindRow.rx.tap
+            .subscribe(onNext: { [weak self] in
+                guard let self else { return }
+                let vc = RemindNotificationViewController()
+                vc.modalPresentationStyle = .pageSheet
+                if let sheet = vc.sheetPresentationController {
+                    sheet.detents               = [.large()]
+                    sheet.prefersGrabberVisible = false
+                    sheet.preferredCornerRadius = 24
+                }
+                self.present(vc, animated: true)
             })
             .disposed(by: disposeBag)
 
