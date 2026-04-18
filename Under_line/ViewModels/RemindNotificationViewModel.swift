@@ -2,13 +2,14 @@
 //  RemindNotificationViewModel.swift
 //  Under_line
 //
-//  리마인드 알림 설정 ViewModel — 주기/시간 선택 + UNCalendarNotificationTrigger 등록
+//  리마인드 알림 설정 ViewModel — 주기/시간 선택 + BGAppRefreshTask 등록
 //
 
 import Foundation
 import RxSwift
 import RxCocoa
 import UserNotifications
+import BackgroundTasks
 
 final class RemindNotificationViewModel {
 
@@ -27,14 +28,6 @@ final class RemindNotificationViewModel {
     private let disposeBag     = DisposeBag()
     private let toastSubject   = PublishSubject<String>()
     private let successSubject = PublishSubject<Void>()
-
-    private let periodKeys = ["day", "week", "month", "year"]
-    private let periodBodies = [
-        "어제 추가한 밑줄이 있어요.",
-        "일주일 전에 추가한 밑줄이 있어요.",
-        "한 달 전에 추가한 밑줄이 있어요.",
-        "일년 전 오늘 추가한 밑줄이 있어요."
-    ]
 
     func transform(input: Input) -> Output {
         let latestPeriod = input.periodSelected.share(replay: 1)
@@ -71,51 +64,24 @@ final class RemindNotificationViewModel {
                 return
             }
 
-            UNUserNotificationCenter.current().removePendingNotificationRequests(
-                withIdentifiers: ["remind_notification"]
-            )
+            // 기존 예약 취소 후 새 BGAppRefreshTask 등록
+            BGTaskScheduler.shared.cancel(taskRequestWithIdentifier: AppDelegate.reminderTaskID)
 
-            let content = UNMutableNotificationContent()
-            content.title    = "밑줄"
-            content.body     = self.periodBodies[periodIndex]
-            content.sound    = .default
-            content.userInfo = ["period": self.periodKeys[periodIndex]]
+            let fireDate = AppDelegate.nextFireDate(periodIndex: periodIndex, selectedTime: time)
+            let request  = BGAppRefreshTaskRequest(identifier: AppDelegate.reminderTaskID)
+            request.earliestBeginDate = fireDate
 
-            let cal        = Calendar.current
-            var components = cal.dateComponents([.hour, .minute], from: time)
-
-            switch periodIndex {
-            case 1: // 일주일 — 완료 탭한 요일마다 반복
-                components.weekday = cal.component(.weekday, from: Date())
-            case 2: // 한 달 — 완료 탭한 일(day)마다 반복
-                components.day = cal.component(.day, from: Date())
-            case 3: // 일년 — 완료 탭한 월+일마다 반복
-                components.month = cal.component(.month, from: Date())
-                components.day   = cal.component(.day, from: Date())
-            default: break // 하루 — hour+minute만으로 매일 반복
-            }
-
-            let trigger = UNCalendarNotificationTrigger(dateMatching: components, repeats: true)
-            let request  = UNNotificationRequest(
-                identifier: "remind_notification",
-                content:    content,
-                trigger:    trigger
-            )
-
-            UNUserNotificationCenter.current().add(request) { [weak self] error in
+            do {
+                try BGTaskScheduler.shared.submit(request)
                 DispatchQueue.main.async {
-                    guard let self else { return }
-                    if error != nil {
-                        self.toastSubject.onNext("알림 설정에 실패했습니다.")
-                    } else {
-                        UserDefaults.standard.set(periodIndex, forKey: "remind.period")
-                        UserDefaults.standard.set(
-                            time.timeIntervalSinceReferenceDate,
-                            forKey: "remind.time"
-                        )
-                        self.toastSubject.onNext("리마인드 알림이 설정되었습니다.")
-                        self.successSubject.onNext(())
-                    }
+                    UserDefaults.standard.set(periodIndex, forKey: "remind.period")
+                    UserDefaults.standard.set(time.timeIntervalSinceReferenceDate, forKey: "remind.time")
+                    self.toastSubject.onNext("리마인드 알림이 설정되었습니다.")
+                    self.successSubject.onNext(())
+                }
+            } catch {
+                DispatchQueue.main.async {
+                    self.toastSubject.onNext("알림 설정에 실패했습니다.")
                 }
             }
         }
