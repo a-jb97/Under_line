@@ -1,0 +1,10 @@
+git_url("https://github.com/a-jb97/under_line_certs.git")
+storage_mode("git")
+type("appstore")
+app_identifier([
+  "com.jade.UnderLine",
+  "com.jade.UnderLine.UnderLineWidget"
+])
+username("ajb9297@gmail.com")
+team_id("VR5Z389FF7")
+readonly(false)
