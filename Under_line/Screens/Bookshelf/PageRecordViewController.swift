@@ -181,7 +181,7 @@ final class PageRecordViewController: UIViewController {
                     style.messageFont = UIFont(name: "GowunBatang-Regular", size: 14) ?? .systemFont(ofSize: 14)
                     self.view.window?.makeToast(
                         "전체 페이지보다 많은 페이지는 기록할 수 없습니다.",
-                        duration: 1.5,
+                        duration: 1.2,
                         position: .center,
                         style: style
                     )
