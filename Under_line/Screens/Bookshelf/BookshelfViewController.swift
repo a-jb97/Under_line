@@ -887,18 +887,12 @@ extension BookshelfViewController {
         guard !UserDefaults.standard.bool(forKey: "tutorial.bookshelf") else { return }
 
         // 베스트셀러 표지로 책장 미리채우기
-        AppContainer.shared.bookRepository
-            .fetchBestsellers()
-            .observe(on: MainScheduler.instance)
-            .subscribe(
-                onSuccess: { [weak self] books in
-                    guard let self else { return }
-                    self.tutorialBooks = books
-                    if self.layoutReady { self.rebuildShelfPages() }
-                },
-                onFailure: { _ in }
-            )
-            .disposed(by: disposeBag)
+        Task { [weak self] in
+            guard let self else { return }
+            guard let books = try? await AppContainer.shared.bookRepository.fetchBestsellers() else { return }
+            self.tutorialBooks = books
+            if self.layoutReady { self.rebuildShelfPages() }
+        }
 
         let steps: [TutorialStep] = [
             TutorialStep(

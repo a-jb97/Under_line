@@ -43,13 +43,11 @@ final class BookshelfViewModel {
         input.deleteBook
             .flatMapLatest { [weak self] book -> Observable<Void> in
                 guard let self else { return .empty() }
-                return self.repository.deleteBook(book)
-                    .andThen(.just(()))
+                return rxAsync { try await self.repository.deleteBook(book) }
                     .catch { error in
                         errorMessage.accept(error.localizedDescription)
                         return .empty()
                     }
-                    .asObservable()
             }
             .subscribe()
             .disposed(by: disposeBag)
@@ -57,13 +55,11 @@ final class BookshelfViewModel {
         input.deleteAll
             .flatMapLatest { [weak self] _ -> Observable<Void> in
                 guard let self else { return .empty() }
-                return self.repository.deleteAllBooks()
-                    .andThen(.just(()))
+                return rxAsync { try await self.repository.deleteAllBooks() }
                     .catch { error in
                         errorMessage.accept(error.localizedDescription)
                         return .empty()
                     }
-                    .asObservable()
             }
             .subscribe()
             .disposed(by: disposeBag)
@@ -71,10 +67,8 @@ final class BookshelfViewModel {
         input.reorderBooks
             .flatMapLatest { [weak self] isbns -> Observable<Void> in
                 guard let self else { return .empty() }
-                return self.repository.reorderBooks(orderedISBNs: isbns)
-                    .andThen(.just(()))
+                return rxAsync { try await self.repository.reorderBooks(orderedISBNs: isbns) }
                     .catch { _ in .empty() }
-                    .asObservable()
             }
             .subscribe()
             .disposed(by: disposeBag)
