@@ -17,7 +17,6 @@ protocol SentenceRepositoryProtocol {
     func fetchSentences(for bookISBN: String) -> Single<[Sentence]>
     func deleteSentence(_ sentence: Sentence) -> Completable
     func fetchAllSentences() -> Single<[Sentence]>
-    func fetchSentences(addedOn date: Date) -> Single<[Sentence]>
 }
 
 // MARK: - Concrete Implementation
@@ -118,21 +117,4 @@ final class SentenceRepository: SentenceRepositoryProtocol {
         }
     }
 
-    func fetchSentences(addedOn date: Date) -> Single<[Sentence]> {
-        Single.create { [weak self] single in
-            guard let self else { single(.success([])); return Disposables.create() }
-            do {
-                let start = Calendar.current.startOfDay(for: date)
-                let end   = Calendar.current.date(byAdding: .day, value: 1, to: start)!
-                let descriptor = FetchDescriptor<SentenceRecord>(
-                    predicate: #Predicate { $0.date >= start && $0.date < end },
-                    sortBy: [SortDescriptor(\SentenceRecord.date, order: .reverse)]
-                )
-                single(.success(try self.modelContext.fetch(descriptor).map { $0.toDomain() }))
-            } catch {
-                single(.failure(error))
-            }
-            return Disposables.create()
-        }
-    }
 }
