@@ -14,17 +14,17 @@ import RxCocoa
 
 protocol BookRepositoryProtocol {
     // Remote
-    func fetchBestsellers() -> Single<[Book]>
-    func searchBooks(query: String, page: Int) -> Single<(books: [Book], totalResults: Int)>
-    func fetchBookDetail(isbn13: String) -> Single<Book>
+    func fetchBestsellers() async throws -> [Book]
+    func searchBooks(query: String, page: Int) async throws -> (books: [Book], totalResults: Int)
+    func fetchBookDetail(isbn13: String) async throws -> Book
 
-    // Local
+    // Local (BehaviorRelay 스트림 — Observable 유지)
     func fetchSavedBooks() -> Observable<[Book]>
-    func saveBook(_ book: Book) -> Completable
-    func deleteBook(_ book: Book) -> Completable
-    func deleteAllBooks() -> Completable
-    func updateCurrentPage(isbn13: String, page: Int) -> Completable
-    func reorderBooks(orderedISBNs: [String]) -> Completable
+    func saveBook(_ book: Book) async throws
+    func deleteBook(_ book: Book) async throws
+    func deleteAllBooks() async throws
+    func updateCurrentPage(isbn13: String, page: Int) async throws
+    func reorderBooks(orderedISBNs: [String]) async throws
 }
 
 // MARK: - Concrete Implementation
@@ -43,16 +43,16 @@ final class BookRepository: BookRepositoryProtocol {
 
     // MARK: Remote
 
-    func fetchBestsellers() -> Single<[Book]> {
-        apiService.fetchBestsellers()
+    func fetchBestsellers() async throws -> [Book] {
+        try await apiService.fetchBestsellers()
     }
 
-    func searchBooks(query: String, page: Int) -> Single<(books: [Book], totalResults: Int)> {
-        apiService.searchBooks(query: query, page: page)
+    func searchBooks(query: String, page: Int) async throws -> (books: [Book], totalResults: Int) {
+        try await apiService.searchBooks(query: query, page: page)
     }
 
-    func fetchBookDetail(isbn13: String) -> Single<Book> {
-        apiService.fetchBookDetail(isbn13: isbn13)
+    func fetchBookDetail(isbn13: String) async throws -> Book {
+        try await apiService.fetchBookDetail(isbn13: isbn13)
     }
 
     // MARK: Local
@@ -61,124 +61,78 @@ final class BookRepository: BookRepositoryProtocol {
         savedBooksRelay.asObservable()
     }
 
-    func saveBook(_ book: Book) -> Completable {
-        Completable.create { [weak self] (completable: @escaping (CompletableEvent) -> Void) -> Disposable in
-            guard let self else { completable(.completed); return Disposables.create() }
-            do {
-                let isbn = book.isbn13
-                let duplicateDescriptor = FetchDescriptor<BookRecord>(
-                    predicate: #Predicate { $0.isbn13 == isbn }
-                )
-                let existing = try self.modelContext.fetch(duplicateDescriptor)
-                guard existing.isEmpty else {
-                    completable(.error(NSError(
-                        domain: "BookRepository",
-                        code: 409,
-                        userInfo: [NSLocalizedDescriptionKey: "이미 등록된 도서입니다."]
-                    )))
-                    return Disposables.create()
-                }
-                let allRecords = try self.modelContext.fetch(FetchDescriptor<BookRecord>())
-                let maxOrder = allRecords.map { $0.sortOrder }.max() ?? -1
-                let record = BookRecord(from: book)
-                record.sortOrder = maxOrder + 1
-                self.modelContext.insert(record)
-                try self.modelContext.save()
-                self.refreshRelay()
-                completable(.completed)
-            } catch {
-                completable(.error(error))
-            }
-            return Disposables.create()
+    func saveBook(_ book: Book) async throws {
+        let isbn = book.isbn13
+        let duplicateDescriptor = FetchDescriptor<BookRecord>(
+            predicate: #Predicate { $0.isbn13 == isbn }
+        )
+        let existing = try modelContext.fetch(duplicateDescriptor)
+        guard existing.isEmpty else {
+            throw NSError(
+                domain: "BookRepository",
+                code: 409,
+                userInfo: [NSLocalizedDescriptionKey: "이미 등록된 도서입니다."]
+            )
         }
+        let allRecords = try modelContext.fetch(FetchDescriptor<BookRecord>())
+        let maxOrder = allRecords.map { $0.sortOrder }.max() ?? -1
+        let record = BookRecord(from: book)
+        record.sortOrder = maxOrder + 1
+        modelContext.insert(record)
+        try modelContext.save()
+        refreshRelay()
     }
 
-    func reorderBooks(orderedISBNs: [String]) -> Completable {
-        Completable.create { [weak self] (completable: @escaping (CompletableEvent) -> Void) -> Disposable in
-            guard let self else { completable(.completed); return Disposables.create() }
-            do {
-                let records = try self.modelContext.fetch(FetchDescriptor<BookRecord>())
-                let indexMap = Dictionary(uniqueKeysWithValues: orderedISBNs.enumerated().map { ($1, $0) })
-                for record in records {
-                    if let newOrder = indexMap[record.isbn13] {
-                        record.sortOrder = newOrder
-                    }
-                }
-                try self.modelContext.save()
-                self.refreshRelay()
-                completable(.completed)
-            } catch {
-                completable(.error(error))
+    func reorderBooks(orderedISBNs: [String]) async throws {
+        let records = try modelContext.fetch(FetchDescriptor<BookRecord>())
+        let indexMap = Dictionary(uniqueKeysWithValues: orderedISBNs.enumerated().map { ($1, $0) })
+        for record in records {
+            if let newOrder = indexMap[record.isbn13] {
+                record.sortOrder = newOrder
             }
-            return Disposables.create()
         }
+        try modelContext.save()
+        refreshRelay()
     }
 
-    func deleteBook(_ book: Book) -> Completable {
-        Completable.create { [weak self] (completable: @escaping (CompletableEvent) -> Void) -> Disposable in
-            guard let self else { completable(.completed); return Disposables.create() }
-            do {
-                let isbn = book.isbn13
+    func deleteBook(_ book: Book) async throws {
+        let isbn = book.isbn13
 
-                let bookDescriptor = FetchDescriptor<BookRecord>(
-                    predicate: #Predicate { $0.isbn13 == isbn }
-                )
-                try self.modelContext.fetch(bookDescriptor).forEach { self.modelContext.delete($0) }
+        let bookDescriptor = FetchDescriptor<BookRecord>(
+            predicate: #Predicate { $0.isbn13 == isbn }
+        )
+        try modelContext.fetch(bookDescriptor).forEach { modelContext.delete($0) }
 
-                let sentenceDescriptor = FetchDescriptor<SentenceRecord>(
-                    predicate: #Predicate { $0.bookISBN == isbn }
-                )
-                try self.modelContext.fetch(sentenceDescriptor).forEach { self.modelContext.delete($0) }
+        let sentenceDescriptor = FetchDescriptor<SentenceRecord>(
+            predicate: #Predicate { $0.bookISBN == isbn }
+        )
+        try modelContext.fetch(sentenceDescriptor).forEach { modelContext.delete($0) }
 
-                let sessionDescriptor = FetchDescriptor<ReadingSessionRecord>(
-                    predicate: #Predicate { $0.bookISBN == isbn }
-                )
-                try self.modelContext.fetch(sessionDescriptor).forEach { self.modelContext.delete($0) }
+        let sessionDescriptor = FetchDescriptor<ReadingSessionRecord>(
+            predicate: #Predicate { $0.bookISBN == isbn }
+        )
+        try modelContext.fetch(sessionDescriptor).forEach { modelContext.delete($0) }
 
-                try self.modelContext.save()
-                self.refreshRelay()
-                completable(.completed)
-            } catch {
-                completable(.error(error))
-            }
-            return Disposables.create()
-        }
+        try modelContext.save()
+        refreshRelay()
     }
 
-    func deleteAllBooks() -> Completable {
-        Completable.create { [weak self] (completable: @escaping (CompletableEvent) -> Void) -> Disposable in
-            guard let self else { completable(.completed); return Disposables.create() }
-            do {
-                try self.modelContext.fetch(FetchDescriptor<BookRecord>()).forEach { self.modelContext.delete($0) }
-                try self.modelContext.fetch(FetchDescriptor<SentenceRecord>()).forEach { self.modelContext.delete($0) }
-                try self.modelContext.fetch(FetchDescriptor<ReadingSessionRecord>()).forEach { self.modelContext.delete($0) }
-                try self.modelContext.save()
-                self.refreshRelay()
-                completable(.completed)
-            } catch {
-                completable(.error(error))
-            }
-            return Disposables.create()
-        }
+    func deleteAllBooks() async throws {
+        try modelContext.fetch(FetchDescriptor<BookRecord>()).forEach { modelContext.delete($0) }
+        try modelContext.fetch(FetchDescriptor<SentenceRecord>()).forEach { modelContext.delete($0) }
+        try modelContext.fetch(FetchDescriptor<ReadingSessionRecord>()).forEach { modelContext.delete($0) }
+        try modelContext.save()
+        refreshRelay()
     }
 
-    func updateCurrentPage(isbn13: String, page: Int) -> Completable {
-        Completable.create { [weak self] (completable: @escaping (CompletableEvent) -> Void) -> Disposable in
-            guard let self else { completable(.completed); return Disposables.create() }
-            do {
-                let descriptor = FetchDescriptor<BookRecord>(
-                    predicate: #Predicate { $0.isbn13 == isbn13 }
-                )
-                let records = try self.modelContext.fetch(descriptor)
-                records.first?.currentPage = page
-                try self.modelContext.save()
-                self.refreshRelay()
-                completable(.completed)
-            } catch {
-                completable(.error(error))
-            }
-            return Disposables.create()
-        }
+    func updateCurrentPage(isbn13: String, page: Int) async throws {
+        let descriptor = FetchDescriptor<BookRecord>(
+            predicate: #Predicate { $0.isbn13 == isbn13 }
+        )
+        let records = try modelContext.fetch(descriptor)
+        records.first?.currentPage = page
+        try modelContext.save()
+        refreshRelay()
     }
 
     // MARK: Internal

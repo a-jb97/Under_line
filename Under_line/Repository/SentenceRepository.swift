@@ -7,16 +7,15 @@
 
 import Foundation
 import SwiftData
-import RxSwift
 
 // MARK: - Protocol
 
 protocol SentenceRepositoryProtocol {
-    func saveSentence(_ sentence: Sentence) -> Completable
-    func updateSentence(_ sentence: Sentence) -> Completable
-    func fetchSentences(for bookISBN: String) -> Single<[Sentence]>
-    func deleteSentence(_ sentence: Sentence) -> Completable
-    func fetchAllSentences() -> Single<[Sentence]>
+    func saveSentence(_ sentence: Sentence) async throws
+    func updateSentence(_ sentence: Sentence) async throws
+    func fetchSentences(for bookISBN: String) async throws -> [Sentence]
+    func deleteSentence(_ sentence: Sentence) async throws
+    func fetchAllSentences() async throws -> [Sentence]
 }
 
 // MARK: - Concrete Implementation
@@ -29,92 +28,48 @@ final class SentenceRepository: SentenceRepositoryProtocol {
         self.modelContext = modelContext
     }
 
-    func saveSentence(_ sentence: Sentence) -> Completable {
-        Completable.create { [weak self] completable in
-            guard let self else { completable(.completed); return Disposables.create() }
-            do {
-                self.modelContext.insert(SentenceRecord(from: sentence))
-                try self.modelContext.save()
-                completable(.completed)
-            } catch {
-                completable(.error(error))
-            }
-            return Disposables.create()
+    func saveSentence(_ sentence: Sentence) async throws {
+        modelContext.insert(SentenceRecord(from: sentence))
+        try modelContext.save()
+    }
+
+    func updateSentence(_ sentence: Sentence) async throws {
+        let targetID = sentence.id
+        let descriptor = FetchDescriptor<SentenceRecord>(
+            predicate: #Predicate { $0.id == targetID }
+        )
+        if let record = try modelContext.fetch(descriptor).first {
+            record.sentence        = sentence.sentence
+            record.page            = sentence.page
+            record.emotionRawValue = sentence.emotion.rawValue
+            record.memo            = sentence.memo
+            try modelContext.save()
         }
     }
 
-    func updateSentence(_ sentence: Sentence) -> Completable {
-        Completable.create { [weak self] completable in
-            guard let self else { completable(.completed); return Disposables.create() }
-            do {
-                let targetID = sentence.id
-                let descriptor = FetchDescriptor<SentenceRecord>(
-                    predicate: #Predicate { $0.id == targetID }
-                )
-                if let record = try self.modelContext.fetch(descriptor).first {
-                    record.sentence        = sentence.sentence
-                    record.page            = sentence.page
-                    record.emotionRawValue = sentence.emotion.rawValue
-                    record.memo            = sentence.memo
-                    try self.modelContext.save()
-                }
-                completable(.completed)
-            } catch {
-                completable(.error(error))
-            }
-            return Disposables.create()
+    func deleteSentence(_ sentence: Sentence) async throws {
+        let targetID = sentence.id
+        let descriptor = FetchDescriptor<SentenceRecord>(
+            predicate: #Predicate { $0.id == targetID }
+        )
+        if let record = try modelContext.fetch(descriptor).first {
+            modelContext.delete(record)
+            try modelContext.save()
         }
     }
 
-    func deleteSentence(_ sentence: Sentence) -> Completable {
-        Completable.create { [weak self] completable in
-            guard let self else { completable(.completed); return Disposables.create() }
-            do {
-                let targetID = sentence.id
-                let descriptor = FetchDescriptor<SentenceRecord>(
-                    predicate: #Predicate { $0.id == targetID }
-                )
-                if let record = try self.modelContext.fetch(descriptor).first {
-                    self.modelContext.delete(record)
-                    try self.modelContext.save()
-                }
-                completable(.completed)
-            } catch {
-                completable(.error(error))
-            }
-            return Disposables.create()
-        }
+    func fetchSentences(for bookISBN: String) async throws -> [Sentence] {
+        let descriptor = FetchDescriptor<SentenceRecord>(
+            predicate: #Predicate { $0.bookISBN == bookISBN },
+            sortBy: [SortDescriptor(\SentenceRecord.date, order: .reverse)]
+        )
+        return try modelContext.fetch(descriptor).map { $0.toDomain() }
     }
 
-    func fetchSentences(for bookISBN: String) -> Single<[Sentence]> {
-        Single.create { [weak self] single in
-            guard let self else { single(.success([])); return Disposables.create() }
-            do {
-                let descriptor = FetchDescriptor<SentenceRecord>(
-                    predicate: #Predicate { $0.bookISBN == bookISBN },
-                    sortBy: [SortDescriptor(\SentenceRecord.date, order: .reverse)]
-                )
-                single(.success(try self.modelContext.fetch(descriptor).map { $0.toDomain() }))
-            } catch {
-                single(.failure(error))
-            }
-            return Disposables.create()
-        }
+    func fetchAllSentences() async throws -> [Sentence] {
+        let descriptor = FetchDescriptor<SentenceRecord>(
+            sortBy: [SortDescriptor(\SentenceRecord.date, order: .reverse)]
+        )
+        return try modelContext.fetch(descriptor).map { $0.toDomain() }
     }
-
-    func fetchAllSentences() -> Single<[Sentence]> {
-        Single.create { [weak self] single in
-            guard let self else { single(.success([])); return Disposables.create() }
-            do {
-                let descriptor = FetchDescriptor<SentenceRecord>(
-                    sortBy: [SortDescriptor(\SentenceRecord.date, order: .reverse)]
-                )
-                single(.success(try self.modelContext.fetch(descriptor).map { $0.toDomain() }))
-            } catch {
-                single(.failure(error))
-            }
-            return Disposables.create()
-        }
-    }
-
 }
