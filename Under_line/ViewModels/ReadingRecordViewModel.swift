@@ -65,11 +65,8 @@ final class ReadingRecordViewModel {
         input.timerStopped
             .flatMapLatest { [weak self] elapsed -> Observable<Void> in
                 guard let self else { return .empty() }
-                return self.readingSessionRepository
-                    .saveSession(bookISBN: self.book.isbn13, durationSeconds: elapsed)
-                    .andThen(.just(()))
+                return rxAsync { try await self.readingSessionRepository.saveSession(bookISBN: self.book.isbn13, durationSeconds: elapsed) }
                     .catch { _ in .empty() }
-                    .asObservable()
             }
             .map { }
             .bind(to: reloadTrigger)
@@ -79,11 +76,8 @@ final class ReadingRecordViewModel {
         input.pageRecorded
             .flatMapLatest { [weak self] page -> Observable<Void> in
                 guard let self else { return .empty() }
-                return self.bookRepository
-                    .updateCurrentPage(isbn13: self.book.isbn13, page: page)
-                    .andThen(.just(()))
+                return rxAsync { try await self.bookRepository.updateCurrentPage(isbn13: self.book.isbn13, page: page) }
                     .catch { _ in .empty() }
-                    .asObservable()
             }
             .subscribe()
             .disposed(by: disposeBag)
@@ -100,11 +94,9 @@ final class ReadingRecordViewModel {
             .combineLatest(fetchTrigger, period) { _, period in period }
             .flatMapLatest { [weak self] period -> Observable<[ChartPoint]> in
                 guard let self else { return .just([]) }
-                return self.readingSessionRepository
-                    .fetchSessions(for: self.book.isbn13)
+                return rxAsync { try await self.readingSessionRepository.fetchSessions(for: self.book.isbn13) }
                     .map { ReadingRecordViewModel.aggregate(sessions: $0, period: period) }
                     .catch { _ in .just([]) }
-                    .asObservable()
             }
 
         return Output(chartPoints: chartPoints.asDriver(onErrorJustReturn: []))
