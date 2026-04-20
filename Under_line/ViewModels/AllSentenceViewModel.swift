@@ -49,13 +49,15 @@ final class AllSentenceViewModel {
 
         // 삭제 처리
         input.deleteSentence
-            .flatMapLatest { [weak self] sentence -> Completable in
+            .flatMapLatest { [weak self] sentence -> Observable<Void> in
                 guard let self else { return .empty() }
-                return self.sentenceRepository.deleteSentence(sentence)
+                return rxAsync { try await self.sentenceRepository.deleteSentence(sentence) }
+                    .catch { error in
+                        errorMessage.accept(error.localizedDescription)
+                        return .empty()
+                    }
             }
-            .subscribe(onError: { error in
-                errorMessage.accept(error.localizedDescription)
-            })
+            .subscribe()
             .disposed(by: disposeBag)
 
         // viewWillAppear마다 sentences + books를 zip해 display item 배열 생성
@@ -63,9 +65,7 @@ final class AllSentenceViewModel {
             .flatMapLatest { [weak self] _ -> Observable<[AllSentenceDisplayItem]> in
                 guard let self else { return .just([]) }
 
-                let sentences = self.sentenceRepository
-                    .fetchAllSentences()
-                    .asObservable()
+                let sentences = rxAsync { try await self.sentenceRepository.fetchAllSentences() }
 
                 let books = self.bookRepository
                     .fetchSavedBooks()

@@ -83,9 +83,8 @@ final class StatisticsViewModel {
         let allSessions = input.viewWillAppear
             .flatMapLatest { [weak self] _ -> Observable<[ReadingSession]> in
                 guard let self else { return .just([]) }
-                return self.readingSessionRepository.fetchAllSessions()
+                return rxAsync { try await self.readingSessionRepository.fetchAllSessions() }
                     .catch { _ in .just([]) }
-                    .asObservable()
             }
             .share(replay: 1)
 
@@ -95,7 +94,7 @@ final class StatisticsViewModel {
             .flatMapLatest { [weak self] _ -> Observable<(SentenceDonutData, SentenceDonutData)> in
                 guard let self else { return .just((.empty, .empty)) }
                 let books     = self.bookRepository.fetchSavedBooks().take(1)
-                let sentences = self.sentenceRepository.fetchAllSentences().asObservable()
+                let sentences = rxAsync { try await self.sentenceRepository.fetchAllSentences() }
                 return Observable.zip(books, sentences)
                     .map { books, sentences in
                         let genreData  = Self.computeGenreData(sentences: sentences, books: books)
