@@ -404,11 +404,13 @@ final class CameraCollectionViewController: UIViewController {
         case .authorized:
             setupCaptureSession()
         case .notDetermined:
-            AVCaptureDevice.requestAccess(for: .video) { [weak self] granted in
-                DispatchQueue.main.async {
-                    if granted { self?.setupCaptureSession() }
-                    else       { self?.showPermissionDeniedAlert() }
+            Task { [weak self] in
+                guard let self else { return }
+                let granted = await withCheckedContinuation { continuation in
+                    AVCaptureDevice.requestAccess(for: .video) { continuation.resume(returning: $0) }
                 }
+                if granted { self.setupCaptureSession() }
+                else { self.showPermissionDeniedAlert() }
             }
         default:
             showPermissionDeniedAlert()
