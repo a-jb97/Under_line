@@ -6,6 +6,7 @@
 //  Target membership: Under_line only
 //
 
+import Foundation
 import RxSwift
 
 final class WidgetCacheService {
@@ -15,26 +16,24 @@ final class WidgetCacheService {
     private init() {}
 
     func refreshCache() {
-        AppContainer.shared.sentenceRepository
-            .fetchAllSentences()
-            .subscribe(onSuccess: { sentences in
-                guard let sentence = sentences.randomElement() else {
-                    WidgetCacheWriter.shared.clear()
-                    return
-                }
-                AppContainer.shared.bookRepository
-                    .fetchSavedBooks()
-                    .take(1)
-                    .subscribe(onNext: { books in
-                        let book = books.first { $0.isbn13 == sentence.bookISBN }
-                        WidgetCacheWriter.shared.write(
-                            sentence:   sentence,
-                            bookTitle:  book?.title ?? "알 수 없음",
-                            bookAuthor: book?.author ?? ""
-                        )
-                    })
-                    .dispose()
-            }, onFailure: { _ in })
-            .dispose()
+        Task {
+            guard let sentence = try? await AppContainer.shared.sentenceRepository
+                .fetchAllSentences().randomElement() else {
+                WidgetCacheWriter.shared.clear()
+                return
+            }
+            AppContainer.shared.bookRepository
+                .fetchSavedBooks()
+                .take(1)
+                .subscribe(onNext: { books in
+                    let book = books.first { $0.isbn13 == sentence.bookISBN }
+                    WidgetCacheWriter.shared.write(
+                        sentence:   sentence,
+                        bookTitle:  book?.title ?? "알 수 없음",
+                        bookAuthor: book?.author ?? ""
+                    )
+                })
+                .dispose()
+        }
     }
 }
