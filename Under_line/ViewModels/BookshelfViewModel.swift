@@ -68,7 +68,10 @@ final class BookshelfViewModel {
             .flatMapLatest { [weak self] isbns -> Observable<Void> in
                 guard let self else { return .empty() }
                 return rxAsync { try await self.repository.reorderBooks(orderedISBNs: isbns) }
-                    .catch { _ in .empty() }
+                    .catch { error in
+                        errorMessage.accept(error.localizedDescription)
+                        return .empty()
+                    }
             }
             .subscribe()
             .disposed(by: disposeBag)
