@@ -587,7 +587,18 @@ extension CameraCollectionViewController: AVCapturePhotoCaptureDelegate {
         guard error == nil,
               let data  = photo.fileDataRepresentation(),
               let image = UIImage(data: data)
-        else { return }
+        else {
+            DispatchQueue.main.async { [weak self] in
+                let alert = UIAlertController(
+                    title: "캡처 실패",
+                    message: "사진을 저장하지 못했습니다. 다시 시도해 주세요.",
+                    preferredStyle: .alert
+                )
+                alert.addAction(UIAlertAction(title: "확인", style: .default))
+                self?.present(alert, animated: true)
+            }
+            return
+        }
 
         DispatchQueue.main.async { [weak self] in
             guard let self else { return }

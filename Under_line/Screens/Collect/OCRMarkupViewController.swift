@@ -320,15 +320,30 @@ final class OCRMarkupViewController: UIViewController {
         guard let cgImage = capturedImage.cgImage else { return }
 
         let orientation = CGImagePropertyOrientation(capturedImage.imageOrientation)
-        observations = await Task.detached(priority: .userInitiated) {
-            let request = VNRecognizeTextRequest()
-            request.recognitionLevel = .accurate
-            request.recognitionLanguages = ["ko-KR", "en-US"]
-            request.usesLanguageCorrection = true
-            try? VNImageRequestHandler(cgImage: cgImage, orientation: orientation)
-                .perform([request])
-            return (request.results as? [VNRecognizedTextObservation]) ?? []
-        }.value
+        do {
+            observations = try await Task.detached(priority: .userInitiated) {
+                let request = VNRecognizeTextRequest()
+                request.recognitionLevel = .accurate
+                request.recognitionLanguages = ["ko-KR", "en-US"]
+                request.usesLanguageCorrection = true
+                try VNImageRequestHandler(cgImage: cgImage, orientation: orientation)
+                    .perform([request])
+                return (request.results as? [VNRecognizedTextObservation]) ?? []
+            }.value
+        } catch {
+            let alert = UIAlertController(
+                title: "텍스트 인식 실패",
+                message: "텍스트를 인식하지 못했습니다. 다시 시도해 주세요.",
+                preferredStyle: .alert
+            )
+            alert.addAction(UIAlertAction(title: "확인", style: .default))
+            present(alert, animated: true)
+            return
+        }
+
+        if observations.isEmpty {
+            hintLabel.text = "텍스트를 감지하지 못했습니다. 다른 각도로 다시 시도해 주세요."
+        }
     }
 
     // MARK: - Selection Update
