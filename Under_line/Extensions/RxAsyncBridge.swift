@@ -11,7 +11,7 @@ import RxSwift
 /// Task가 취소되면 Disposable 해제 시점에 cancel된다.
 func rxAsync<T>(_ work: @escaping () async throws -> T) -> Observable<T> {
     Observable.create { observer in
-        let task = Task {
+        let task = Task { @MainActor in
             do {
                 let result = try await work()
                 observer.onNext(result)
