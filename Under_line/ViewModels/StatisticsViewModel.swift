@@ -120,15 +120,15 @@ final class StatisticsViewModel {
         calendar.firstWeekday = 2  // 월요일 기준
         let now = Date()
 
-        let weekStart  = calendar.date(from: calendar.dateComponents([.yearForWeekOfYear, .weekOfYear], from: now))!
-        let monthStart = calendar.date(from: calendar.dateComponents([.year, .month], from: now))!
-        let yearStart  = calendar.date(from: calendar.dateComponents([.year], from: now))!
+        let weekStart  = calendar.date(from: calendar.dateComponents([.yearForWeekOfYear, .weekOfYear], from: now)) ?? now
+        let monthStart = calendar.date(from: calendar.dateComponents([.year, .month], from: now)) ?? now
+        let yearStart  = calendar.date(from: calendar.dateComponents([.year], from: now)) ?? now
 
         // 주간: 월~일 7일
         let weekDays = ["월", "화", "수", "목", "금", "토", "일"]
         let weeklyPoints: [ReadingTimeChartPoint] = (0..<7).map { offset in
-            let dayStart = calendar.date(byAdding: .day, value: offset, to: weekStart)!
-            let dayEnd   = calendar.date(byAdding: .day, value: 1, to: dayStart)!
+            let dayStart = calendar.date(byAdding: .day, value: offset, to: weekStart) ?? weekStart
+            let dayEnd   = calendar.date(byAdding: .day, value: 1, to: dayStart) ?? dayStart
             let secs = sessions.filter { $0.date >= dayStart && $0.date < dayEnd }
                 .reduce(0) { $0 + $1.durationSeconds }
             return ReadingTimeChartPoint(label: weekDays[offset], minutes: Double(secs) / 60)
@@ -140,8 +140,8 @@ final class StatisticsViewModel {
         let monthlyPoints: [ReadingTimeChartPoint] = (0..<weeksInMonth).map { weekIndex in
             let startDay = weekIndex * 7
             let endDay   = min(startDay + 7, daysInMonth)
-            let blockStart = calendar.date(byAdding: .day, value: startDay, to: monthStart)!
-            let blockEnd   = calendar.date(byAdding: .day, value: endDay,   to: monthStart)!
+            let blockStart = calendar.date(byAdding: .day, value: startDay, to: monthStart) ?? monthStart
+            let blockEnd   = calendar.date(byAdding: .day, value: endDay,   to: monthStart) ?? monthStart
             let secs = sessions.filter { $0.date >= blockStart && $0.date < blockEnd }
                 .reduce(0) { $0 + $1.durationSeconds }
             return ReadingTimeChartPoint(label: "\(weekIndex + 1)주", minutes: Double(secs) / 60)
@@ -151,20 +151,20 @@ final class StatisticsViewModel {
         let yearlyPoints: [ReadingTimeChartPoint] = (0..<12).map { monthOffset in
             var comps = calendar.dateComponents([.year], from: yearStart)
             comps.month = monthOffset + 1
-            let mStart = calendar.date(from: comps)!
-            let mEnd   = calendar.date(byAdding: .month, value: 1, to: mStart)!
+            let mStart = calendar.date(from: comps) ?? yearStart
+            let mEnd   = calendar.date(byAdding: .month, value: 1, to: mStart) ?? mStart
             let secs = sessions.filter { $0.date >= mStart && $0.date < mEnd }
                 .reduce(0) { $0 + $1.durationSeconds }
             return ReadingTimeChartPoint(label: "\(monthOffset + 1)월", minutes: Double(secs) / 60)
         }
 
         // 통계 값
-        let weekEnd  = calendar.date(byAdding: .day,   value: 7, to: weekStart)!
-        let monthEnd = calendar.date(byAdding: .month, value: 1, to: monthStart)!
+        let weekEnd  = calendar.date(byAdding: .day,   value: 7, to: weekStart) ?? weekStart
+        let monthEnd = calendar.date(byAdding: .month, value: 1, to: monthStart) ?? monthStart
         let weekSecs  = sessions.filter { $0.date >= weekStart  && $0.date < weekEnd  }.reduce(0) { $0 + $1.durationSeconds }
         let monthSecs = sessions.filter { $0.date >= monthStart && $0.date < monthEnd }.reduce(0) { $0 + $1.durationSeconds }
 
-        let thirtyAgo    = calendar.date(byAdding: .day, value: -30, to: now)!
+        let thirtyAgo    = calendar.date(byAdding: .day, value: -30, to: now) ?? now
         let last30Secs   = sessions.filter { $0.date >= thirtyAgo }.reduce(0) { $0 + $1.durationSeconds }
         let dailyAvgSecs = Double(last30Secs) / 30.0
 

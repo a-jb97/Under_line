@@ -55,7 +55,7 @@ final class DirectCollectViewModel {
         ) { sentence, page, emotion -> Bool in
             let sentenceValid = !sentence.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
             let pageNum = Int(page.trimmingCharacters(in: .whitespacesAndNewlines))
-            return sentenceValid && pageNum != nil && pageNum! > 0 && emotion != nil
+            return sentenceValid && pageNum.map { $0 > 0 } ?? false && emotion != nil
         }
         .asDriver(onErrorJustReturn: false)
 

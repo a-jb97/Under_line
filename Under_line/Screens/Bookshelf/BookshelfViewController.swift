@@ -10,6 +10,7 @@ import SnapKit
 import RxSwift
 import RxCocoa
 import Kingfisher
+import Toast
 
 final class BookshelfViewController: UIViewController {
 
@@ -801,6 +802,15 @@ final class BookshelfViewController: UIViewController {
                 } else {
                     showNewBook()
                 }
+            })
+            .disposed(by: disposeBag)
+
+        output.errorMessage
+            .emit(onNext: { [weak self] message in
+                var style = ToastStyle()
+                style.backgroundColor = UIColor.appPrimary.withAlphaComponent(0.9)
+                style.messageFont = UIFont(name: "GowunBatang-Regular", size: 14) ?? .systemFont(ofSize: 14)
+                self?.view.makeToast(message, duration: 1.2, position: .center, style: style)
             })
             .disposed(by: disposeBag)
 

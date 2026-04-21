@@ -54,7 +54,10 @@ final class BookDetailViewModel {
             .flatMapLatest { [weak self] _ -> Observable<Book> in
                 guard let self else { return .empty() }
                 return rxAsync { try await self.bookRepository.fetchBookDetail(isbn13: self.book.isbn13) }
-                    .catch { _ in .empty() }
+                    .catch { error in
+                        errorMessage.accept(error.localizedDescription)
+                        return .empty()
+                    }
             }
             .map { $0.itemPage }
             .bind(to: itemPage)
@@ -65,7 +68,10 @@ final class BookDetailViewModel {
             .flatMapLatest { [weak self] _ -> Observable<[Sentence]> in
                 guard let self else { return .just([]) }
                 return rxAsync { try await self.sentenceRepository.fetchSentences(for: self.book.isbn13) }
-                    .catch { _ in .just([]) }
+                    .catch { error in
+                        errorMessage.accept(error.localizedDescription)
+                        return .just([])
+                    }
             }
             .bind(to: sentences)
             .disposed(by: disposeBag)

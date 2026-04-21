@@ -20,7 +20,11 @@ final class AppContainer {
     }
 
     private init() {
-        modelContainer = try! ModelContainer(for: BookRecord.self, SentenceRecord.self, ReadingSessionRecord.self)
+        do {
+            modelContainer = try ModelContainer(for: BookRecord.self, SentenceRecord.self, ReadingSessionRecord.self)
+        } catch {
+            fatalError("SwiftData ModelContainer 초기화 실패 — 스키마 변경 또는 디스크 문제를 확인하세요. 오류: \(error)")
+        }
         bookRepository = BookRepository(
             apiService:   AladinAPIService(apiKey: AladinAPIKey.ttbKey),
             modelContext: modelContainer.mainContext

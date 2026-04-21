@@ -162,6 +162,8 @@ final class BookRepository: BookRepositoryProtocol {
             )
             let records = try modelContext.fetch(descriptor)
             savedBooksRelay.accept(records.map { $0.toDomain() })
-        } catch { }
+        } catch {
+            print("[BookRepository] refreshRelay 실패:", error)
+        }
     }
 }
