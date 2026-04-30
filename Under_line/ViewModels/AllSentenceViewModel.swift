@@ -46,26 +46,29 @@ final class AllSentenceViewModel {
 
     func transform(input: Input) -> Output {
         let errorMessage = PublishRelay<String>()
+        let reload = PublishRelay<Void>()
 
-        // 삭제 처리
+        // 삭제 처리 → 성공 시 목록 reload
         input.deleteSentence
-            .flatMapLatest { [weak self] sentence -> Completable in
+            .flatMapLatest { [weak self] sentence -> Observable<Void> in
                 guard let self else { return .empty() }
-                return self.sentenceRepository.deleteSentence(sentence)
+                return rxAsync { try await self.sentenceRepository.deleteSentence(sentence) }
+                    .catch { error in
+                        errorMessage.accept(error.localizedDescription)
+                        return .empty()
+                    }
             }
-            .subscribe(onError: { error in
-                errorMessage.accept(error.localizedDescription)
-            })
+            .map { }
+            .bind(to: reload)
             .disposed(by: disposeBag)
 
-        // viewWillAppear마다 sentences + books를 zip해 display item 배열 생성
-        let rawItems: Observable<[AllSentenceDisplayItem]> = input.viewWillAppear
+        // viewWillAppear 또는 삭제 완료 시 sentences + books를 zip해 display item 배열 생성
+        let trigger = Observable.merge(input.viewWillAppear, reload.asObservable())
+        let rawItems: Observable<[AllSentenceDisplayItem]> = trigger
             .flatMapLatest { [weak self] _ -> Observable<[AllSentenceDisplayItem]> in
                 guard let self else { return .just([]) }
 
-                let sentences = self.sentenceRepository
-                    .fetchAllSentences()
-                    .asObservable()
+                let sentences = rxAsync { try await self.sentenceRepository.fetchAllSentences() }
 
                 let books = self.bookRepository
                     .fetchSavedBooks()

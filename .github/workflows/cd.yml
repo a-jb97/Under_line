@@ -1,0 +1,51 @@
+name: CD — TestFlight
+
+on:
+  push:
+    branches:
+      - release
+
+concurrency:
+  group: testflight-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-and-upload:
+    name: Build & Upload to TestFlight
+    runs-on: macos-15
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Select Xcode 16.3
+        run: sudo xcode-select -s /Applications/Xcode_16.3.app/Contents/Developer
+
+      - name: Set up Ruby
+        uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: "3.3"
+          bundler-cache: true
+
+      - name: Cache SPM packages
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/Library/Developer/Xcode/DerivedData/**/SourcePackages/checkouts
+            ~/Library/Developer/Xcode/DerivedData/**/SourcePackages/artifacts
+          key: spm-${{ hashFiles('Under_line.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved') }}
+          restore-keys: spm-
+
+      - name: Upload to TestFlight
+        env:
+          ASC_API_KEY_ID:    ${{ secrets.ASC_API_KEY_ID }}
+          ASC_API_ISSUER_ID: ${{ secrets.ASC_API_ISSUER_ID }}
+          ASC_API_KEY_P8:    ${{ secrets.ASC_API_KEY_P8 }}
+          MATCH_GIT_URL:     ${{ secrets.MATCH_GIT_URL }}
+          MATCH_GIT_ACTOR:   ${{ secrets.MATCH_GIT_ACTOR }}
+          MATCH_GIT_TOKEN:   ${{ secrets.MATCH_GIT_TOKEN }}
+          MATCH_PASSWORD:    ${{ secrets.MATCH_PASSWORD }}
+          CI:                true
+        run: bundle exec fastlane beta

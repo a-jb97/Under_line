@@ -7,7 +7,6 @@
 
 import Foundation
 import SwiftData
-import RxSwift
 
 // MARK: - Codable DTOs
 
@@ -63,141 +62,123 @@ final class BackupService {
 
     // MARK: Export
 
-    func exportToJSON() -> Single<URL> {
-        Single.create { [weak self] single in
-            guard let self else { single(.failure(BackupError.unknown)); return Disposables.create() }
-            do {
-                let bookDescriptor = FetchDescriptor<BookRecord>(
-                    sortBy: [SortDescriptor(\BookRecord.sortOrder, order: .forward)]
-                )
-                let books = try self.modelContext.fetch(bookDescriptor).map {
-                    BookBackup(
-                        title:           $0.title,
-                        author:          $0.author,
-                        isbn13:          $0.isbn13,
-                        coverURLString:  $0.coverURLString,
-                        publisher:       $0.publisher,
-                        publishDate:     $0.publishDate,
-                        category:        $0.category,
-                        bookDescription: $0.bookDescription,
-                        itemPage:        $0.itemPage,
-                        currentPage:     $0.currentPage,
-                        savedAt:         $0.savedAt,
-                        sortOrder:       $0.sortOrder
-                    )
-                }
-                let sentences = try self.modelContext.fetch(FetchDescriptor<SentenceRecord>()).map {
-                    SentenceBackup(
-                        id:               $0.id,
-                        bookISBN:         $0.bookISBN,
-                        sentence:         $0.sentence,
-                        page:             $0.page,
-                        emotionRawValue:  $0.emotionRawValue,
-                        memo:             $0.memo,
-                        date:             $0.date
-                    )
-                }
-                let sessions = try self.modelContext.fetch(FetchDescriptor<ReadingSessionRecord>()).map {
-                    SessionBackup(
-                        id:              $0.id,
-                        bookISBN:        $0.bookISBN,
-                        date:            $0.date,
-                        durationSeconds: $0.durationSeconds
-                    )
-                }
-
-                let payload = BackupPayload(
-                    version:    1,
-                    exportedAt: Date(),
-                    books:      books,
-                    sentences:  sentences,
-                    sessions:   sessions
-                )
-
-                let encoder = JSONEncoder()
-                encoder.dateEncodingStrategy = .iso8601
-                let data = try encoder.encode(payload)
-
-                let formatter = DateFormatter()
-                formatter.dateFormat = "yyyyMMdd_HHmmss"
-                let fileName = "underline_backup_\(formatter.string(from: Date())).json"
-                let tempURL = FileManager.default.temporaryDirectory.appendingPathComponent(fileName)
-                try data.write(to: tempURL)
-
-                single(.success(tempURL))
-            } catch {
-                single(.failure(error))
-            }
-            return Disposables.create()
+    func exportToJSON() async throws -> URL {
+        let bookDescriptor = FetchDescriptor<BookRecord>(
+            sortBy: [SortDescriptor(\BookRecord.sortOrder, order: .forward)]
+        )
+        let books = try modelContext.fetch(bookDescriptor).map {
+            BookBackup(
+                title:           $0.title,
+                author:          $0.author,
+                isbn13:          $0.isbn13,
+                coverURLString:  $0.coverURLString,
+                publisher:       $0.publisher,
+                publishDate:     $0.publishDate,
+                category:        $0.category,
+                bookDescription: $0.bookDescription,
+                itemPage:        $0.itemPage,
+                currentPage:     $0.currentPage,
+                savedAt:         $0.savedAt,
+                sortOrder:       $0.sortOrder
+            )
         }
+        let sentences = try modelContext.fetch(FetchDescriptor<SentenceRecord>()).map {
+            SentenceBackup(
+                id:              $0.id,
+                bookISBN:        $0.bookISBN,
+                sentence:        $0.sentence,
+                page:            $0.page,
+                emotionRawValue: $0.emotionRawValue,
+                memo:            $0.memo,
+                date:            $0.date
+            )
+        }
+        let sessions = try modelContext.fetch(FetchDescriptor<ReadingSessionRecord>()).map {
+            SessionBackup(
+                id:              $0.id,
+                bookISBN:        $0.bookISBN,
+                date:            $0.date,
+                durationSeconds: $0.durationSeconds
+            )
+        }
+
+        let payload = BackupPayload(
+            version:    1,
+            exportedAt: Date(),
+            books:      books,
+            sentences:  sentences,
+            sessions:   sessions
+        )
+
+        let encoder = JSONEncoder()
+        encoder.dateEncodingStrategy = .iso8601
+        let data = try encoder.encode(payload)
+
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyyMMdd_HHmmss"
+        let fileName = "underline_backup_\(formatter.string(from: Date())).json"
+        let tempURL = FileManager.default.temporaryDirectory.appendingPathComponent(fileName)
+        try data.write(to: tempURL)
+
+        return tempURL
     }
 
     // MARK: Restore
 
-    func restore(from url: URL) -> Completable {
-        Completable.create { [weak self] completable in
-            guard let self else { completable(.completed); return Disposables.create() }
+    func restore(from url: URL) async throws {
+        let accessed = url.startAccessingSecurityScopedResource()
+        defer { if accessed { url.stopAccessingSecurityScopedResource() } }
 
-            let accessed = url.startAccessingSecurityScopedResource()
-            defer { if accessed { url.stopAccessingSecurityScopedResource() } }
+        let data = try Data(contentsOf: url)
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        let payload = try decoder.decode(BackupPayload.self, from: data)
 
-            do {
-                let data = try Data(contentsOf: url)
-                let decoder = JSONDecoder()
-                decoder.dateDecodingStrategy = .iso8601
-                let payload = try decoder.decode(BackupPayload.self, from: data)
+        try modelContext.delete(model: BookRecord.self)
+        try modelContext.delete(model: SentenceRecord.self)
+        try modelContext.delete(model: ReadingSessionRecord.self)
 
-                try self.modelContext.delete(model: BookRecord.self)
-                try self.modelContext.delete(model: SentenceRecord.self)
-                try self.modelContext.delete(model: ReadingSessionRecord.self)
-
-                for (index, b) in payload.books.enumerated() {
-                    let book = Book(
-                        title:       b.title,
-                        author:      b.author,
-                        isbn13:      b.isbn13,
-                        coverURL:    b.coverURLString.flatMap { URL(string: $0) },
-                        publisher:   b.publisher,
-                        publishDate: b.publishDate,
-                        category:    b.category,
-                        bestRank:    nil,
-                        description: b.bookDescription,
-                        itemPage:    b.itemPage,
-                        currentPage: b.currentPage
-                    )
-                    let record = BookRecord(from: book)
-                    record.savedAt   = b.savedAt
-                    record.sortOrder = b.sortOrder ?? index
-                    self.modelContext.insert(record)
-                }
-
-                for s in payload.sentences {
-                    let sentence = Sentence(
-                        id:       s.id,
-                        bookISBN: s.bookISBN,
-                        sentence: s.sentence,
-                        page:     s.page,
-                        emotion:  Emotion(rawValue: s.emotionRawValue) ?? .calm,
-                        memo:     s.memo,
-                        date:     s.date
-                    )
-                    self.modelContext.insert(SentenceRecord(from: sentence))
-                }
-
-                for s in payload.sessions {
-                    let record = ReadingSessionRecord(bookISBN: s.bookISBN, durationSeconds: s.durationSeconds)
-                    record.id   = s.id
-                    record.date = s.date
-                    self.modelContext.insert(record)
-                }
-
-                try self.modelContext.save()
-                completable(.completed)
-            } catch {
-                completable(.error(error))
-            }
-            return Disposables.create()
+        for (index, b) in payload.books.enumerated() {
+            let book = Book(
+                title:       b.title,
+                author:      b.author,
+                isbn13:      b.isbn13,
+                coverURL:    b.coverURLString.flatMap { URL(string: $0) },
+                publisher:   b.publisher,
+                publishDate: b.publishDate,
+                category:    b.category,
+                bestRank:    nil,
+                description: b.bookDescription,
+                itemPage:    b.itemPage,
+                currentPage: b.currentPage
+            )
+            let record = BookRecord(from: book)
+            record.savedAt   = b.savedAt
+            record.sortOrder = b.sortOrder ?? index
+            modelContext.insert(record)
         }
+
+        for s in payload.sentences {
+            let sentence = Sentence(
+                id:       s.id,
+                bookISBN: s.bookISBN,
+                sentence: s.sentence,
+                page:     s.page,
+                emotion:  Emotion(rawValue: s.emotionRawValue) ?? .calm,
+                memo:     s.memo,
+                date:     s.date
+            )
+            modelContext.insert(SentenceRecord(from: sentence))
+        }
+
+        for s in payload.sessions {
+            let record = ReadingSessionRecord(bookISBN: s.bookISBN, durationSeconds: s.durationSeconds)
+            record.id   = s.id
+            record.date = s.date
+            modelContext.insert(record)
+        }
+
+        try modelContext.save()
     }
 }
 

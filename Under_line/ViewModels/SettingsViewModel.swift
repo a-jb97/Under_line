@@ -34,8 +34,7 @@ final class SettingsViewModel {
         let exportResult = input.backupTap
             .flatMapLatest { [weak self] _ -> Observable<Result<URL, Error>> in
                 guard let self else { return .empty() }
-                return self.backupService.exportToJSON()
-                    .asObservable()
+                return rxAsync { try await self.backupService.exportToJSON() }
                     .map { Result<URL, Error>.success($0) }
                     .catch { Observable.just(.failure($0)) }
             }
@@ -58,8 +57,8 @@ final class SettingsViewModel {
         let restoreResult = input.restoreFilePicked
             .flatMapLatest { [weak self] url -> Observable<Result<Void, Error>> in
                 guard let self else { return .empty() }
-                return self.backupService.restore(from: url)
-                    .andThen(Observable.just(Result<Void, Error>.success(())))
+                return rxAsync { try await self.backupService.restore(from: url) }
+                    .map { Result<Void, Error>.success(()) }
                     .catch { Observable.just(.failure($0)) }
             }
             .share()

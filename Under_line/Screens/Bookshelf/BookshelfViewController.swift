@@ -10,6 +10,7 @@ import SnapKit
 import RxSwift
 import RxCocoa
 import Kingfisher
+import Toast
 
 final class BookshelfViewController: UIViewController {
 
@@ -804,6 +805,15 @@ final class BookshelfViewController: UIViewController {
             })
             .disposed(by: disposeBag)
 
+        output.errorMessage
+            .emit(onNext: { [weak self] message in
+                var style = ToastStyle()
+                style.backgroundColor = UIColor.appPrimary.withAlphaComponent(0.9)
+                style.messageFont = UIFont(name: "GowunBatang-Regular", size: 14) ?? .systemFont(ofSize: 14)
+                self?.view.makeToast(message, duration: 1.2, position: .center, style: style)
+            })
+            .disposed(by: disposeBag)
+
         // 스크롤 → 페이지 컨트롤 동기화
         bookshelfScrollView.rx.contentOffset
             .map { [weak self] offset -> Int in
@@ -887,18 +897,12 @@ extension BookshelfViewController {
         guard !UserDefaults.standard.bool(forKey: "tutorial.bookshelf") else { return }
 
         // 베스트셀러 표지로 책장 미리채우기
-        AppContainer.shared.bookRepository
-            .fetchBestsellers()
-            .observe(on: MainScheduler.instance)
-            .subscribe(
-                onSuccess: { [weak self] books in
-                    guard let self else { return }
-                    self.tutorialBooks = books
-                    if self.layoutReady { self.rebuildShelfPages() }
-                },
-                onFailure: { _ in }
-            )
-            .disposed(by: disposeBag)
+        Task { [weak self] in
+            guard let self else { return }
+            guard let books = try? await AppContainer.shared.bookRepository.fetchBestsellers() else { return }
+            self.tutorialBooks = books
+            if self.layoutReady { self.rebuildShelfPages() }
+        }
 
         let steps: [TutorialStep] = [
             TutorialStep(

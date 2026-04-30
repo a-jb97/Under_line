@@ -65,11 +65,8 @@ final class ReadingRecordViewModel {
         input.timerStopped
             .flatMapLatest { [weak self] elapsed -> Observable<Void> in
                 guard let self else { return .empty() }
-                return self.readingSessionRepository
-                    .saveSession(bookISBN: self.book.isbn13, durationSeconds: elapsed)
-                    .andThen(.just(()))
+                return rxAsync { try await self.readingSessionRepository.saveSession(bookISBN: self.book.isbn13, durationSeconds: elapsed) }
                     .catch { _ in .empty() }
-                    .asObservable()
             }
             .map { }
             .bind(to: reloadTrigger)
@@ -79,11 +76,8 @@ final class ReadingRecordViewModel {
         input.pageRecorded
             .flatMapLatest { [weak self] page -> Observable<Void> in
                 guard let self else { return .empty() }
-                return self.bookRepository
-                    .updateCurrentPage(isbn13: self.book.isbn13, page: page)
-                    .andThen(.just(()))
+                return rxAsync { try await self.bookRepository.updateCurrentPage(isbn13: self.book.isbn13, page: page) }
                     .catch { _ in .empty() }
-                    .asObservable()
             }
             .subscribe()
             .disposed(by: disposeBag)
@@ -100,11 +94,9 @@ final class ReadingRecordViewModel {
             .combineLatest(fetchTrigger, period) { _, period in period }
             .flatMapLatest { [weak self] period -> Observable<[ChartPoint]> in
                 guard let self else { return .just([]) }
-                return self.readingSessionRepository
-                    .fetchSessions(for: self.book.isbn13)
+                return rxAsync { try await self.readingSessionRepository.fetchSessions(for: self.book.isbn13) }
                     .map { ReadingRecordViewModel.aggregate(sessions: $0, period: period) }
                     .catch { _ in .just([]) }
-                    .asObservable()
             }
 
         return Output(chartPoints: chartPoints.asDriver(onErrorJustReturn: []))
@@ -119,9 +111,9 @@ final class ReadingRecordViewModel {
         switch period {
         case .daily:
             return (0..<7).reversed().map { daysAgo -> ChartPoint in
-                let date     = calendar.date(byAdding: .day, value: -daysAgo, to: now)!
+                let date     = calendar.date(byAdding: .day, value: -daysAgo, to: now) ?? now
                 let dayStart = calendar.startOfDay(for: date)
-                let dayEnd   = calendar.date(byAdding: .day, value: 1, to: dayStart)!
+                let dayEnd   = calendar.date(byAdding: .day, value: 1, to: dayStart) ?? dayStart
                 let total    = sessions
                     .filter { $0.date >= dayStart && $0.date < dayEnd }
                     .reduce(0) { $0 + $1.durationSeconds }
@@ -132,10 +124,10 @@ final class ReadingRecordViewModel {
 
         case .weekly:
             return (0..<7).reversed().map { weeksAgo -> ChartPoint in
-                let ref       = calendar.date(byAdding: .weekOfYear, value: -weeksAgo, to: now)!
-                let interval  = calendar.dateInterval(of: .weekOfYear, for: ref)!
-                let weekStart = interval.start
-                let weekEnd   = calendar.date(byAdding: .weekOfYear, value: 1, to: weekStart)!
+                let ref       = calendar.date(byAdding: .weekOfYear, value: -weeksAgo, to: now) ?? now
+                let interval  = calendar.dateInterval(of: .weekOfYear, for: ref)
+                let weekStart = interval?.start ?? now
+                let weekEnd   = calendar.date(byAdding: .weekOfYear, value: 1, to: weekStart) ?? weekStart
                 let total     = sessions
                     .filter { $0.date >= weekStart && $0.date < weekEnd }
                     .reduce(0) { $0 + $1.durationSeconds }
@@ -147,14 +139,14 @@ final class ReadingRecordViewModel {
 
         case .monthly:
             return (0..<7).reversed().map { monthsAgo -> ChartPoint in
-                let ref        = calendar.date(byAdding: .month, value: -monthsAgo, to: now)!
+                let ref        = calendar.date(byAdding: .month, value: -monthsAgo, to: now) ?? now
                 let comps      = calendar.dateComponents([.year, .month], from: ref)
-                let monthStart = calendar.date(from: comps)!
-                let monthEnd   = calendar.date(byAdding: .month, value: 1, to: monthStart)!
+                let monthStart = calendar.date(from: comps) ?? now
+                let monthEnd   = calendar.date(byAdding: .month, value: 1, to: monthStart) ?? monthStart
                 let total      = sessions
                     .filter { $0.date >= monthStart && $0.date < monthEnd }
                     .reduce(0) { $0 + $1.durationSeconds }
-                return ChartPoint(label: "\(comps.month!)월", seconds: total)
+                return ChartPoint(label: "\(comps.month ?? 0)월", seconds: total)
             }
         }
     }

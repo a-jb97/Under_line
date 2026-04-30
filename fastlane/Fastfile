@@ -1,0 +1,64 @@
+default_platform(:ios)
+
+platform :ios do
+
+  desc "Build and upload a new beta to TestFlight"
+  lane :beta do
+
+    setup_ci if ENV["CI"]
+
+    api_key = app_store_connect_api_key(
+      key_id:                ENV["ASC_API_KEY_ID"],
+      issuer_id:             ENV["ASC_API_ISSUER_ID"],
+      key_content:           ENV["ASC_API_KEY_P8"],
+      in_house:              false,
+      is_key_content_base64: false
+    )
+
+    match(
+      type:            "appstore",
+      readonly:        true,
+      app_identifier:  [
+        "com.jade.UnderLine",
+        "com.jade.UnderLine.UnderLineWidget"
+      ],
+      git_url:         ENV["MATCH_GIT_URL"],
+      git_basic_authorization: Base64.strict_encode64(
+        "#{ENV['MATCH_GIT_ACTOR']}:#{ENV['MATCH_GIT_TOKEN']}"
+      ),
+      api_key:         api_key
+    )
+
+    current_build = latest_testflight_build_number(
+      api_key:        api_key,
+      app_identifier: "com.jade.UnderLine"
+    )
+
+    gym(
+      scheme:           "Under_line",
+      project:          "Under_line.xcodeproj",
+      configuration:    "Release",
+      clean:            true,
+      output_directory: "./build",
+      output_name:      "Under_line.ipa",
+      export_method:    "app-store",
+      build_number:     (current_build + 1).to_s,
+      xcargs: [
+        "CODE_SIGN_STYLE=Manual",
+        "CODE_SIGN_IDENTITY='Apple Distribution'",
+        "PROVISIONING_PROFILE_SPECIFIER[sdk=iphoneos*]='match AppStore com.jade.UnderLine'",
+        "PROVISIONING_PROFILE_SPECIFIER[sdk=iphoneos*]:UnderLineWidgetExtension='match AppStore com.jade.UnderLine.UnderLineWidget'",
+      ].join(" ")
+    )
+
+    upload_to_testflight(
+      api_key:                           api_key,
+      skip_waiting_for_build_processing: true,
+      distribute_external:               false,
+      notify_external_testers:           false,
+      changelog:                         "Automated build from release branch"
+    )
+
+  end
+
+end

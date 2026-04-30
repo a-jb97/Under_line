@@ -68,16 +68,15 @@ final class BookSearchViewModel {
             .flatMapLatest { [weak self] _ -> Observable<[Book]> in
                 guard let self else { return .empty() }
                 isLoading.accept(true)
-                return self.repository.fetchBestsellers()
+                return rxAsync { try await self.repository.fetchBestsellers() }
                     .do(
-                        onSuccess: { _ in isLoading.accept(false) },
-                        onError:   { _ in isLoading.accept(false) }
+                        onNext:  { _ in isLoading.accept(false) },
+                        onError: { _ in isLoading.accept(false) }
                     )
                     .catch { error in
                         errorMessage.accept(error.localizedDescription)
                         return .just([])
                     }
-                    .asObservable()
             }
             .subscribe(onNext: { fetched in
                 books.accept(fetched)
@@ -98,16 +97,15 @@ final class BookSearchViewModel {
             .flatMapLatest { [weak self] query -> Observable<(books: [Book], totalResults: Int)> in
                 guard let self else { return .empty() }
                 isLoading.accept(true)
-                return self.repository.searchBooks(query: query, page: 1)
+                return rxAsync { try await self.repository.searchBooks(query: query, page: 1) }
                     .do(
-                        onSuccess: { _ in isLoading.accept(false) },
-                        onError:   { _ in isLoading.accept(false) }
+                        onNext:  { _ in isLoading.accept(false) },
+                        onError: { _ in isLoading.accept(false) }
                     )
                     .catch { error in
                         errorMessage.accept(error.localizedDescription)
                         return .just((books: [], totalResults: 0))
                     }
-                    .asObservable()
             }
             .subscribe(onNext: { result in
                 // totalResults 기반으로 실제 페이지 수 계산 (API 한계 200개 = 4페이지 상한)
@@ -147,14 +145,13 @@ final class BookSearchViewModel {
             })
             .flatMap { [weak self] (query, nextPage) -> Observable<(String, Int, [Book])> in
                 guard let self else { return .empty() }
-                return self.repository.searchBooks(query: query, page: nextPage)
+                return rxAsync { try await self.repository.searchBooks(query: query, page: nextPage) }
                     .do(onError: { _ in isLoadingMore.accept(false) })
                     .catch { error in
                         errorMessage.accept(error.localizedDescription)
                         return .just((books: [], totalResults: 0))
                     }
                     .map { (query, nextPage, $0.books) }
-                    .asObservable()
             }
             .observe(on: MainScheduler.instance)
             .subscribe(onNext: { query, nextPage, fetched in
@@ -184,13 +181,11 @@ final class BookSearchViewModel {
         input.registerBook
             .flatMapLatest { [weak self] book -> Observable<Void> in
                 guard let self else { return .empty() }
-                return self.repository.saveBook(book)
-                    .andThen(.just(()))
+                return rxAsync { try await self.repository.saveBook(book) }
                     .catch { error in
                         errorMessage.accept(error.localizedDescription)
                         return .empty()
                     }
-                    .asObservable()
             }
             .bind(to: registerCompleted)
             .disposed(by: disposeBag)

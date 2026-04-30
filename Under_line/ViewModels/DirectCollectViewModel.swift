@@ -55,7 +55,7 @@ final class DirectCollectViewModel {
         ) { sentence, page, emotion -> Bool in
             let sentenceValid = !sentence.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
             let pageNum = Int(page.trimmingCharacters(in: .whitespacesAndNewlines))
-            return sentenceValid && pageNum != nil && pageNum! > 0 && emotion != nil
+            return sentenceValid && pageNum.map { $0 > 0 } ?? false && emotion != nil
         }
         .asDriver(onErrorJustReturn: false)
 
@@ -76,7 +76,6 @@ final class DirectCollectViewModel {
                 let memoText = memo.trimmingCharacters(in: .whitespacesAndNewlines)
                 let trimmedSentence = sentence.trimmingCharacters(in: .whitespacesAndNewlines)
 
-                let operation: Completable
                 if let existing = self.editingSentence {
                     let updated = Sentence(
                         id:       existing.id,
@@ -87,7 +86,11 @@ final class DirectCollectViewModel {
                         memo:     memoText.isEmpty ? nil : memoText,
                         date:     existing.date
                     )
-                    operation = self.repository.updateSentence(updated)
+                    return rxAsync { try await self.repository.updateSentence(updated) }
+                        .catch { error in
+                            errorMessage.accept(error.localizedDescription)
+                            return .empty()
+                        }
                 } else {
                     let newSentence = Sentence(
                         id:       UUID(),
@@ -98,16 +101,12 @@ final class DirectCollectViewModel {
                         memo:     memoText.isEmpty ? nil : memoText,
                         date:     Date()
                     )
-                    operation = self.repository.saveSentence(newSentence)
+                    return rxAsync { try await self.repository.saveSentence(newSentence) }
+                        .catch { error in
+                            errorMessage.accept(error.localizedDescription)
+                            return .empty()
+                        }
                 }
-
-                return operation
-                    .andThen(.just(()))
-                    .catch { error in
-                        errorMessage.accept(error.localizedDescription)
-                        return .empty()
-                    }
-                    .asObservable()
             }
             .bind(to: saveCompleted)
             .disposed(by: disposeBag)
