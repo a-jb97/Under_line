@@ -7,14 +7,13 @@
 
 import Foundation
 import Alamofire
-import RxSwift
 
 // MARK: - Protocol
 
 protocol AladinAPIServiceProtocol {
-    func fetchBestsellers() -> Single<[Book]>
-    func searchBooks(query: String, page: Int) -> Single<(books: [Book], totalResults: Int)>
-    func fetchBookDetail(isbn13: String) -> Single<Book>
+    func fetchBestsellers() async throws -> [Book]
+    func searchBooks(query: String, page: Int) async throws -> (books: [Book], totalResults: Int)
+    func fetchBookDetail(isbn13: String) async throws -> Book
 }
 
 // MARK: - Implementation
@@ -28,7 +27,7 @@ final class AladinAPIService: AladinAPIServiceProtocol {
         self.apiKey = apiKey
     }
 
-    func fetchBestsellers() -> Single<[Book]> {
+    func fetchBestsellers() async throws -> [Book] {
         let params: Parameters = [
             "ttbkey":       apiKey,
             "QueryType":    "Bestseller",
@@ -39,27 +38,26 @@ final class AladinAPIService: AladinAPIServiceProtocol {
             "output":       "js",
             "Version":      "20131101"
         ]
-        return request(endpoint: "ItemList.aspx", parameters: params)
-            .map { $0.item.map { $0.toDomain() } }
+        let response = try await request(endpoint: "ItemList.aspx", parameters: params)
+        return response.item.map { $0.toDomain() }
     }
 
-    func searchBooks(query: String, page: Int) -> Single<(books: [Book], totalResults: Int)> {
-        let maxResults = 50
+    func searchBooks(query: String, page: Int) async throws -> (books: [Book], totalResults: Int) {
         let params: Parameters = [
             "ttbkey":       apiKey,
             "Query":        query,
-            "MaxResults":   maxResults,
+            "MaxResults":   50,
             "start":        page,
             "SearchTarget": "Book",
             "Cover":        "Big",
             "output":       "js",
             "Version":      "20131101"
         ]
-        return request(endpoint: "ItemSearch.aspx", parameters: params)
-            .map { (books: $0.item.map { $0.toDomain() }, totalResults: $0.totalResults) }
+        let response = try await request(endpoint: "ItemSearch.aspx", parameters: params)
+        return (books: response.item.map { $0.toDomain() }, totalResults: response.totalResults)
     }
 
-    func fetchBookDetail(isbn13: String) -> Single<Book> {
+    func fetchBookDetail(isbn13: String) async throws -> Book {
         let params: Parameters = [
             "ttbkey":     apiKey,
             "itemIdType": "ISBN13",
@@ -69,37 +67,22 @@ final class AladinAPIService: AladinAPIServiceProtocol {
             "Version":    "20131101",
             "OptResult":  "subInfo"
         ]
-        return request(endpoint: "ItemLookUp.aspx", parameters: params)
-            .map { response in
-                guard let item = response.item.first else { throw AladinAPIError.unknown }
-                return item.toDomain()
-            }
+        let response = try await request(endpoint: "ItemLookUp.aspx", parameters: params)
+        guard let item = response.item.first else { throw AladinAPIError.unknown }
+        return item.toDomain()
     }
 
     // MARK: - Private
 
-    private func request(endpoint: String, parameters: Parameters) -> Single<AladinListResponse> {
-        Single.create { [weak self] observer in
-            guard let self else {
-                observer(.failure(AladinAPIError.unknown))
-                return Disposables.create()
-            }
-            let task = AF.request(
-                self.baseURL + endpoint,
-                parameters: parameters,
-                encoding: URLEncoding.default
-            )
-            .validate(statusCode: 200..<300)
-            .responseDecodable(of: AladinListResponse.self) { response in
-                switch response.result {
-                case .success(let dto):
-                    observer(.success(dto))
-                case .failure(let error):
-                    observer(.failure(error))
-                }
-            }
-            return Disposables.create { task.cancel() }
-        }
+    private func request(endpoint: String, parameters: Parameters) async throws -> AladinListResponse {
+        try await AF.request(
+            baseURL + endpoint,
+            parameters: parameters,
+            encoding: URLEncoding.default
+        )
+        .validate(statusCode: 200..<300)
+        .serializingDecodable(AladinListResponse.self)
+        .value
     }
 }
 

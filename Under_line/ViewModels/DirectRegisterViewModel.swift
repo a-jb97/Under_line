@@ -109,13 +109,11 @@ final class DirectRegisterViewModel {
                     currentPage: nil
                 )
 
-                return self.repository.saveBook(book)
-                    .andThen(.just(()))
+                return rxAsync { try await self.repository.saveBook(book) }
                     .catch { error in
                         errorMessage.accept(error.localizedDescription)
                         return .empty()
                     }
-                    .asObservable()
             }
             .bind(to: registerCompleted)
             .disposed(by: disposeBag)

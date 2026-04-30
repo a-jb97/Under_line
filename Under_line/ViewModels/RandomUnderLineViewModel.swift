@@ -38,8 +38,7 @@ final class RandomUnderLineViewModel {
         input.viewDidLoad
             .flatMapLatest { [weak self] _ -> Observable<[Sentence]> in
                 guard let self else { return .just([]) }
-                return self.repository.fetchAllSentences()
-                    .asObservable()
+                return rxAsync { try await self.repository.fetchAllSentences() }
                     .catch { _ in .just([]) }
             }
             .do(onNext: { allSentences.accept($0) })

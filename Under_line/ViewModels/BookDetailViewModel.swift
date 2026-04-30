@@ -53,9 +53,11 @@ final class BookDetailViewModel {
             .take(1)
             .flatMapLatest { [weak self] _ -> Observable<Book> in
                 guard let self else { return .empty() }
-                return self.bookRepository.fetchBookDetail(isbn13: self.book.isbn13)
-                    .asObservable()
-                    .catch { _ in .empty() }
+                return rxAsync { try await self.bookRepository.fetchBookDetail(isbn13: self.book.isbn13) }
+                    .catch { error in
+                        errorMessage.accept(error.localizedDescription)
+                        return .empty()
+                    }
             }
             .map { $0.itemPage }
             .bind(to: itemPage)
@@ -65,9 +67,11 @@ final class BookDetailViewModel {
         Observable.merge(input.viewWillAppear, reload.asObservable())
             .flatMapLatest { [weak self] _ -> Observable<[Sentence]> in
                 guard let self else { return .just([]) }
-                return self.sentenceRepository.fetchSentences(for: self.book.isbn13)
-                    .catch { _ in .just([]) }
-                    .asObservable()
+                return rxAsync { try await self.sentenceRepository.fetchSentences(for: self.book.isbn13) }
+                    .catch { error in
+                        errorMessage.accept(error.localizedDescription)
+                        return .just([])
+                    }
             }
             .bind(to: sentences)
             .disposed(by: disposeBag)
@@ -76,13 +80,11 @@ final class BookDetailViewModel {
         input.deleteSentence
             .flatMapLatest { [weak self] sentence -> Observable<Void> in
                 guard let self else { return .empty() }
-                return self.sentenceRepository.deleteSentence(sentence)
-                    .andThen(.just(()))
+                return rxAsync { try await self.sentenceRepository.deleteSentence(sentence) }
                     .catch { error in
                         errorMessage.accept(error.localizedDescription)
                         return .empty()
                     }
-                    .asObservable()
             }
             .map { }
             .bind(to: reload)
@@ -92,10 +94,8 @@ final class BookDetailViewModel {
         input.updateCurrentPage
             .flatMapLatest { [weak self] page -> Observable<Void> in
                 guard let self else { return .empty() }
-                return self.bookRepository.updateCurrentPage(isbn13: self.book.isbn13, page: page)
-                    .andThen(.just(()))
+                return rxAsync { try await self.bookRepository.updateCurrentPage(isbn13: self.book.isbn13, page: page) }
                     .catch { _ in .empty() }
-                    .asObservable()
             }
             .subscribe()
             .disposed(by: disposeBag)

@@ -157,7 +157,7 @@ final class OCRMarkupViewController: UIViewController {
         setupUI()
         setupConstraints()
         bindActions()
-        runOCR()
+        Task { [weak self] in await self?.runOCR() }
     }
 
     override var preferredStatusBarStyle: UIStatusBarStyle { .darkContent }
@@ -309,30 +309,40 @@ final class OCRMarkupViewController: UIViewController {
 
     // MARK: - OCR
 
-    private func runOCR() {
+    private func runOCR() async {
         activityIndicator.startAnimating()
         drawingOverlay.isUserInteractionEnabled = false
-
-        guard let cgImage = capturedImage.cgImage else {
+        defer {
             activityIndicator.stopAnimating()
+            drawingOverlay.isUserInteractionEnabled = true
+        }
+
+        guard let cgImage = capturedImage.cgImage else { return }
+
+        let orientation = CGImagePropertyOrientation(capturedImage.imageOrientation)
+        do {
+            observations = try await Task.detached(priority: .userInitiated) {
+                let request = VNRecognizeTextRequest()
+                request.recognitionLevel = .accurate
+                request.recognitionLanguages = ["ko-KR", "en-US"]
+                request.usesLanguageCorrection = true
+                try VNImageRequestHandler(cgImage: cgImage, orientation: orientation)
+                    .perform([request])
+                return (request.results as? [VNRecognizedTextObservation]) ?? []
+            }.value
+        } catch {
+            let alert = UIAlertController(
+                title: "텍스트 인식 실패",
+                message: "텍스트를 인식하지 못했습니다. 다시 시도해 주세요.",
+                preferredStyle: .alert
+            )
+            alert.addAction(UIAlertAction(title: "확인", style: .default))
+            present(alert, animated: true)
             return
         }
 
-        let request = VNRecognizeTextRequest { [weak self] req, _ in
-            DispatchQueue.main.async {
-                self?.activityIndicator.stopAnimating()
-                self?.drawingOverlay.isUserInteractionEnabled = true
-                self?.observations = (req.results as? [VNRecognizedTextObservation]) ?? []
-            }
-        }
-        request.recognitionLevel = .accurate
-        request.recognitionLanguages = ["ko-KR", "en-US"]
-        request.usesLanguageCorrection = true
-
-        let orientation = CGImagePropertyOrientation(capturedImage.imageOrientation)
-        DispatchQueue.global(qos: .userInitiated).async {
-            try? VNImageRequestHandler(cgImage: cgImage, orientation: orientation)
-                .perform([request])
+        if observations.isEmpty {
+            hintLabel.text = "텍스트를 감지하지 못했습니다. 다른 각도로 다시 시도해 주세요."
         }
     }
 
