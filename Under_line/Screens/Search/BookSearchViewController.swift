@@ -20,6 +20,7 @@ final class BookSearchViewController: UIViewController {
     private let viewModel  = BookSearchViewModel(repository: AppContainer.shared.bookRepository)
     private let loadNextPageRelay  = PublishRelay<Void>()
     private let registerBookRelay  = PublishRelay<Book>()
+    private let listSelectionRelay = PublishRelay<BookSearchViewModel.BookListType>()
 
     // MARK: - UI Components
 
@@ -113,13 +114,18 @@ final class BookSearchViewController: UIViewController {
         return v
     }()
 
-    private let bestsellerLabel: UILabel = {
-        let l = UILabel()
-        l.text            = "베스트셀러 50"
-        l.font            = UIFont(name: "GowunBatang-Bold", size: 14) ?? .systemFont(ofSize: 14)
-        l.textColor       = UIColor.appPrimary
-        l.backgroundColor = UIColor.background
-        return l
+    private lazy var bestsellerButton = makeListTabButton(title: "베스트셀러 50", selected: true)
+    private lazy var newSpecialButton = makeListTabButton(title: "추천 신간", selected: false)
+
+    private lazy var listSegmentContainerView: UIView = {
+        let v = UIView()
+        v.backgroundColor = UIColor(hex: "#E8E0DC")
+        v.layer.cornerRadius = 15
+        v.layer.shadowColor = UIColor(hex: "#b5a49e").cgColor
+        v.layer.shadowOpacity = 1.0
+        v.layer.shadowRadius = 7
+        v.layer.shadowOffset = CGSize(width: 3, height: 3)
+        return v
     }()
 
     private let loadMoreIndicator: UIActivityIndicatorView = {
@@ -161,13 +167,25 @@ final class BookSearchViewController: UIViewController {
     private func setupTableHeader() {
         let container = UIView()
         container.backgroundColor = .clear
-        container.addSubview(bestsellerLabel)
-        bestsellerLabel.snp.makeConstraints { make in
+        listSegmentContainerView.addSubview(bestsellerButton)
+        listSegmentContainerView.addSubview(newSpecialButton)
+        container.addSubview(listSegmentContainerView)
+        listSegmentContainerView.snp.makeConstraints { make in
             make.leading.equalToSuperview()
             make.top.equalToSuperview().offset(10)
             make.bottom.equalToSuperview().inset(6)
+            make.height.equalTo(34)
         }
-        container.frame = CGRect(x: 0, y: 0, width: 0, height: 36)
+        bestsellerButton.snp.makeConstraints { make in
+            make.leading.top.bottom.equalToSuperview().inset(3)
+            make.width.equalTo(94)
+        }
+        newSpecialButton.snp.makeConstraints { make in
+            make.leading.equalTo(bestsellerButton.snp.trailing)
+            make.trailing.top.bottom.equalToSuperview().inset(3)
+            make.width.equalTo(bestsellerButton)
+        }
+        container.frame = CGRect(x: 0, y: 0, width: 0, height: 50)
         tableView.tableHeaderView = container
     }
 
@@ -230,6 +248,7 @@ final class BookSearchViewController: UIViewController {
     private func bindViewModel() {
         let input = BookSearchViewModel.Input(
             viewDidLoad:   .just(()),
+            listSelection: listSelectionRelay.asObservable(),
             searchQuery:   searchTextField.rx.text.orEmpty.asObservable(),
             searchTrigger: searchTextField.rx.controlEvent(.editingDidEndOnExit).asObservable(),
             loadNextPage:  loadNextPageRelay.asObservable(),
@@ -273,6 +292,20 @@ final class BookSearchViewController: UIViewController {
             })
             .disposed(by: disposeBag)
 
+        bestsellerButton.rx.tap
+            .subscribe(onNext: { [weak self] in
+                self?.selectListTab(.bestseller)
+                self?.listSelectionRelay.accept(.bestseller)
+            })
+            .disposed(by: disposeBag)
+
+        newSpecialButton.rx.tap
+            .subscribe(onNext: { [weak self] in
+                self?.selectListTab(.newSpecial)
+                self?.listSelectionRelay.accept(.newSpecial)
+            })
+            .disposed(by: disposeBag)
+
         // 마지막 셀이 표시될 때 다음 페이지 요청
         tableView.rx.willDisplayCell
             .filter { [weak self] _, indexPath in
@@ -288,7 +321,7 @@ final class BookSearchViewController: UIViewController {
             .take(1)
             .subscribe(onNext: { [weak self] in
                 guard let self, let header = self.tableView.tableHeaderView else { return }
-                self.bestsellerLabel.isHidden = true
+                self.listSegmentContainerView.isHidden = true
                 header.frame.size.height = 0
                 self.tableView.tableHeaderView = header
             })
@@ -320,6 +353,35 @@ final class BookSearchViewController: UIViewController {
                 self?.present(vc, animated: true)
             })
             .disposed(by: disposeBag)
+    }
+
+    // MARK: - List Segment
+
+    private func selectListTab(_ listType: BookSearchViewModel.BookListType) {
+        applyListTabStyle(to: bestsellerButton, selected: listType == .bestseller)
+        applyListTabStyle(to: newSpecialButton, selected: listType == .newSpecial)
+    }
+
+    private func makeListTabButton(title: String, selected: Bool) -> UIButton {
+        let btn = UIButton(type: .system)
+        btn.setTitle(title, for: .normal)
+        applyListTabStyle(to: btn, selected: selected)
+        return btn
+    }
+
+    private func applyListTabStyle(to button: UIButton, selected: Bool) {
+        var config = UIButton.Configuration.plain()
+        config.title = button.configuration?.title ?? button.title(for: .normal)
+        config.baseForegroundColor = selected ? UIColor.background : UIColor.appPrimary
+        config.contentInsets = NSDirectionalEdgeInsets(top: 0, leading: 8, bottom: 0, trailing: 8)
+        config.background.backgroundColor = selected ? UIColor.appPrimary : .clear
+        config.background.cornerRadius = 11
+        config.titleTextAttributesTransformer = UIConfigurationTextAttributesTransformer { incoming in
+            var outgoing = incoming
+            outgoing.font = UIFont(name: "GoyangIlsan R", size: 11) ?? .systemFont(ofSize: 11)
+            return outgoing
+        }
+        button.configuration = config
     }
 }
 
