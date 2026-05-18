@@ -12,7 +12,7 @@ concurrency:
 jobs:
   build-and-upload:
     name: Build & Upload to TestFlight
-    runs-on: macos-15
+    runs-on: macos-26
 
     steps:
       - name: Checkout repository
@@ -22,8 +22,14 @@ jobs:
 
       - name: Select Xcode
         run: |
-          if [ -d /Applications/Xcode_16.4.app ]; then
-            sudo xcode-select -s /Applications/Xcode_16.4.app/Contents/Developer
+          if [ -d /Applications/Xcode_26.5.app ]; then
+            sudo xcode-select -s /Applications/Xcode_26.5.app/Contents/Developer
+          elif [ -d /Applications/Xcode_26.5_beta.app ]; then
+            sudo xcode-select -s /Applications/Xcode_26.5_beta.app/Contents/Developer
+          elif [ -d /Applications/Xcode_26.4.app ]; then
+            sudo xcode-select -s /Applications/Xcode_26.4.app/Contents/Developer
+          elif [ -d /Applications/Xcode_26.app ]; then
+            sudo xcode-select -s /Applications/Xcode_26.app/Contents/Developer
           else
             sudo xcode-select -s /Applications/Xcode.app/Contents/Developer
           fi
