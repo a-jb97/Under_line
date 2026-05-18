@@ -11,10 +11,21 @@ import Foundation
 
 final class BookSearchViewModel {
 
+    enum BookListType: Equatable {
+        case bestseller
+        case newSpecial
+    }
+
+    private enum DisplayMode: Equatable {
+        case list(BookListType)
+        case search(String)
+    }
+
     // MARK: - Input
 
     struct Input {
         let viewDidLoad:    Observable<Void>    // 베스트셀러 fetch 트리거
+        let listSelection:  Observable<BookListType>
         let searchQuery:    Observable<String>  // searchTextField 텍스트 스트림
         let searchTrigger:  Observable<Void>    // return 키 탭
         let loadNextPage:   Observable<Void>    // 스크롤 하단 도달 시
@@ -50,6 +61,7 @@ final class BookSearchViewModel {
         let currentPage          = BehaviorRelay<Int>(value: 1)
         let hasMorePages         = BehaviorRelay<Bool>(value: false)
         let books                = BehaviorRelay<[Book]>(value: [])
+        let displayMode          = BehaviorRelay<DisplayMode>(value: .list(.bestseller))
         // 이미 요청을 보낸 가장 높은 페이지 번호 — 동기적으로 설정해 중복 요청 차단
         let highestRequestedPage = BehaviorRelay<Int>(value: 0)
         // 검색 결과의 totalResults 기반으로 계산한 실제 최대 페이지
@@ -63,12 +75,30 @@ final class BookSearchViewModel {
             .bind(to: latestQuery)
             .disposed(by: disposeBag)
 
-        // 베스트셀러 — viewDidLoad 시 1회, 페이지네이션 없음
-        input.viewDidLoad
-            .flatMapLatest { [weak self] _ -> Observable<[Book]> in
+        // 추천 목록 — viewDidLoad 시 베스트셀러, 탭 선택 시 해당 목록으로 교체
+        Observable.merge(
+            input.viewDidLoad.map { BookListType.bestseller },
+            input.listSelection
+        )
+            .do(onNext: { listType in
+                displayMode.accept(.list(listType))
+                currentPage.accept(1)
+                highestRequestedPage.accept(0)
+                hasMorePages.accept(false)
+                effectiveMaxPage.accept(1)
+                totalResultCount.accept(0)
+            })
+            .flatMapLatest { [weak self] listType -> Observable<(BookListType, [Book])> in
                 guard let self else { return .empty() }
                 isLoading.accept(true)
-                return rxAsync { try await self.repository.fetchBestsellers() }
+                let request: Observable<[Book]>
+                switch listType {
+                case .bestseller:
+                    request = rxAsync { try await self.repository.fetchBestsellers() }
+                case .newSpecial:
+                    request = rxAsync { try await self.repository.fetchNewSpecialBooks() }
+                }
+                return request
                     .do(
                         onNext:  { _ in isLoading.accept(false) },
                         onError: { _ in isLoading.accept(false) }
@@ -77,8 +107,10 @@ final class BookSearchViewModel {
                         errorMessage.accept(error.localizedDescription)
                         return .just([])
                     }
+                    .map { (listType, $0) }
             }
-            .subscribe(onNext: { fetched in
+            .subscribe(onNext: { listType, fetched in
+                guard displayMode.value == .list(listType) else { return }
                 books.accept(fetched)
                 currentPage.accept(1)
                 hasMorePages.accept(false)
@@ -89,10 +121,11 @@ final class BookSearchViewModel {
         input.searchTrigger
             .withLatestFrom(latestQuery)
             .filter { !$0.trimmingCharacters(in: .whitespaces).isEmpty }
-            .do(onNext: { _ in
+            .do(onNext: { query in
                 currentPage.accept(1)
                 highestRequestedPage.accept(0)
                 hasMorePages.accept(false)
+                displayMode.accept(.search(query.trimmingCharacters(in: .whitespaces)))
             })
             .flatMapLatest { [weak self] query -> Observable<(books: [Book], totalResults: Int)> in
                 guard let self else { return .empty() }
@@ -108,6 +141,7 @@ final class BookSearchViewModel {
                     }
             }
             .subscribe(onNext: { result in
+                guard case .search = displayMode.value else { return }
                 // totalResults 기반으로 실제 페이지 수 계산 (API 한계 200개 = 4페이지 상한)
                 let cappedTotal = min(result.totalResults, 200)
                 let pages = cappedTotal == 0 ? 1 : Int(ceil(Double(cappedTotal) / 50.0))
@@ -132,6 +166,7 @@ final class BookSearchViewModel {
             ))
             .filter { isLoad, hasMore, query, page, highReq, maxPg in
                 let nextPage = page + 1
+                guard displayMode.value == .search(query.trimmingCharacters(in: .whitespaces)) else { return false }
                 return !isLoad && hasMore
                     && !query.trimmingCharacters(in: .whitespaces).isEmpty
                     && nextPage > highReq
@@ -156,7 +191,9 @@ final class BookSearchViewModel {
             .observe(on: MainScheduler.instance)
             .subscribe(onNext: { query, nextPage, fetched in
                 // 검색어가 바뀐 경우 무시 (스테일 응답 방어)
-                guard latestQuery.value == query else {
+                let normalizedQuery = query.trimmingCharacters(in: .whitespaces)
+                guard latestQuery.value == query,
+                      displayMode.value == .search(normalizedQuery) else {
                     isLoadingMore.accept(false)
                     return
                 }
