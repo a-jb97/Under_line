@@ -10,6 +10,7 @@ import RxSwift
 import RxCocoa
 import SwiftData
 
+@MainActor
 final class SettingsViewModel {
 
     struct Input {

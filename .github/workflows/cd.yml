@@ -45,6 +45,18 @@ jobs:
           key: spm-${{ hashFiles('Under_line.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved') }}
           restore-keys: spm-
 
+      - name: Create API key file
+        env:
+          ALADIN_TTB_KEY: ${{ secrets.ALADIN_TTB_KEY }}
+        run: |
+          test -n "$ALADIN_TTB_KEY"
+          cat > Under_line/Network/AladinAPIKey.swift <<'SWIFT'
+          enum AladinAPIKey {
+              static let ttbKey = "__ALADIN_TTB_KEY__"
+          }
+          SWIFT
+          ruby -pi -e 'gsub("__ALADIN_TTB_KEY__", ENV.fetch("ALADIN_TTB_KEY"))' Under_line/Network/AladinAPIKey.swift
+
       - name: Upload to TestFlight
         env:
           ASC_API_KEY_ID:    ${{ secrets.ASC_API_KEY_ID }}
