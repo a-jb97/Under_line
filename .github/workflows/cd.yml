@@ -22,12 +22,12 @@ jobs:
 
       - name: Select Xcode
         run: |
-          if [ -d /Applications/Xcode_26.5.app ]; then
-            sudo xcode-select -s /Applications/Xcode_26.5.app/Contents/Developer
-          elif [ -d /Applications/Xcode_26.5_beta.app ]; then
-            sudo xcode-select -s /Applications/Xcode_26.5_beta.app/Contents/Developer
+          if [ -d /Applications/Xcode_26.4.1.app ]; then
+            sudo xcode-select -s /Applications/Xcode_26.4.1.app/Contents/Developer
           elif [ -d /Applications/Xcode_26.4.app ]; then
             sudo xcode-select -s /Applications/Xcode_26.4.app/Contents/Developer
+          elif [ -d /Applications/Xcode_26.5.app ]; then
+            sudo xcode-select -s /Applications/Xcode_26.5.app/Contents/Developer
           elif [ -d /Applications/Xcode_26.app ]; then
             sudo xcode-select -s /Applications/Xcode_26.app/Contents/Developer
           else
