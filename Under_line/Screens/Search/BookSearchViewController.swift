@@ -20,6 +20,7 @@ final class BookSearchViewController: UIViewController {
     private let viewModel  = BookSearchViewModel(repository: AppContainer.shared.bookRepository)
     private let loadNextPageRelay  = PublishRelay<Void>()
     private let registerBookRelay  = PublishRelay<Book>()
+    private let listSelectionRelay = PublishRelay<BookSearchViewModel.BookListType>()
 
     // MARK: - UI Components
 
@@ -113,13 +114,16 @@ final class BookSearchViewController: UIViewController {
         return v
     }()
 
-    private let bestsellerLabel: UILabel = {
-        let l = UILabel()
-        l.text            = "베스트셀러 50"
-        l.font            = UIFont(name: "GowunBatang-Bold", size: 14) ?? .systemFont(ofSize: 14)
-        l.textColor       = UIColor.appPrimary
-        l.backgroundColor = UIColor.background
-        return l
+    private lazy var bestsellerButton = makeListTabButton(title: "베스트셀러 50", selected: true)
+    private lazy var newSpecialButton = makeListTabButton(title: "추천 신간", selected: false)
+
+    private lazy var listSegmentStackView: UIStackView = {
+        let stack = UIStackView(arrangedSubviews: [bestsellerButton, newSpecialButton])
+        stack.axis = .horizontal
+        stack.spacing = 8
+        stack.alignment = .center
+        stack.distribution = .fill
+        return stack
     }()
 
     private let loadMoreIndicator: UIActivityIndicatorView = {
@@ -161,13 +165,13 @@ final class BookSearchViewController: UIViewController {
     private func setupTableHeader() {
         let container = UIView()
         container.backgroundColor = .clear
-        container.addSubview(bestsellerLabel)
-        bestsellerLabel.snp.makeConstraints { make in
+        container.addSubview(listSegmentStackView)
+        listSegmentStackView.snp.makeConstraints { make in
             make.leading.equalToSuperview()
             make.top.equalToSuperview().offset(10)
             make.bottom.equalToSuperview().inset(6)
         }
-        container.frame = CGRect(x: 0, y: 0, width: 0, height: 36)
+        container.frame = CGRect(x: 0, y: 0, width: 0, height: 40)
         tableView.tableHeaderView = container
     }
 
@@ -230,6 +234,7 @@ final class BookSearchViewController: UIViewController {
     private func bindViewModel() {
         let input = BookSearchViewModel.Input(
             viewDidLoad:   .just(()),
+            listSelection: listSelectionRelay.asObservable(),
             searchQuery:   searchTextField.rx.text.orEmpty.asObservable(),
             searchTrigger: searchTextField.rx.controlEvent(.editingDidEndOnExit).asObservable(),
             loadNextPage:  loadNextPageRelay.asObservable(),
@@ -273,6 +278,20 @@ final class BookSearchViewController: UIViewController {
             })
             .disposed(by: disposeBag)
 
+        bestsellerButton.rx.tap
+            .subscribe(onNext: { [weak self] in
+                self?.selectListTab(.bestseller)
+                self?.listSelectionRelay.accept(.bestseller)
+            })
+            .disposed(by: disposeBag)
+
+        newSpecialButton.rx.tap
+            .subscribe(onNext: { [weak self] in
+                self?.selectListTab(.newSpecial)
+                self?.listSelectionRelay.accept(.newSpecial)
+            })
+            .disposed(by: disposeBag)
+
         // 마지막 셀이 표시될 때 다음 페이지 요청
         tableView.rx.willDisplayCell
             .filter { [weak self] _, indexPath in
@@ -288,7 +307,7 @@ final class BookSearchViewController: UIViewController {
             .take(1)
             .subscribe(onNext: { [weak self] in
                 guard let self, let header = self.tableView.tableHeaderView else { return }
-                self.bestsellerLabel.isHidden = true
+                self.listSegmentStackView.isHidden = true
                 header.frame.size.height = 0
                 self.tableView.tableHeaderView = header
             })
@@ -320,6 +339,30 @@ final class BookSearchViewController: UIViewController {
                 self?.present(vc, animated: true)
             })
             .disposed(by: disposeBag)
+    }
+
+    // MARK: - List Segment
+
+    private func selectListTab(_ listType: BookSearchViewModel.BookListType) {
+        let selectedColor = UIColor.background
+        let unselectedColor = UIColor.appPrimary
+
+        bestsellerButton.backgroundColor = listType == .bestseller ? UIColor.appPrimary : .clear
+        bestsellerButton.setTitleColor(listType == .bestseller ? selectedColor : unselectedColor, for: .normal)
+
+        newSpecialButton.backgroundColor = listType == .newSpecial ? UIColor.appPrimary : .clear
+        newSpecialButton.setTitleColor(listType == .newSpecial ? selectedColor : unselectedColor, for: .normal)
+    }
+
+    private func makeListTabButton(title: String, selected: Bool) -> UIButton {
+        let btn = UIButton(type: .system)
+        btn.setTitle(title, for: .normal)
+        btn.titleLabel?.font = UIFont(name: "GoyangIlsan R", size: 11) ?? .systemFont(ofSize: 11)
+        btn.layer.cornerRadius = 11
+        btn.backgroundColor = selected ? UIColor.appPrimary : .clear
+        btn.setTitleColor(selected ? .background : UIColor.appPrimary, for: .normal)
+        btn.contentEdgeInsets = UIEdgeInsets(top: 5, left: 12, bottom: 5, right: 12)
+        return btn
     }
 }
 
