@@ -40,6 +40,28 @@ platform :ios do
       xcodeproj:    "Under_line.xcodeproj"
     )
 
+    update_code_signing_settings(
+      path:                  "Under_line.xcodeproj",
+      use_automatic_signing: false,
+      team_id:               "VR5Z389FF7",
+      targets:               ["Under_line"],
+      build_configurations:  ["Release"],
+      code_sign_identity:    "Apple Distribution",
+      profile_name:          "match AppStore com.jade.UnderLine",
+      sdk:                   "iphoneos*"
+    )
+
+    update_code_signing_settings(
+      path:                  "Under_line.xcodeproj",
+      use_automatic_signing: false,
+      team_id:               "VR5Z389FF7",
+      targets:               ["UnderLineWidgetExtension"],
+      build_configurations:  ["Release"],
+      code_sign_identity:    "Apple Distribution",
+      profile_name:          "match AppStore com.jade.UnderLine.UnderLineWidget",
+      sdk:                   "iphoneos*"
+    )
+
     gym(
       scheme:           "Under_line",
       project:          "Under_line.xcodeproj",
