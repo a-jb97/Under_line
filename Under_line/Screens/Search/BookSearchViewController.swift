@@ -344,25 +344,30 @@ final class BookSearchViewController: UIViewController {
     // MARK: - List Segment
 
     private func selectListTab(_ listType: BookSearchViewModel.BookListType) {
-        let selectedColor = UIColor.background
-        let unselectedColor = UIColor.appPrimary
-
-        bestsellerButton.backgroundColor = listType == .bestseller ? UIColor.appPrimary : .clear
-        bestsellerButton.setTitleColor(listType == .bestseller ? selectedColor : unselectedColor, for: .normal)
-
-        newSpecialButton.backgroundColor = listType == .newSpecial ? UIColor.appPrimary : .clear
-        newSpecialButton.setTitleColor(listType == .newSpecial ? selectedColor : unselectedColor, for: .normal)
+        applyListTabStyle(to: bestsellerButton, selected: listType == .bestseller)
+        applyListTabStyle(to: newSpecialButton, selected: listType == .newSpecial)
     }
 
     private func makeListTabButton(title: String, selected: Bool) -> UIButton {
         let btn = UIButton(type: .system)
         btn.setTitle(title, for: .normal)
-        btn.titleLabel?.font = UIFont(name: "GoyangIlsan R", size: 11) ?? .systemFont(ofSize: 11)
-        btn.layer.cornerRadius = 11
-        btn.backgroundColor = selected ? UIColor.appPrimary : .clear
-        btn.setTitleColor(selected ? .background : UIColor.appPrimary, for: .normal)
-        btn.contentEdgeInsets = UIEdgeInsets(top: 5, left: 12, bottom: 5, right: 12)
+        applyListTabStyle(to: btn, selected: selected)
         return btn
+    }
+
+    private func applyListTabStyle(to button: UIButton, selected: Bool) {
+        var config = UIButton.Configuration.plain()
+        config.title = button.title(for: .normal)
+        config.baseForegroundColor = selected ? UIColor.background : UIColor.appPrimary
+        config.contentInsets = NSDirectionalEdgeInsets(top: 5, leading: 12, bottom: 5, trailing: 12)
+        config.background.backgroundColor = selected ? UIColor.appPrimary : .clear
+        config.background.cornerRadius = 11
+        config.titleTextAttributesTransformer = UIConfigurationTextAttributesTransformer { incoming in
+            var outgoing = incoming
+            outgoing.font = UIFont(name: "GoyangIlsan R", size: 11) ?? .systemFont(ofSize: 11)
+            return outgoing
+        }
+        button.configuration = config
     }
 }
 

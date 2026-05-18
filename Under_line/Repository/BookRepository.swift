@@ -15,7 +15,7 @@ import RxCocoa
 protocol BookRepositoryProtocol {
     // Remote
     func fetchBestsellers() async throws -> [Book]
-    func fetchNewSpecialBooks() async throws -> [Book]
+    func fetchNewSpecialBooks(page: Int) async throws -> [Book]
     func searchBooks(query: String, page: Int) async throws -> (books: [Book], totalResults: Int)
     func fetchBookDetail(isbn13: String) async throws -> Book
 
@@ -48,8 +48,8 @@ final class BookRepository: BookRepositoryProtocol {
         try await apiService.fetchBestsellers()
     }
 
-    func fetchNewSpecialBooks() async throws -> [Book] {
-        try await apiService.fetchNewSpecialBooks()
+    func fetchNewSpecialBooks(page: Int) async throws -> [Book] {
+        try await apiService.fetchNewSpecialBooks(page: page)
     }
 
     func searchBooks(query: String, page: Int) async throws -> (books: [Book], totalResults: Int) {
