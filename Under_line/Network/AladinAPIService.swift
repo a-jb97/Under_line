@@ -12,6 +12,7 @@ import Alamofire
 
 protocol AladinAPIServiceProtocol {
     func fetchBestsellers() async throws -> [Book]
+    func fetchNewSpecialBooks() async throws -> [Book]
     func searchBooks(query: String, page: Int) async throws -> (books: [Book], totalResults: Int)
     func fetchBookDetail(isbn13: String) async throws -> Book
 }
@@ -32,6 +33,21 @@ final class AladinAPIService: AladinAPIServiceProtocol {
             "ttbkey":       apiKey,
             "QueryType":    "Bestseller",
             "MaxResults":   50,
+            "start":        1,
+            "SearchTarget": "Book",
+            "Cover":        "Big",
+            "output":       "js",
+            "Version":      "20131101"
+        ]
+        let response = try await request(endpoint: "ItemList.aspx", parameters: params)
+        return response.item.map { $0.toDomain() }
+    }
+
+    func fetchNewSpecialBooks() async throws -> [Book] {
+        let params: Parameters = [
+            "ttbkey":       apiKey,
+            "QueryType":    "ItemNewSpecial",
+            "MaxResults":   10,
             "start":        1,
             "SearchTarget": "Book",
             "Cover":        "Big",
