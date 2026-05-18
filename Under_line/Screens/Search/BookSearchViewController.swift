@@ -117,13 +117,15 @@ final class BookSearchViewController: UIViewController {
     private lazy var bestsellerButton = makeListTabButton(title: "베스트셀러 50", selected: true)
     private lazy var newSpecialButton = makeListTabButton(title: "추천 신간", selected: false)
 
-    private lazy var listSegmentStackView: UIStackView = {
-        let stack = UIStackView(arrangedSubviews: [bestsellerButton, newSpecialButton])
-        stack.axis = .horizontal
-        stack.spacing = 8
-        stack.alignment = .center
-        stack.distribution = .fill
-        return stack
+    private lazy var listSegmentContainerView: UIView = {
+        let v = UIView()
+        v.backgroundColor = UIColor(hex: "#E8E0DC")
+        v.layer.cornerRadius = 15
+        v.layer.shadowColor = UIColor(hex: "#b5a49e").cgColor
+        v.layer.shadowOpacity = 1.0
+        v.layer.shadowRadius = 7
+        v.layer.shadowOffset = CGSize(width: 3, height: 3)
+        return v
     }()
 
     private let loadMoreIndicator: UIActivityIndicatorView = {
@@ -165,13 +167,25 @@ final class BookSearchViewController: UIViewController {
     private func setupTableHeader() {
         let container = UIView()
         container.backgroundColor = .clear
-        container.addSubview(listSegmentStackView)
-        listSegmentStackView.snp.makeConstraints { make in
+        listSegmentContainerView.addSubview(bestsellerButton)
+        listSegmentContainerView.addSubview(newSpecialButton)
+        container.addSubview(listSegmentContainerView)
+        listSegmentContainerView.snp.makeConstraints { make in
             make.leading.equalToSuperview()
             make.top.equalToSuperview().offset(10)
             make.bottom.equalToSuperview().inset(6)
+            make.height.equalTo(34)
         }
-        container.frame = CGRect(x: 0, y: 0, width: 0, height: 40)
+        bestsellerButton.snp.makeConstraints { make in
+            make.leading.top.bottom.equalToSuperview().inset(3)
+            make.width.equalTo(94)
+        }
+        newSpecialButton.snp.makeConstraints { make in
+            make.leading.equalTo(bestsellerButton.snp.trailing)
+            make.trailing.top.bottom.equalToSuperview().inset(3)
+            make.width.equalTo(bestsellerButton)
+        }
+        container.frame = CGRect(x: 0, y: 0, width: 0, height: 50)
         tableView.tableHeaderView = container
     }
 
@@ -307,7 +321,7 @@ final class BookSearchViewController: UIViewController {
             .take(1)
             .subscribe(onNext: { [weak self] in
                 guard let self, let header = self.tableView.tableHeaderView else { return }
-                self.listSegmentStackView.isHidden = true
+                self.listSegmentContainerView.isHidden = true
                 header.frame.size.height = 0
                 self.tableView.tableHeaderView = header
             })
@@ -357,9 +371,9 @@ final class BookSearchViewController: UIViewController {
 
     private func applyListTabStyle(to button: UIButton, selected: Bool) {
         var config = UIButton.Configuration.plain()
-        config.title = button.title(for: .normal)
+        config.title = button.configuration?.title ?? button.title(for: .normal)
         config.baseForegroundColor = selected ? UIColor.background : UIColor.appPrimary
-        config.contentInsets = NSDirectionalEdgeInsets(top: 5, leading: 12, bottom: 5, trailing: 12)
+        config.contentInsets = NSDirectionalEdgeInsets(top: 0, leading: 8, bottom: 0, trailing: 8)
         config.background.backgroundColor = selected ? UIColor.appPrimary : .clear
         config.background.cornerRadius = 11
         config.titleTextAttributesTransformer = UIConfigurationTextAttributesTransformer { incoming in
