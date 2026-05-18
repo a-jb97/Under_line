@@ -34,6 +34,12 @@ platform :ios do
       app_identifier: "com.jade.UnderLine"
     )
 
+    new_build_number = (current_build + 1).to_s
+    increment_build_number(
+      build_number: new_build_number,
+      xcodeproj:    "Under_line.xcodeproj"
+    )
+
     gym(
       scheme:           "Under_line",
       project:          "Under_line.xcodeproj",
@@ -42,7 +48,6 @@ platform :ios do
       output_directory: "./build",
       output_name:      "Under_line.ipa",
       export_method:    "app-store",
-      build_number:     (current_build + 1).to_s,
       xcargs: [
         "CODE_SIGN_STYLE=Manual",
         "CODE_SIGN_IDENTITY='Apple Distribution'",
