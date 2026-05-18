@@ -38,9 +38,6 @@ jobs:
           key: spm-${{ hashFiles('Under_line.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved') }}
           restore-keys: spm-
 
-      - name: Update fastlane
-        run: bundle update fastlane
-
       - name: Upload to TestFlight
         env:
           ASC_API_KEY_ID:    ${{ secrets.ASC_API_KEY_ID }}
