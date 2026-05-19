@@ -34,6 +34,34 @@ platform :ios do
       app_identifier: "com.jade.UnderLine"
     )
 
+    new_build_number = (current_build + 1).to_s
+    increment_build_number(
+      build_number: new_build_number,
+      xcodeproj:    "Under_line.xcodeproj"
+    )
+
+    update_code_signing_settings(
+      path:                  "Under_line.xcodeproj",
+      use_automatic_signing: false,
+      team_id:               "VR5Z389FF7",
+      targets:               ["Under_line"],
+      build_configurations:  ["Release"],
+      code_sign_identity:    "Apple Distribution",
+      profile_name:          "match AppStore com.jade.UnderLine",
+      sdk:                   "iphoneos*"
+    )
+
+    update_code_signing_settings(
+      path:                  "Under_line.xcodeproj",
+      use_automatic_signing: false,
+      team_id:               "VR5Z389FF7",
+      targets:               ["UnderLineWidgetExtension"],
+      build_configurations:  ["Release"],
+      code_sign_identity:    "Apple Distribution",
+      profile_name:          "match AppStore com.jade.UnderLine.UnderLineWidget",
+      sdk:                   "iphoneos*"
+    )
+
     gym(
       scheme:           "Under_line",
       project:          "Under_line.xcodeproj",
@@ -42,13 +70,15 @@ platform :ios do
       output_directory: "./build",
       output_name:      "Under_line.ipa",
       export_method:    "app-store",
-      build_number:     (current_build + 1).to_s,
-      xcargs: [
-        "CODE_SIGN_STYLE=Manual",
-        "CODE_SIGN_IDENTITY='Apple Distribution'",
-        "PROVISIONING_PROFILE_SPECIFIER[sdk=iphoneos*]='match AppStore com.jade.UnderLine'",
-        "PROVISIONING_PROFILE_SPECIFIER[sdk=iphoneos*]:UnderLineWidgetExtension='match AppStore com.jade.UnderLine.UnderLineWidget'",
-      ].join(" ")
+      export_options: {
+        signingStyle: "manual",
+        teamID:       "VR5Z389FF7",
+        provisioningProfiles: {
+          "com.jade.UnderLine" => "match AppStore com.jade.UnderLine",
+          "com.jade.UnderLine.UnderLineWidget" => "match AppStore com.jade.UnderLine.UnderLineWidget"
+        }
+      },
+      xcargs:           "DEVELOPMENT_TEAM=VR5Z389FF7"
     )
 
     upload_to_testflight(

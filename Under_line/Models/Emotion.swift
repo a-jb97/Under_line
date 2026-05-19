@@ -11,14 +11,7 @@ enum Emotion: Int, CaseIterable {
     case joy, calm, sad, touched, pensive, tense
 
     var emoji: UIImage {
-        switch self {
-        case .joy:     return .happy
-        case .calm:    return .calm
-        case .sad:     return .sad
-        case .touched: return .moved
-        case .pensive: return .meditation
-        case .tense:   return .nervous
-        }
+        UIImage(named: assetName) ?? UIImage()
     }
 
     var label: String {

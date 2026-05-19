@@ -7,6 +7,7 @@
 
 import SwiftData
 
+@MainActor
 final class AppContainer {
     static let shared = AppContainer()
 
