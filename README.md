@@ -12,11 +12,11 @@
 
 </div>
 
-<a href="https://apps.apple.com/kr/app/%EB%B0%91%EC%A4%84-%EB%82%98%EB%A7%8C%EC%9D%98-%EB%AC%B8%EC%9E%A5-%EC%88%98%EC%A7%91-%EA%B8%B0%EB%A1%9D/id6761336410">
-  <img src="https://img.shields.io/badge/App_Store-다운로드-0D96F6?style=for-the-badge&logo=appstore&logoColor=white" alt="App Store에서 다운로드">
-</a>
-
-</div>
+<p align="center">
+  <a href="https://apps.apple.com/kr/app/%EB%B0%91%EC%A4%84-%EB%82%98%EB%A7%8C%EC%9D%98-%EB%AC%B8%EC%9E%A5-%EC%88%98%EC%A7%91-%EA%B8%B0%EB%A1%9D/id6761336410">
+    <img src="https://img.shields.io/badge/App_Store-다운로드-0D96F6?style=for-the-badge&logo=appstore&logoColor=white" alt="App Store에서 다운로드">
+  </a>
+</p>
 
 ## 프로젝트 소개
 
