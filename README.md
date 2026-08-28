@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="Under_line/Assets.xcassets/AppIcon.appiconset/F4DEA0CC-6557-4969-B573-A12B948297A0.jpeg" width="120" alt="밑줄 앱 아이콘">
+<img src="docs/images/app-icon.png" width="120" alt="밑줄 앱 아이콘">
 
 # 밑줄
 
