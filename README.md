@@ -6,16 +6,9 @@
 
 ### 나만의 문장 수집 기록
 
-책 속에서 오래 간직하고 싶은 문장을 수집하고,<br>
-그날의 감정과 독서 시간을 함께 기록하는 독서 관리 앱입니다.
-
-<br>
-
 <img src="https://img.shields.io/badge/iOS-17.6%2B-000000?logo=apple&logoColor=white" alt="iOS 17.6 이상">
 <img src="https://img.shields.io/badge/Swift-5-F05138?logo=swift&logoColor=white" alt="Swift 5">
 <img src="https://img.shields.io/badge/UIKit-Programmatic_UI-2396F3" alt="UIKit">
-
-<br><br>
 
 <a href="https://apps.apple.com/kr/app/%EB%B0%91%EC%A4%84-%EB%82%98%EB%A7%8C%EC%9D%98-%EB%AC%B8%EC%9E%A5-%EC%88%98%EC%A7%91-%EA%B8%B0%EB%A1%9D/id6761336410">
   <img src="https://img.shields.io/badge/App_Store-다운로드-0D96F6?style=for-the-badge&logo=appstore&logoColor=white" alt="App Store에서 다운로드">
@@ -23,7 +16,9 @@
 
 </div>
 
-## 프로젝트 정보
+## 프로젝트 소개
+
+책 속에서 오래 간직하고 싶은 문장을 수집하고, 그날의 감정과 독서 시간을 함께 기록하는 독서 관리 앱입니다.
 
 | 항목 | 내용 |
 | --- | --- |
