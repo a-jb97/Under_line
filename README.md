@@ -11,9 +11,9 @@
 
 <br>
 
-<img src="https://img.shields.io/badge/iOS-17.6%2B-000000?style=flat-square&logo=apple" alt="iOS 17.6 이상">
-<img src="https://img.shields.io/badge/Swift-5-F05138?style=flat-square&logo=swift&logoColor=white" alt="Swift 5">
-<img src="https://img.shields.io/badge/UIKit-Programmatic_UI-2396F3?style=flat-square" alt="UIKit">
+<img src="https://img.shields.io/badge/iOS-17.6%2B-000000?logo=apple&logoColor=white" alt="iOS 17.6 이상">
+<img src="https://img.shields.io/badge/Swift-5-F05138?logo=swift&logoColor=white" alt="Swift 5">
+<img src="https://img.shields.io/badge/UIKit-Programmatic_UI-2396F3" alt="UIKit">
 
 <br><br>
 
