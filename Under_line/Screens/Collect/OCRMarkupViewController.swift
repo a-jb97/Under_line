@@ -328,7 +328,7 @@ final class OCRMarkupViewController: UIViewController {
                 request.usesLanguageCorrection = true
                 try VNImageRequestHandler(cgImage: cgImage, orientation: orientation)
                     .perform([request])
-                return (request.results as? [VNRecognizedTextObservation]) ?? []
+                return request.results ?? []
             }.value
         } catch {
             let alert = UIAlertController(

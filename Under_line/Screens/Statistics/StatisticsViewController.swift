@@ -14,8 +14,13 @@ import RxCocoa
 
 final class StatisticsViewController: UIViewController {
 
-    private let disposeBag          = DisposeBag()
-    private let viewWillAppearRelay = PublishRelay<Void>()
+    private let disposeBag  = DisposeBag()
+    private let reloadRelay = PublishRelay<Void>()
+    private var isViewVisible = false
+    private var isDonutDataReady = false
+    private var shouldAnimateDonutOnAppearance = false
+    private var isStatisticsRequestInFlight = false
+    private var latestDonutData: SentenceDonutStatisticsData?
     private var highlightLayers: [(view: UIView, layer: CAGradientLayer)] = []
     private lazy var viewModel = StatisticsViewModel(
         readingSessionRepository: AppContainer.shared.readingSessionRepository,
@@ -87,13 +92,41 @@ final class StatisticsViewController: UIViewController {
     override func viewWillAppear(_ animated: Bool) {
         super.viewWillAppear(animated)
         heatmapCard.clearSelection()
-        viewWillAppearRelay.accept(())
+        isViewVisible = true
+        isDonutDataReady = latestDonutData != nil
+        shouldAnimateDonutOnAppearance = true
+        genreCard.prepareForAnimation()
+        requestStatisticsData()
+        animateDonutIfReady()
         lockTabBarBriefly()
     }
 
     override func viewDidAppear(_ animated: Bool) {
         super.viewDidAppear(animated)
         showTutorialIfNeeded()
+    }
+
+    override func viewWillDisappear(_ animated: Bool) {
+        super.viewWillDisappear(animated)
+        isViewVisible = false
+    }
+
+    private func animateDonutIfReady() {
+        guard isViewVisible, isDonutDataReady, shouldAnimateDonutOnAppearance else { return }
+        shouldAnimateDonutOnAppearance = false
+        view.layoutIfNeeded()
+        genreCard.animateIn()
+    }
+
+    func prefetchData() {
+        loadViewIfNeeded()
+        requestStatisticsData()
+    }
+
+    private func requestStatisticsData() {
+        guard !isStatisticsRequestInFlight else { return }
+        isStatisticsRequestInFlight = true
+        reloadRelay.accept(())
     }
 
     private func lockTabBarBriefly() {
@@ -187,7 +220,7 @@ final class StatisticsViewController: UIViewController {
             .disposed(by: disposeBag)
 
         let output = viewModel.transform(input: StatisticsViewModel.Input(
-            viewWillAppear: viewWillAppearRelay.asObservable()
+            reload: reloadRelay.asObservable()
         ))
 
         output.allSessions
@@ -196,10 +229,16 @@ final class StatisticsViewController: UIViewController {
             })
             .disposed(by: disposeBag)
 
-        Driver.combineLatest(output.genreData, output.authorData)
-            .drive(onNext: { [weak self] genreData, authorData in
-                self?.genreCard.configure(genreData: genreData, authorData: authorData)
-                self?.genreCard.animateIn()
+        output.donutData
+            .drive(onNext: { [weak self] data in
+                guard let self else { return }
+                self.isStatisticsRequestInFlight = false
+                if self.latestDonutData != data {
+                    self.latestDonutData = data
+                    self.genreCard.configure(genreData: data.genre, authorData: data.author)
+                }
+                self.isDonutDataReady = true
+                self.animateDonutIfReady()
             })
             .disposed(by: disposeBag)
 
@@ -282,4 +321,3 @@ final class StatisticsViewController: UIViewController {
         button.backgroundColor = .clear
     }
 }
-
