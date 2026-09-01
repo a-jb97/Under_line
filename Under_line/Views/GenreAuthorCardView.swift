@@ -49,6 +49,10 @@ final class GenreAuthorCardView: UIView {
         donutView.animateIn()
     }
 
+    func prepareForAnimation() {
+        donutView.prepareForAnimation()
+    }
+
     private func setup() {
         backgroundColor = .white
         layer.cornerRadius = 16
@@ -263,7 +267,9 @@ final class DonutChartView: UIView {
     private let neumDark  = UIColor(hex: "#b5a09b")
     private let neumLight = UIColor.white
 
+    private var isPreparedForAnimation = false
     private var pendingAnimationDuration: TimeInterval? = nil
+    private var lastRenderedBounds: CGRect = .null
 
     private let centerLabel: UILabel = {
         let l = UILabel()
@@ -340,7 +346,9 @@ final class DonutChartView: UIView {
 
     override func layoutSubviews() {
         super.layoutSubviews()
-        updateLayers()
+        if bounds != lastRenderedBounds {
+            updateLayers()
+        }
         if let duration = pendingAnimationDuration, !segmentLayers.isEmpty {
             pendingAnimationDuration = nil
             performAnimation(duration: duration)
@@ -349,6 +357,7 @@ final class DonutChartView: UIView {
 
     private func updateLayers() {
         guard bounds.width > 0, bounds.height > 0 else { return }
+        lastRenderedBounds = bounds
 
         CATransaction.begin()
         CATransaction.setDisableActions(true)
@@ -392,7 +401,7 @@ final class DonutChartView: UIView {
                 sl.strokeColor = seg.color.cgColor
                 sl.lineWidth   = lineWidth
                 sl.lineCap     = .butt
-                sl.strokeEnd   = 1.0
+                sl.strokeEnd   = isPreparedForAnimation ? 0.0 : 1.0
                 self.layer.insertSublayer(sl, below: ringHighlightLayer)
                 segmentLayers.append(sl)
 
@@ -437,12 +446,31 @@ final class DonutChartView: UIView {
         }
     }
 
+    func prepareForAnimation() {
+        isPreparedForAnimation = true
+        pendingAnimationDuration = nil
+
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        segmentLayers.forEach {
+            $0.removeAnimation(forKey: "strokeEndAnim")
+            $0.strokeEnd = 0.0
+        }
+        CATransaction.commit()
+    }
+
     private func performAnimation(duration: TimeInterval) {
+        isPreparedForAnimation = false
         var elapsedFraction: CGFloat = 0
         for (i, sl) in segmentLayers.enumerated() {
             let segFraction = segments[i].value
             let segDuration = max(duration * Double(segFraction), 0.05)
             let delay = duration * Double(elapsedFraction)
+
+            CATransaction.begin()
+            CATransaction.setDisableActions(true)
+            sl.strokeEnd = 1.0
+            CATransaction.commit()
 
             let anim = CABasicAnimation(keyPath: "strokeEnd")
             anim.fromValue = 0.0
