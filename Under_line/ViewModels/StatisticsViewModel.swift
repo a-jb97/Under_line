@@ -42,6 +42,13 @@ struct SentenceDonutData {
     static let empty = SentenceDonutData(total: 0, items: [])
 }
 
+struct SentenceDonutStatisticsData {
+    let genre: SentenceDonutData
+    let author: SentenceDonutData
+
+    static let empty = SentenceDonutStatisticsData(genre: .empty, author: .empty)
+}
+
 // MARK: - StatisticsViewModel
 
 final class StatisticsViewModel {
@@ -56,8 +63,7 @@ final class StatisticsViewModel {
 
     struct Output {
         let allSessions: Driver<[ReadingSession]>
-        let genreData: Driver<SentenceDonutData>
-        let authorData: Driver<SentenceDonutData>
+        let donutData: Driver<SentenceDonutStatisticsData>
         let lineChartData: Driver<ReadingTimeChartData>
     }
 
@@ -91,23 +97,22 @@ final class StatisticsViewModel {
         let lineChartData = allSessions.map { Self.computeLineChartData(sessions: $0) }
 
         let donutData = input.viewWillAppear
-            .flatMapLatest { [weak self] _ -> Observable<(SentenceDonutData, SentenceDonutData)> in
-                guard let self else { return .just((.empty, .empty)) }
+            .flatMapLatest { [weak self] _ -> Observable<SentenceDonutStatisticsData> in
+                guard let self else { return .just(.empty) }
                 let books     = self.bookRepository.fetchSavedBooks().take(1)
                 let sentences = rxAsync { try await self.sentenceRepository.fetchAllSentences() }
                 return Observable.zip(books, sentences)
                     .map { books, sentences in
                         let genreData  = Self.computeGenreData(sentences: sentences, books: books)
                         let authorData = Self.computeAuthorData(sentences: sentences, books: books)
-                        return (genreData, authorData)
+                        return SentenceDonutStatisticsData(genre: genreData, author: authorData)
                     }
-                    .catch { _ in .just((.empty, .empty)) }
+                    .catch { _ in .just(.empty) }
             }
 
         return Output(
             allSessions:   allSessions.asDriver(onErrorJustReturn: []),
-            genreData:     donutData.map { $0.0 }.asDriver(onErrorJustReturn: .empty),
-            authorData:    donutData.map { $0.1 }.asDriver(onErrorJustReturn: .empty),
+            donutData:     donutData.asDriver(onErrorJustReturn: .empty),
             lineChartData: lineChartData.asDriver(onErrorJustReturn: .empty)
         )
     }

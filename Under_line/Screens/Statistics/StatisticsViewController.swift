@@ -16,6 +16,9 @@ final class StatisticsViewController: UIViewController {
 
     private let disposeBag          = DisposeBag()
     private let viewWillAppearRelay = PublishRelay<Void>()
+    private var isViewVisible = false
+    private var isDonutDataReady = false
+    private var shouldAnimateDonutOnAppearance = false
     private var highlightLayers: [(view: UIView, layer: CAGradientLayer)] = []
     private lazy var viewModel = StatisticsViewModel(
         readingSessionRepository: AppContainer.shared.readingSessionRepository,
@@ -87,13 +90,30 @@ final class StatisticsViewController: UIViewController {
     override func viewWillAppear(_ animated: Bool) {
         super.viewWillAppear(animated)
         heatmapCard.clearSelection()
+        isDonutDataReady = false
+        shouldAnimateDonutOnAppearance = true
+        genreCard.prepareForAnimation()
         viewWillAppearRelay.accept(())
         lockTabBarBriefly()
     }
 
     override func viewDidAppear(_ animated: Bool) {
         super.viewDidAppear(animated)
+        isViewVisible = true
+        animateDonutIfReady()
         showTutorialIfNeeded()
+    }
+
+    override func viewWillDisappear(_ animated: Bool) {
+        super.viewWillDisappear(animated)
+        isViewVisible = false
+    }
+
+    private func animateDonutIfReady() {
+        guard isViewVisible, isDonutDataReady, shouldAnimateDonutOnAppearance else { return }
+        shouldAnimateDonutOnAppearance = false
+        view.layoutIfNeeded()
+        genreCard.animateIn()
     }
 
     private func lockTabBarBriefly() {
@@ -196,10 +216,12 @@ final class StatisticsViewController: UIViewController {
             })
             .disposed(by: disposeBag)
 
-        Driver.combineLatest(output.genreData, output.authorData)
-            .drive(onNext: { [weak self] genreData, authorData in
-                self?.genreCard.configure(genreData: genreData, authorData: authorData)
-                self?.genreCard.animateIn()
+        output.donutData
+            .drive(onNext: { [weak self] data in
+                guard let self else { return }
+                self.genreCard.configure(genreData: data.genre, authorData: data.author)
+                self.isDonutDataReady = true
+                self.animateDonutIfReady()
             })
             .disposed(by: disposeBag)
 
@@ -282,4 +304,3 @@ final class StatisticsViewController: UIViewController {
         button.backgroundColor = .clear
     }
 }
-
