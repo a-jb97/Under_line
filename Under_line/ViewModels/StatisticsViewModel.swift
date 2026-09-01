@@ -31,18 +31,18 @@ struct ReadingTimeChartData {
 
 // MARK: - SentenceDonutData
 
-struct SentenceDonutItem {
+struct SentenceDonutItem: Equatable {
     let label: String
     let count: Int
 }
 
-struct SentenceDonutData {
+struct SentenceDonutData: Equatable {
     let total: Int
     let items: [SentenceDonutItem]
     static let empty = SentenceDonutData(total: 0, items: [])
 }
 
-struct SentenceDonutStatisticsData {
+struct SentenceDonutStatisticsData: Equatable {
     let genre: SentenceDonutData
     let author: SentenceDonutData
 
@@ -56,7 +56,7 @@ final class StatisticsViewModel {
     // MARK: - Input
 
     struct Input {
-        let viewWillAppear: Observable<Void>
+        let reload: Observable<Void>
     }
 
     // MARK: - Output
@@ -86,7 +86,7 @@ final class StatisticsViewModel {
     // MARK: - Transform
 
     func transform(input: Input) -> Output {
-        let allSessions = input.viewWillAppear
+        let allSessions = input.reload
             .flatMapLatest { [weak self] _ -> Observable<[ReadingSession]> in
                 guard let self else { return .just([]) }
                 return rxAsync { try await self.readingSessionRepository.fetchAllSessions() }
@@ -96,7 +96,7 @@ final class StatisticsViewModel {
 
         let lineChartData = allSessions.map { Self.computeLineChartData(sessions: $0) }
 
-        let donutData = input.viewWillAppear
+        let donutData = input.reload
             .flatMapLatest { [weak self] _ -> Observable<SentenceDonutStatisticsData> in
                 guard let self else { return .just(.empty) }
                 let books     = self.bookRepository.fetchSavedBooks().take(1)

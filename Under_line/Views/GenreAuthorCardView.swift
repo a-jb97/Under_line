@@ -269,6 +269,7 @@ final class DonutChartView: UIView {
 
     private var isPreparedForAnimation = false
     private var pendingAnimationDuration: TimeInterval? = nil
+    private var lastRenderedBounds: CGRect = .null
 
     private let centerLabel: UILabel = {
         let l = UILabel()
@@ -345,7 +346,9 @@ final class DonutChartView: UIView {
 
     override func layoutSubviews() {
         super.layoutSubviews()
-        updateLayers()
+        if bounds != lastRenderedBounds {
+            updateLayers()
+        }
         if let duration = pendingAnimationDuration, !segmentLayers.isEmpty {
             pendingAnimationDuration = nil
             performAnimation(duration: duration)
@@ -354,6 +357,7 @@ final class DonutChartView: UIView {
 
     private func updateLayers() {
         guard bounds.width > 0, bounds.height > 0 else { return }
+        lastRenderedBounds = bounds
 
         CATransaction.begin()
         CATransaction.setDisableActions(true)

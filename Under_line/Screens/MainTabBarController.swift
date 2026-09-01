@@ -61,6 +61,7 @@ final class MainTabBarController: UITabBarController {
         )
 
         viewControllers = [booksNav, statsNav, settingsVC]
+        statsVC.prefetchData()
     }
 
     // MARK: - Random UnderLine
