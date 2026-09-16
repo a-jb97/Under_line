@@ -84,6 +84,7 @@ final class BookSearchViewModel {
 
         // 검색어 최신값 유지
         input.searchQuery
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
             .bind(to: latestQuery)
             .disposed(by: disposeBag)
 
@@ -132,12 +133,12 @@ final class BookSearchViewModel {
         // 새 검색 — return 키 탭 시 1페이지부터 다시 시작
         input.searchTrigger
             .withLatestFrom(latestQuery)
-            .filter { !$0.trimmingCharacters(in: .whitespaces).isEmpty }
+            .filter { !$0.isEmpty }
             .do(onNext: { query in
                 currentPage.accept(1)
                 highestRequestedPage.accept(0)
                 hasMorePages.accept(false)
-                displayMode.accept(.search(query.trimmingCharacters(in: .whitespaces)))
+                displayMode.accept(.search(query))
             })
             .flatMapLatest { [weak self] query -> Observable<(books: [Book], totalResults: Int)> in
                 guard let self else { return .empty() }
@@ -186,8 +187,8 @@ final class BookSearchViewModel {
                 case .list(.bestseller):
                     return false
                 case .search(let normalizedQuery):
-                    return !query.trimmingCharacters(in: .whitespaces).isEmpty
-                        && normalizedQuery == query.trimmingCharacters(in: .whitespaces)
+                    return !query.isEmpty
+                        && normalizedQuery == query
                 }
             }
             .map { _, _, query, page, _, _, mode -> NextPageRequest in
@@ -237,9 +238,8 @@ final class BookSearchViewModel {
                 switch result {
                 case .search(let query, let nextPage, let fetched):
                     // 검색어가 바뀐 경우 무시 (스테일 응답 방어)
-                    let normalizedQuery = query.trimmingCharacters(in: .whitespaces)
                     guard latestQuery.value == query,
-                          displayMode.value == .search(normalizedQuery) else {
+                          displayMode.value == .search(query) else {
                         isLoadingMore.accept(false)
                         return
                     }
