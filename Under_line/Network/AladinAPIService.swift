@@ -39,7 +39,16 @@ final class AladinAPIService: AladinAPIServiceProtocol {
             "output":       "js",
             "Version":      "20131101"
         ]
+        #if DEBUG
+        let responseSpan = BookSearchPerformance.Span(.responseDecoded, source: .bestseller)
+        defer { responseSpan.finish(Task.isCancelled ? .cancelled : .failed) }
+        #endif
         let response = try await request(endpoint: "ItemList.aspx", parameters: params)
+        #if DEBUG
+        responseSpan.finish(count: response.item.count)
+        let mappingSpan = BookSearchPerformance.Span(.domainMapping, source: .bestseller, id: responseSpan.id)
+        defer { mappingSpan.finish(count: response.item.count) }
+        #endif
         return response.item.map { $0.toDomain() }
     }
 
@@ -54,7 +63,16 @@ final class AladinAPIService: AladinAPIServiceProtocol {
             "output":       "js",
             "Version":      "20131101"
         ]
+        #if DEBUG
+        let responseSpan = BookSearchPerformance.Span(.responseDecoded, source: .newSpecial)
+        defer { responseSpan.finish(Task.isCancelled ? .cancelled : .failed) }
+        #endif
         let response = try await request(endpoint: "ItemList.aspx", parameters: params)
+        #if DEBUG
+        responseSpan.finish(count: response.item.count)
+        let mappingSpan = BookSearchPerformance.Span(.domainMapping, source: .newSpecial, id: responseSpan.id)
+        defer { mappingSpan.finish(count: response.item.count) }
+        #endif
         return response.item.map { $0.toDomain() }
     }
 
@@ -69,7 +87,16 @@ final class AladinAPIService: AladinAPIServiceProtocol {
             "output":       "js",
             "Version":      "20131101"
         ]
+        #if DEBUG
+        let responseSpan = BookSearchPerformance.Span(.responseDecoded, source: .search)
+        defer { responseSpan.finish(Task.isCancelled ? .cancelled : .failed) }
+        #endif
         let response = try await request(endpoint: "ItemSearch.aspx", parameters: params)
+        #if DEBUG
+        responseSpan.finish(count: response.item.count)
+        let mappingSpan = BookSearchPerformance.Span(.domainMapping, source: .search, id: responseSpan.id)
+        defer { mappingSpan.finish(count: response.item.count) }
+        #endif
         return (books: response.item.map { $0.toDomain() }, totalResults: response.totalResults)
     }
 

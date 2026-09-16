@@ -22,6 +22,11 @@ final class BookSearchViewController: UIViewController {
     private let registerBookRelay  = PublishRelay<Book>()
     private let listSelectionRelay = PublishRelay<BookSearchViewModel.BookListType>()
 
+    #if DEBUG
+    private var firstCellDisplaySpan: BookSearchPerformance.Span?
+    private var performanceBatchID: UUID?
+    #endif
+
     // MARK: - UI Components
 
     private let handleBar: UIView = {
@@ -145,6 +150,14 @@ final class BookSearchViewController: UIViewController {
         bindViewModel()
     }
 
+    #if DEBUG
+    override func viewDidDisappear(_ animated: Bool) {
+        super.viewDidDisappear(animated)
+        firstCellDisplaySpan?.finish(.notDisplayed)
+        firstCellDisplaySpan = nil
+    }
+    #endif
+
     // MARK: - Setup
 
     private func setupUI() {
@@ -257,8 +270,36 @@ final class BookSearchViewController: UIViewController {
 
         let output = viewModel.transform(input: input)
 
-        output.books
+        let displayedBooks: Driver<[Book]>
+        #if DEBUG
+        // reloadData 이전에 시작하고 첫 willDisplay에서 종료한다.
+        // 실제 화면 합성 완료 시간이 아닌 표시 직전까지의 시간이다.
+        tableView.rx.willDisplayCell
+            .subscribe(onNext: { [weak self] _, _ in
+                guard let self else { return }
+                self.firstCellDisplaySpan?.finish(count: self.tableView.numberOfRows(inSection: 0))
+                self.firstCellDisplaySpan = nil
+            })
+            .disposed(by: disposeBag)
+
+        displayedBooks = output.books.do(onNext: { [weak self] books in
+            guard let self else { return }
+            self.firstCellDisplaySpan?.finish(.superseded)
+            let batchID = UUID()
+            self.performanceBatchID = batchID
+            self.firstCellDisplaySpan = books.isEmpty ? nil : BookSearchPerformance.Span(
+                .firstCellWillDisplay, source: .table, id: batchID
+            )
+        })
+        #else
+        displayedBooks = output.books
+        #endif
+
+        displayedBooks
             .drive(tableView.rx.items(cellIdentifier: BookRowCell.reuseID, cellType: BookRowCell.self)) { [weak self] _, book, cell in
+                #if DEBUG
+                cell.performanceBatchID = self?.performanceBatchID
+                #endif
                 cell.configure(book: book)
                 cell.onRegister = { [weak self] registeredBook in
                     self?.registerBookRelay.accept(registeredBook)
@@ -459,6 +500,10 @@ private final class BookRowCell: UITableViewCell {
         return btn
     }()
 
+    #if DEBUG
+    var performanceBatchID: UUID?
+    #endif
+
     var onRegister: ((Book) -> Void)?
     private var currentBook: Book?
     private let disposeBag = DisposeBag()
@@ -540,7 +585,33 @@ private final class BookRowCell: UITableViewCell {
         rankLabel.text   = book.bestRank.map { "\($0)" }
         titleLabel.text  = book.title
         authorLabel.text = book.author
+        #if DEBUG
+        let coverSpan = BookSearchPerformance.Span(.coverLoaded, source: .table, id: performanceBatchID ?? UUID())
+        thumbnailImageView.kf.setImage(with: book.coverURL) { result in
+            switch result {
+            case .success(let value):
+                let cache: BookSearchPerformance.Cache
+                switch value.cacheType {
+                case .none: cache = .none
+                case .memory: cache = .memory
+                case .disk: cache = .disk
+                }
+                coverSpan.finish(cache: cache)
+            case .failure(let error):
+                if book.coverURL == nil {
+                    coverSpan.finish(.noURL)
+                } else if error.isTaskCancelled {
+                    coverSpan.finish(.cancelled)
+                } else if error.isNotCurrentTask {
+                    coverSpan.finish(.superseded)
+                } else {
+                    coverSpan.finish(.failed)
+                }
+            }
+        }
+        #else
         thumbnailImageView.kf.setImage(with: book.coverURL)
+        #endif
 
         let showRank = book.bestRank != nil
         guard showRank != rankVisible else { return }
