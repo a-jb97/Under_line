@@ -7,6 +7,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		0D87311C557F8D907DC3FEE2 /* BookCoverPrefetcherTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 65FBD37B0BE6FA4C8B01669E /* BookCoverPrefetcherTests.swift */; };
 		103804231276CB2FFC03ECF7 /* BookRepositoryTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C3A971A1D87B790412F10A06 /* BookRepositoryTests.swift */; };
 		9E562CC22F71119200B65177 /* SnapKit in Frameworks */ = {isa = PBXBuildFile; productRef = 9E562CC12F71119200B65177 /* SnapKit */; };
 		9E562CC52F71120100B65177 /* Kingfisher in Frameworks */ = {isa = PBXBuildFile; productRef = 9E562CC42F71120100B65177 /* Kingfisher */; };
@@ -59,6 +60,7 @@
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
+		65FBD37B0BE6FA4C8B01669E /* BookCoverPrefetcherTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = BookCoverPrefetcherTests.swift; sourceTree = "<group>"; };
 		9E562C092F710D0500B65177 /* Under_line.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Under_line.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		9E562CD92F71299500B65177 /* 고양일산 L.TTF */ = {isa = PBXFileReference; lastKnownFileType = file; path = "고양일산 L.TTF"; sourceTree = "<group>"; };
 		9E562CDA2F71299500B65177 /* 고양일산 R.TTF */ = {isa = PBXFileReference; lastKnownFileType = file; path = "고양일산 R.TTF"; sourceTree = "<group>"; };
@@ -162,6 +164,7 @@
 			isa = PBXGroup;
 			children = (
 				C3A971A1D87B790412F10A06 /* BookRepositoryTests.swift */,
+				65FBD37B0BE6FA4C8B01669E /* BookCoverPrefetcherTests.swift */,
 			);
 			name = Under_lineTests;
 			path = Under_lineTests;
@@ -373,6 +376,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				103804231276CB2FFC03ECF7 /* BookRepositoryTests.swift in Sources */,
+				0D87311C557F8D907DC3FEE2 /* BookCoverPrefetcherTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

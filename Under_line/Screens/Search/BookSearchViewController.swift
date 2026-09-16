@@ -22,6 +22,12 @@ final class BookSearchViewController: UIViewController {
     private let registerBookRelay  = PublishRelay<Book>()
     private let listSelectionRelay = PublishRelay<BookSearchViewModel.BookListType>()
 
+    private let coverPrefetcher = BookCoverPrefetcher()
+    private var booksForPrefetch: [Book] = []
+    private var isScreenVisible = false
+    private var isLoadingBooks = false
+    private var prefetchUpdateScheduled = false
+
     #if DEBUG
     private var firstCellDisplaySpan: BookSearchPerformance.Span?
     private var performanceBatchID: UUID?
@@ -148,6 +154,23 @@ final class BookSearchViewController: UIViewController {
         setupUI()
         setupConstraints()
         bindViewModel()
+    }
+
+    override func viewDidAppear(_ animated: Bool) {
+        super.viewDidAppear(animated)
+        isScreenVisible = true
+        scheduleCoverPrefetch()
+    }
+
+    override func viewWillDisappear(_ animated: Bool) {
+        super.viewWillDisappear(animated)
+        isScreenVisible = false
+        coverPrefetcher.stop()
+    }
+
+    override func viewDidLayoutSubviews() {
+        super.viewDidLayoutSubviews()
+        scheduleCoverPrefetch()
     }
 
     #if DEBUG
@@ -296,11 +319,17 @@ final class BookSearchViewController: UIViewController {
         #endif
 
         displayedBooks
+            .do(onNext: { [weak self] books in
+                guard let self else { return }
+                self.coverPrefetcher.stop()
+                self.booksForPrefetch = books
+                self.scheduleCoverPrefetch()
+            })
             .drive(tableView.rx.items(cellIdentifier: BookRowCell.reuseID, cellType: BookRowCell.self)) { [weak self] _, book, cell in
                 #if DEBUG
                 cell.performanceBatchID = self?.performanceBatchID
                 #endif
-                cell.configure(book: book)
+                cell.configure(book: book, displayScale: self?.view.traitCollection.displayScale ?? 1)
                 cell.onRegister = { [weak self] registeredBook in
                     self?.registerBookRelay.accept(registeredBook)
                 }
@@ -308,6 +337,15 @@ final class BookSearchViewController: UIViewController {
             .disposed(by: disposeBag)
 
         output.isLoading
+            .do(onNext: { [weak self] loading in
+                guard let self else { return }
+                self.isLoadingBooks = loading
+                if loading {
+                    self.coverPrefetcher.stop()
+                } else {
+                    self.scheduleCoverPrefetch()
+                }
+            })
             .drive(activityIndicator.rx.isAnimating)
             .disposed(by: disposeBag)
 
@@ -347,6 +385,12 @@ final class BookSearchViewController: UIViewController {
             })
             .disposed(by: disposeBag)
 
+        tableView.rx.willDisplayCell
+            .subscribe(onNext: { [weak self] _, _ in
+                self?.scheduleCoverPrefetch()
+            })
+            .disposed(by: disposeBag)
+
         // 마지막 셀이 표시될 때 다음 페이지 요청
         tableView.rx.willDisplayCell
             .filter { [weak self] _, indexPath in
@@ -379,6 +423,7 @@ final class BookSearchViewController: UIViewController {
         tableView.rx.didScroll
             .subscribe(onNext: { [weak self] in
                 self?.view.endEditing(false)
+                self?.scheduleCoverPrefetch()
             })
             .disposed(by: disposeBag)
 
@@ -394,6 +439,27 @@ final class BookSearchViewController: UIViewController {
                 self?.present(vc, animated: true)
             })
             .disposed(by: disposeBag)
+    }
+
+    // MARK: - Cover Prefetch
+
+    private func scheduleCoverPrefetch() {
+        guard isScreenVisible, !isLoadingBooks, !prefetchUpdateScheduled else { return }
+        prefetchUpdateScheduled = true
+        // 같은 레이아웃에서 발생한 여러 willDisplay/scroll 이벤트를 한 번으로 합친다.
+        DispatchQueue.main.async { [weak self] in
+            guard let self else { return }
+            self.prefetchUpdateScheduled = false
+            guard self.isScreenVisible, !self.isLoadingBooks else { return }
+            guard let lastVisibleRow = self.tableView.indexPathsForVisibleRows?.map(\.row).max() else {
+                self.coverPrefetcher.stop()
+                return
+            }
+            self.coverPrefetcher.update(
+                books: self.booksForPrefetch, after: lastVisibleRow,
+                displayScale: self.view.traitCollection.displayScale
+            )
+        }
     }
 
     // MARK: - List Segment
@@ -508,8 +574,10 @@ private final class BookRowCell: UITableViewCell {
     private var currentBook: Book?
     private let disposeBag = DisposeBag()
 
-    /// nil = 아직 미설정 (첫 configure 시 반드시 레이아웃 업데이트)
-    private var rankVisible: Bool?
+    private var rankVisible = true
+    private var rankedLeading: Constraint?
+    private var unrankedLeading: Constraint?
+    private var lastShadowBounds: CGRect = .null
 
     // MARK: - Init
 
@@ -525,6 +593,31 @@ private final class BookRowCell: UITableViewCell {
     }
 
     required init?(coder: NSCoder) { fatalError() }
+
+    override func prepareForReuse() {
+        super.prepareForReuse()
+        thumbnailImageView.kf.cancelDownloadTask()
+        // 취소할 DownloadTask가 없는 디스크 캐시 조회도 이전 요청으로 처리되도록 초기화한다.
+        thumbnailImageView.kf.setImage(with: Optional<URL>.none)
+        currentBook = nil
+        onRegister = nil
+        rankLabel.text = nil
+        titleLabel.text = nil
+        authorLabel.text = nil
+        #if DEBUG
+        performanceBatchID = nil
+        #endif
+    }
+
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        let bounds = cardView.bounds
+        guard bounds != lastShadowBounds else { return }
+        lastShadowBounds = bounds
+        cardView.layer.shadowPath = UIBezierPath(
+            roundedRect: bounds, cornerRadius: cardView.layer.cornerRadius
+        ).cgPath
+    }
 
     // MARK: - Setup
 
@@ -557,12 +650,13 @@ private final class BookRowCell: UITableViewCell {
             make.width.equalTo(20)
         }
 
-        // thumbnailImageView 초기 constraints — rank 표시 모드 (configure에서 remakeConstraints)
+        thumbnailImageView.snp.prepareConstraints { make in
+            unrankedLeading = make.leading.equalToSuperview().offset(16).constraint
+        }
         thumbnailImageView.snp.makeConstraints { make in
-            make.leading.equalTo(rankLabel.snp.trailing).offset(14)
+            rankedLeading = make.leading.equalTo(rankLabel.snp.trailing).offset(14).constraint
             make.centerY.equalToSuperview()
-            make.width.equalTo(48)
-            make.height.equalTo(64)
+            make.size.equalTo(BookCoverImageOptions.size)
         }
 
         textStack.snp.makeConstraints { make in
@@ -580,14 +674,16 @@ private final class BookRowCell: UITableViewCell {
 
     // MARK: - Configure
 
-    func configure(book: Book) {
+    func configure(book: Book, displayScale: CGFloat) {
+        thumbnailImageView.kf.cancelDownloadTask()
+        let imageOptions = BookCoverImageOptions.make(displayScale: displayScale)
         currentBook      = book
         rankLabel.text   = book.bestRank.map { "\($0)" }
         titleLabel.text  = book.title
         authorLabel.text = book.author
         #if DEBUG
         let coverSpan = BookSearchPerformance.Span(.coverLoaded, source: .table, id: performanceBatchID ?? UUID())
-        thumbnailImageView.kf.setImage(with: book.coverURL) { result in
+        thumbnailImageView.kf.setImage(with: book.coverURL, options: imageOptions) { result in
             switch result {
             case .success(let value):
                 let cache: BookSearchPerformance.Cache
@@ -610,7 +706,7 @@ private final class BookRowCell: UITableViewCell {
             }
         }
         #else
-        thumbnailImageView.kf.setImage(with: book.coverURL)
+        thumbnailImageView.kf.setImage(with: book.coverURL, options: imageOptions)
         #endif
 
         let showRank = book.bestRank != nil
@@ -621,15 +717,12 @@ private final class BookRowCell: UITableViewCell {
     }
 
     private func updateThumbnailLeading(showRank: Bool) {
-        thumbnailImageView.snp.remakeConstraints { make in
-            if showRank {
-                make.leading.equalTo(rankLabel.snp.trailing).offset(14)
-            } else {
-                make.leading.equalToSuperview().offset(16)
-            }
-            make.centerY.equalToSuperview()
-            make.width.equalTo(48)
-            make.height.equalTo(64)
+        if showRank {
+            unrankedLeading?.deactivate()
+            rankedLeading?.activate()
+        } else {
+            rankedLeading?.deactivate()
+            unrankedLeading?.activate()
         }
     }
 }
