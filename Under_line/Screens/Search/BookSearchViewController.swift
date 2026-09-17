@@ -226,7 +226,7 @@ final class BookSearchViewController: UIViewController {
         listSegmentContainerView.addSubview(newSpecialButton)
         container.addSubview(listSegmentContainerView)
         listSegmentContainerView.snp.makeConstraints { make in
-            make.leading.equalToSuperview()
+            make.leading.equalToSuperview().offset(8)
             make.top.equalToSuperview().offset(10)
             make.bottom.equalToSuperview().inset(6)
             make.height.equalTo(34)
@@ -284,7 +284,10 @@ final class BookSearchViewController: UIViewController {
 
         tableView.snp.makeConstraints { make in
             make.top.equalTo(searchBarView.snp.bottom)
-            make.leading.trailing.equalToSuperview().inset(24)
+            // 카드의 실제 좌우 여백은 24pt로 유지하면서 그림자 공간 8pt를
+            // 테이블 내부에 둔다. 행 높이 변경 중 UIKit이 셀 경계를 클리핑해도
+            // 그림자가 잘리지 않는다.
+            make.leading.trailing.equalToSuperview().inset(16)
             make.bottom.equalTo(view.safeAreaLayoutGuide)
         }
 
@@ -463,18 +466,20 @@ final class BookSearchViewController: UIViewController {
     private func toggleBookDescription(at indexPath: IndexPath) {
         tableView.deselectRow(at: indexPath, animated: false)
 
+        guard indexPath.row < bookDataSource.books.count,
+              let selectedCell = tableView.cellForRow(at: indexPath) as? BookRowCell else { return }
+
         let previousRow = expandedRow
         expandedRow = previousRow == indexPath.row ? nil : indexPath.row
 
-        let affectedRows = Set([previousRow, expandedRow].compactMap { $0 })
-            .filter { $0 < bookDataSource.books.count }
-            .sorted()
-            .map { IndexPath(row: $0, section: 0) }
-
-        guard !affectedRows.isEmpty else { return }
-        tableView.performBatchUpdates {
-            tableView.reloadRows(at: affectedRows, with: .none)
+        // reloadRows는 높이 애니메이션 중 셀을 교체하므로 그림자가 임시 행 경계에
+        // 잘려 보인다. 기존 셀의 콘텐츠만 바꾸고 테이블에는 높이 재계산만 요청한다.
+        if let previousRow, previousRow != indexPath.row {
+            let previousIndexPath = IndexPath(row: previousRow, section: indexPath.section)
+            (tableView.cellForRow(at: previousIndexPath) as? BookRowCell)?.setExpanded(false)
         }
+        selectedCell.setExpanded(expandedRow == indexPath.row)
+        tableView.performBatchUpdates(nil)
     }
 
     // MARK: - Pagination
@@ -713,7 +718,7 @@ private final class BookRowCell: UITableViewCell {
         cardView.snp.makeConstraints { make in
             make.top.equalToSuperview().offset(6)
             make.bottom.equalToSuperview().inset(6)
-            make.leading.trailing.equalToSuperview()
+            make.leading.trailing.equalToSuperview().inset(8)
             make.height.greaterThanOrEqualTo(80)
         }
 
@@ -781,7 +786,7 @@ private final class BookRowCell: UITableViewCell {
                 .paragraphStyle: paragraphStyle,
             ]
         )
-        descriptionContainer.isHidden = !isExpanded
+        setExpanded(isExpanded)
         #if DEBUG
         let coverSpan = BookSearchPerformance.Span(.coverLoaded, source: .table, id: performanceBatchID ?? UUID())
         thumbnailImageView.kf.setImage(with: book.coverURL, options: imageOptions) { result in
@@ -815,6 +820,11 @@ private final class BookRowCell: UITableViewCell {
         rankVisible        = showRank
         rankLabel.isHidden = !showRank
         updateThumbnailLeading(showRank: showRank)
+    }
+
+    func setExpanded(_ isExpanded: Bool) {
+        guard descriptionContainer.isHidden == isExpanded else { return }
+        descriptionContainer.isHidden = !isExpanded
     }
 
     private func updateThumbnailLeading(showRank: Bool) {
