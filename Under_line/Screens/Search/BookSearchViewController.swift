@@ -23,14 +23,26 @@ final class BookSearchViewController: UIViewController {
     private let listSelectionRelay = PublishRelay<BookSearchViewModel.BookListType>()
 
     private let coverPrefetcher = BookCoverPrefetcher()
-    private var booksForPrefetch: [Book] = []
     private var isScreenVisible = false
     private var isLoadingBooks = false
     private var prefetchUpdateScheduled = false
+    private var paginationUpdateScheduled = false
+    private var paginationGate = BookSearchPaginationGate()
+    private var isLoadingNextPage = false
+    private lazy var bookDataSource = BookSearchTableDataSource { [weak self] tableView, indexPath, book in
+        let cell = tableView.dequeueReusableCell(withIdentifier: BookRowCell.reuseID, for: indexPath) as! BookRowCell
+        #if DEBUG
+        cell.performanceBatchID = self?.performanceBatchID
+        #endif
+        cell.configure(book: book, displayScale: self?.view.traitCollection.displayScale ?? 1)
+        cell.onRegister = { [weak self] in self?.registerBookRelay.accept($0) }
+        return cell
+    }
 
     #if DEBUG
     private var firstCellDisplaySpan: BookSearchPerformance.Span?
     private var performanceBatchID: UUID?
+    private var firstMeasuredRow = 0
     #endif
 
     // MARK: - UI Components
@@ -160,6 +172,7 @@ final class BookSearchViewController: UIViewController {
         super.viewDidAppear(animated)
         isScreenVisible = true
         scheduleCoverPrefetch()
+        scheduleNextPageIfNeeded()
     }
 
     override func viewWillDisappear(_ animated: Bool) {
@@ -171,6 +184,7 @@ final class BookSearchViewController: UIViewController {
     override func viewDidLayoutSubviews() {
         super.viewDidLayoutSubviews()
         scheduleCoverPrefetch()
+        scheduleNextPageIfNeeded()
     }
 
     #if DEBUG
@@ -293,47 +307,41 @@ final class BookSearchViewController: UIViewController {
 
         let output = viewModel.transform(input: input)
 
-        let displayedBooks: Driver<[Book]>
+        tableView.rx.setDataSource(bookDataSource)
+            .disposed(by: disposeBag)
+
         #if DEBUG
-        // reloadData 이전에 시작하고 첫 willDisplay에서 종료한다.
-        // 실제 화면 합성 완료 시간이 아닌 표시 직전까지의 시간이다.
         tableView.rx.willDisplayCell
-            .subscribe(onNext: { [weak self] _, _ in
-                guard let self else { return }
-                self.firstCellDisplaySpan?.finish(count: self.tableView.numberOfRows(inSection: 0))
+            .subscribe(onNext: { [weak self] _, indexPath in
+                guard let self, indexPath.row >= self.firstMeasuredRow else { return }
+                self.firstCellDisplaySpan?.finish(count: self.bookDataSource.books.count)
                 self.firstCellDisplaySpan = nil
             })
             .disposed(by: disposeBag)
-
-        displayedBooks = output.books.do(onNext: { [weak self] books in
-            guard let self else { return }
-            self.firstCellDisplaySpan?.finish(.superseded)
-            let batchID = UUID()
-            self.performanceBatchID = batchID
-            self.firstCellDisplaySpan = books.isEmpty ? nil : BookSearchPerformance.Span(
-                .firstCellWillDisplay, source: .table, id: batchID
-            )
-        })
-        #else
-        displayedBooks = output.books
         #endif
 
-        displayedBooks
-            .do(onNext: { [weak self] books in
+        output.listUpdates
+            .drive(onNext: { [weak self] update in
                 guard let self else { return }
-                self.coverPrefetcher.stop()
-                self.booksForPrefetch = books
-                self.scheduleCoverPrefetch()
-            })
-            .drive(tableView.rx.items(cellIdentifier: BookRowCell.reuseID, cellType: BookRowCell.self)) { [weak self] _, book, cell in
                 #if DEBUG
-                cell.performanceBatchID = self?.performanceBatchID
-                #endif
-                cell.configure(book: book, displayScale: self?.view.traitCollection.displayScale ?? 1)
-                cell.onRegister = { [weak self] registeredBook in
-                    self?.registerBookRelay.accept(registeredBook)
+                self.firstCellDisplaySpan?.finish(.superseded)
+                let batchID = UUID()
+                self.performanceBatchID = batchID
+                switch update.change {
+                case .replace: self.firstMeasuredRow = 0
+                case .append(let start):
+                    self.firstMeasuredRow = start == self.bookDataSource.books.count && start < update.books.count ? start : 0
                 }
-            }
+                self.firstCellDisplaySpan = update.books.isEmpty ? nil : BookSearchPerformance.Span(
+                    .firstCellWillDisplay, source: .table, id: batchID
+                )
+                #endif
+                if case .replace = update.change { self.coverPrefetcher.stop() }
+                self.paginationGate.listDidUpdate()
+                self.bookDataSource.apply(update, to: self.tableView)
+                self.scheduleCoverPrefetch()
+                self.scheduleNextPageIfNeeded()
+            })
             .disposed(by: disposeBag)
 
         output.isLoading
@@ -344,6 +352,7 @@ final class BookSearchViewController: UIViewController {
                     self.coverPrefetcher.stop()
                 } else {
                     self.scheduleCoverPrefetch()
+                    self.scheduleNextPageIfNeeded()
                 }
             })
             .drive(activityIndicator.rx.isAnimating)
@@ -352,7 +361,9 @@ final class BookSearchViewController: UIViewController {
         output.isLoadingMore
             .drive(onNext: { [weak self] loading in
                 guard let self else { return }
+                self.isLoadingNextPage = loading
                 self.tableView.tableFooterView = loading ? self.loadMoreIndicator : UIView()
+                if !loading { self.scheduleNextPageIfNeeded() }
             })
             .disposed(by: disposeBag)
 
@@ -388,17 +399,8 @@ final class BookSearchViewController: UIViewController {
         tableView.rx.willDisplayCell
             .subscribe(onNext: { [weak self] _, _ in
                 self?.scheduleCoverPrefetch()
+                self?.scheduleNextPageIfNeeded()
             })
-            .disposed(by: disposeBag)
-
-        // 마지막 셀이 표시될 때 다음 페이지 요청
-        tableView.rx.willDisplayCell
-            .filter { [weak self] _, indexPath in
-                guard let self else { return false }
-                return indexPath.row == self.tableView.numberOfRows(inSection: 0) - 1
-            }
-            .map { _ in }
-            .bind(to: loadNextPageRelay)
             .disposed(by: disposeBag)
 
         // 검색 버튼 탭 시 헤더 영구 숨김 (dismiss 전까지 복원 안 함)
@@ -424,6 +426,7 @@ final class BookSearchViewController: UIViewController {
             .subscribe(onNext: { [weak self] in
                 self?.view.endEditing(false)
                 self?.scheduleCoverPrefetch()
+                self?.scheduleNextPageIfNeeded()
             })
             .disposed(by: disposeBag)
 
@@ -441,6 +444,24 @@ final class BookSearchViewController: UIViewController {
             .disposed(by: disposeBag)
     }
 
+    // MARK: - Pagination
+
+    private func scheduleNextPageIfNeeded() {
+        guard isScreenVisible, !paginationUpdateScheduled else { return }
+        paginationUpdateScheduled = true
+        DispatchQueue.main.async { [weak self] in
+            guard let self else { return }
+            self.paginationUpdateScheduled = false
+            guard self.isScreenVisible else { return }
+            let shouldRequest = self.paginationGate.shouldRequest(
+                lastVisibleRow: self.tableView.indexPathsForVisibleRows?.map(\.row).max(),
+                rowCount: self.bookDataSource.books.count,
+                isLoading: self.isLoadingBooks || self.isLoadingNextPage
+            )
+            if shouldRequest { self.loadNextPageRelay.accept(()) }
+        }
+    }
+
     // MARK: - Cover Prefetch
 
     private func scheduleCoverPrefetch() {
@@ -456,7 +477,7 @@ final class BookSearchViewController: UIViewController {
                 return
             }
             self.coverPrefetcher.update(
-                books: self.booksForPrefetch, after: lastVisibleRow,
+                books: self.bookDataSource.books, after: lastVisibleRow,
                 displayScale: self.view.traitCollection.displayScale
             )
         }
