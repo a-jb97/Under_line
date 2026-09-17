@@ -7,6 +7,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		A1B2C3D4E5F6012345678901 /* HTMLTextDecoderTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F6012345678902 /* HTMLTextDecoderTests.swift */; };
 		0D87311C557F8D907DC3FEE2 /* BookCoverPrefetcherTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 65FBD37B0BE6FA4C8B01669E /* BookCoverPrefetcherTests.swift */; };
 		103804231276CB2FFC03ECF7 /* BookRepositoryTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C3A971A1D87B790412F10A06 /* BookRepositoryTests.swift */; };
 		47A704EB8014364B169AAF78 /* BookSearchTableDataSourceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 37BCEDA5B15210C106A15036 /* BookSearchTableDataSourceTests.swift */; };
@@ -62,6 +63,7 @@
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
+		A1B2C3D4E5F6012345678902 /* HTMLTextDecoderTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = HTMLTextDecoderTests.swift; sourceTree = "<group>"; };
 		37BCEDA5B15210C106A15036 /* BookSearchTableDataSourceTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = BookSearchTableDataSourceTests.swift; sourceTree = "<group>"; };
 		65FBD37B0BE6FA4C8B01669E /* BookCoverPrefetcherTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = BookCoverPrefetcherTests.swift; sourceTree = "<group>"; };
 		87D5AC7E6A308B1AF12A36D6 /* BookSearchViewModelTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = BookSearchViewModelTests.swift; sourceTree = "<group>"; };
@@ -167,6 +169,7 @@
 		465328A1622EA2F6BE211606 /* Under_lineTests */ = {
 			isa = PBXGroup;
 			children = (
+				A1B2C3D4E5F6012345678902 /* HTMLTextDecoderTests.swift */,
 				C3A971A1D87B790412F10A06 /* BookRepositoryTests.swift */,
 				65FBD37B0BE6FA4C8B01669E /* BookCoverPrefetcherTests.swift */,
 				87D5AC7E6A308B1AF12A36D6 /* BookSearchViewModelTests.swift */,
@@ -381,6 +384,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				A1B2C3D4E5F6012345678901 /* HTMLTextDecoderTests.swift in Sources */,
 				103804231276CB2FFC03ECF7 /* BookRepositoryTests.swift in Sources */,
 				0D87311C557F8D907DC3FEE2 /* BookCoverPrefetcherTests.swift in Sources */,
 				E4A4A9C1125B8B5455DBC82E /* BookSearchViewModelTests.swift in Sources */,
