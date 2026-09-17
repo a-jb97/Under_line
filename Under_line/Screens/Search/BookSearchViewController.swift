@@ -29,12 +29,17 @@ final class BookSearchViewController: UIViewController {
     private var paginationUpdateScheduled = false
     private var paginationGate = BookSearchPaginationGate()
     private var isLoadingNextPage = false
+    private var expandedRow: Int?
     private lazy var bookDataSource = BookSearchTableDataSource { [weak self] tableView, indexPath, book in
         let cell = tableView.dequeueReusableCell(withIdentifier: BookRowCell.reuseID, for: indexPath) as! BookRowCell
         #if DEBUG
         cell.performanceBatchID = self?.performanceBatchID
         #endif
-        cell.configure(book: book, displayScale: self?.view.traitCollection.displayScale ?? 1)
+        cell.configure(
+            book: book,
+            displayScale: self?.view.traitCollection.displayScale ?? 1,
+            isExpanded: self?.expandedRow == indexPath.row
+        )
         cell.onRegister = { [weak self] in self?.registerBookRelay.accept($0) }
         return cell
     }
@@ -336,7 +341,10 @@ final class BookSearchViewController: UIViewController {
                     .firstCellWillDisplay, source: .table, id: batchID
                 )
                 #endif
-                if case .replace = update.change { self.coverPrefetcher.stop() }
+                if case .replace = update.change {
+                    self.expandedRow = nil
+                    self.coverPrefetcher.stop()
+                }
                 self.paginationGate.listDidUpdate()
                 self.bookDataSource.apply(update, to: self.tableView)
                 self.scheduleCoverPrefetch()
@@ -403,6 +411,12 @@ final class BookSearchViewController: UIViewController {
             })
             .disposed(by: disposeBag)
 
+        tableView.rx.itemSelected
+            .subscribe(onNext: { [weak self] indexPath in
+                self?.toggleBookDescription(at: indexPath)
+            })
+            .disposed(by: disposeBag)
+
         // 검색 버튼 탭 시 헤더 영구 숨김 (dismiss 전까지 복원 안 함)
         searchTextField.rx.controlEvent(.editingDidEndOnExit)
             .take(1)
@@ -442,6 +456,25 @@ final class BookSearchViewController: UIViewController {
                 self?.present(vc, animated: true)
             })
             .disposed(by: disposeBag)
+    }
+
+    // MARK: - Book Description
+
+    private func toggleBookDescription(at indexPath: IndexPath) {
+        tableView.deselectRow(at: indexPath, animated: false)
+
+        let previousRow = expandedRow
+        expandedRow = previousRow == indexPath.row ? nil : indexPath.row
+
+        let affectedRows = Set([previousRow, expandedRow].compactMap { $0 })
+            .filter { $0 < bookDataSource.books.count }
+            .sorted()
+            .map { IndexPath(row: $0, section: 0) }
+
+        guard !affectedRows.isEmpty else { return }
+        tableView.performBatchUpdates {
+            tableView.reloadRows(at: affectedRows, with: .none)
+        }
     }
 
     // MARK: - Pagination
@@ -587,6 +620,18 @@ private final class BookRowCell: UITableViewCell {
         return btn
     }()
 
+    private let summaryView = UIView()
+
+    private let descriptionContainer = UIView()
+
+    private let descriptionLabel: UILabel = {
+        let l = UILabel()
+        l.font = UIFont(name: "GoyangIlsan R", size: 12) ?? .systemFont(ofSize: 12)
+        l.textColor = UIColor.appPrimary.withAlphaComponent(0.75)
+        l.numberOfLines = 0
+        return l
+    }()
+
     #if DEBUG
     var performanceBatchID: UUID?
     #endif
@@ -625,6 +670,8 @@ private final class BookRowCell: UITableViewCell {
         rankLabel.text = nil
         titleLabel.text = nil
         authorLabel.text = nil
+        descriptionLabel.attributedText = nil
+        descriptionContainer.isHidden = true
         #if DEBUG
         performanceBatchID = nil
         #endif
@@ -650,18 +697,31 @@ private final class BookRowCell: UITableViewCell {
 
         contentView.addSubview(cardView)
 
+        let contentStack = UIStackView(arrangedSubviews: [summaryView, descriptionContainer])
+        contentStack.axis = .vertical
+        cardView.addSubview(contentStack)
+
         let textStack = UIStackView(arrangedSubviews: [titleLabel, authorLabel])
         textStack.axis    = .vertical
         textStack.spacing = 3
 
         [rankLabel, thumbnailImageView, textStack, registerButton].forEach {
-            cardView.addSubview($0)
+            summaryView.addSubview($0)
         }
+        descriptionContainer.addSubview(descriptionLabel)
 
         cardView.snp.makeConstraints { make in
             make.top.equalToSuperview().offset(6)
             make.bottom.equalToSuperview().inset(6)
             make.leading.trailing.equalToSuperview()
+            make.height.greaterThanOrEqualTo(80)
+        }
+
+        contentStack.snp.makeConstraints { make in
+            make.edges.equalToSuperview()
+        }
+
+        summaryView.snp.makeConstraints { make in
             make.height.greaterThanOrEqualTo(80)
         }
 
@@ -691,17 +751,37 @@ private final class BookRowCell: UITableViewCell {
             make.centerY.equalToSuperview()
         }
 
+        descriptionLabel.snp.makeConstraints { make in
+            make.top.equalToSuperview().offset(4)
+            make.leading.trailing.equalToSuperview().inset(16)
+            make.bottom.equalToSuperview().inset(16)
+        }
+
+        descriptionContainer.isHidden = true
     }
 
     // MARK: - Configure
 
-    func configure(book: Book, displayScale: CGFloat) {
+    func configure(book: Book, displayScale: CGFloat, isExpanded: Bool) {
         thumbnailImageView.kf.cancelDownloadTask()
         let imageOptions = BookCoverImageOptions.make(displayScale: displayScale)
         currentBook      = book
         rankLabel.text   = book.bestRank.map { "\($0)" }
         titleLabel.text  = book.title
         authorLabel.text = book.author
+
+        let description = book.description.trimmingCharacters(in: .whitespacesAndNewlines)
+        let paragraphStyle = NSMutableParagraphStyle()
+        paragraphStyle.lineHeightMultiple = 1.5
+        descriptionLabel.attributedText = NSAttributedString(
+            string: description.isEmpty ? "책 소개가 없습니다" : description,
+            attributes: [
+                .font: descriptionLabel.font as Any,
+                .foregroundColor: descriptionLabel.textColor as Any,
+                .paragraphStyle: paragraphStyle,
+            ]
+        )
+        descriptionContainer.isHidden = !isExpanded
         #if DEBUG
         let coverSpan = BookSearchPerformance.Span(.coverLoaded, source: .table, id: performanceBatchID ?? UUID())
         thumbnailImageView.kf.setImage(with: book.coverURL, options: imageOptions) { result in
