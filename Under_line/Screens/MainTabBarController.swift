@@ -35,9 +35,9 @@ final class MainTabBarController: UITabBarController {
     private func setupTabs() {
         let booksVC = BookshelfViewController()
         booksVC.tabBarItem = UITabBarItem(
-            title: "도서",
-            image: UIImage(systemName: "house"),
-            selectedImage: UIImage(systemName: "house.fill")
+            title: "책장",
+            image: UIImage(systemName: "books.vertical"),
+            selectedImage: UIImage(systemName: "books.vertical.fill")
         )
         let booksNav = UINavigationController(rootViewController: booksVC)
         booksNav.setNavigationBarHidden(true, animated: false)
