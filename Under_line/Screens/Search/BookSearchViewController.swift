@@ -22,6 +22,34 @@ final class BookSearchViewController: UIViewController {
     private let registerBookRelay  = PublishRelay<Book>()
     private let listSelectionRelay = PublishRelay<BookSearchViewModel.BookListType>()
 
+    private let coverPrefetcher = BookCoverPrefetcher()
+    private var isScreenVisible = false
+    private var isLoadingBooks = false
+    private var prefetchUpdateScheduled = false
+    private var paginationUpdateScheduled = false
+    private var paginationGate = BookSearchPaginationGate()
+    private var isLoadingNextPage = false
+    private var expandedRow: Int?
+    private lazy var bookDataSource = BookSearchTableDataSource { [weak self] tableView, indexPath, book in
+        let cell = tableView.dequeueReusableCell(withIdentifier: BookRowCell.reuseID, for: indexPath) as! BookRowCell
+        #if DEBUG
+        cell.performanceBatchID = self?.performanceBatchID
+        #endif
+        cell.configure(
+            book: book,
+            displayScale: self?.view.traitCollection.displayScale ?? 1,
+            isExpanded: self?.expandedRow == indexPath.row
+        )
+        cell.onRegister = { [weak self] in self?.registerBookRelay.accept($0) }
+        return cell
+    }
+
+    #if DEBUG
+    private var firstCellDisplaySpan: BookSearchPerformance.Span?
+    private var performanceBatchID: UUID?
+    private var firstMeasuredRow = 0
+    #endif
+
     // MARK: - UI Components
 
     private let handleBar: UIView = {
@@ -145,6 +173,33 @@ final class BookSearchViewController: UIViewController {
         bindViewModel()
     }
 
+    override func viewDidAppear(_ animated: Bool) {
+        super.viewDidAppear(animated)
+        isScreenVisible = true
+        scheduleCoverPrefetch()
+        scheduleNextPageIfNeeded()
+    }
+
+    override func viewWillDisappear(_ animated: Bool) {
+        super.viewWillDisappear(animated)
+        isScreenVisible = false
+        coverPrefetcher.stop()
+    }
+
+    override func viewDidLayoutSubviews() {
+        super.viewDidLayoutSubviews()
+        scheduleCoverPrefetch()
+        scheduleNextPageIfNeeded()
+    }
+
+    #if DEBUG
+    override func viewDidDisappear(_ animated: Bool) {
+        super.viewDidDisappear(animated)
+        firstCellDisplaySpan?.finish(.notDisplayed)
+        firstCellDisplaySpan = nil
+    }
+    #endif
+
     // MARK: - Setup
 
     private func setupUI() {
@@ -171,7 +226,7 @@ final class BookSearchViewController: UIViewController {
         listSegmentContainerView.addSubview(newSpecialButton)
         container.addSubview(listSegmentContainerView)
         listSegmentContainerView.snp.makeConstraints { make in
-            make.leading.equalToSuperview()
+            make.leading.equalToSuperview().offset(8)
             make.top.equalToSuperview().offset(10)
             make.bottom.equalToSuperview().inset(6)
             make.height.equalTo(34)
@@ -229,7 +284,10 @@ final class BookSearchViewController: UIViewController {
 
         tableView.snp.makeConstraints { make in
             make.top.equalTo(searchBarView.snp.bottom)
-            make.leading.trailing.equalToSuperview().inset(24)
+            // 카드의 실제 좌우 여백은 24pt로 유지하면서 그림자 공간 8pt를
+            // 테이블 내부에 둔다. 행 높이 변경 중 UIKit이 셀 경계를 클리핑해도
+            // 그림자가 잘리지 않는다.
+            make.leading.trailing.equalToSuperview().inset(16)
             make.bottom.equalTo(view.safeAreaLayoutGuide)
         }
 
@@ -257,23 +315,66 @@ final class BookSearchViewController: UIViewController {
 
         let output = viewModel.transform(input: input)
 
-        output.books
-            .drive(tableView.rx.items(cellIdentifier: BookRowCell.reuseID, cellType: BookRowCell.self)) { [weak self] _, book, cell in
-                cell.configure(book: book)
-                cell.onRegister = { [weak self] registeredBook in
-                    self?.registerBookRelay.accept(registeredBook)
+        tableView.rx.setDataSource(bookDataSource)
+            .disposed(by: disposeBag)
+
+        #if DEBUG
+        tableView.rx.willDisplayCell
+            .subscribe(onNext: { [weak self] _, indexPath in
+                guard let self, indexPath.row >= self.firstMeasuredRow else { return }
+                self.firstCellDisplaySpan?.finish(count: self.bookDataSource.books.count)
+                self.firstCellDisplaySpan = nil
+            })
+            .disposed(by: disposeBag)
+        #endif
+
+        output.listUpdates
+            .drive(onNext: { [weak self] update in
+                guard let self else { return }
+                #if DEBUG
+                self.firstCellDisplaySpan?.finish(.superseded)
+                let batchID = UUID()
+                self.performanceBatchID = batchID
+                switch update.change {
+                case .replace: self.firstMeasuredRow = 0
+                case .append(let start):
+                    self.firstMeasuredRow = start == self.bookDataSource.books.count && start < update.books.count ? start : 0
                 }
-            }
+                self.firstCellDisplaySpan = update.books.isEmpty ? nil : BookSearchPerformance.Span(
+                    .firstCellWillDisplay, source: .table, id: batchID
+                )
+                #endif
+                if case .replace = update.change {
+                    self.expandedRow = nil
+                    self.coverPrefetcher.stop()
+                }
+                self.paginationGate.listDidUpdate()
+                self.bookDataSource.apply(update, to: self.tableView)
+                self.scheduleCoverPrefetch()
+                self.scheduleNextPageIfNeeded()
+            })
             .disposed(by: disposeBag)
 
         output.isLoading
+            .do(onNext: { [weak self] loading in
+                guard let self else { return }
+                self.isLoadingBooks = loading
+                if loading {
+                    self.coverPrefetcher.stop()
+                } else {
+                    self.scheduleCoverPrefetch()
+                    self.scheduleNextPageIfNeeded()
+                }
+            })
             .drive(activityIndicator.rx.isAnimating)
             .disposed(by: disposeBag)
 
         output.isLoadingMore
             .drive(onNext: { [weak self] loading in
                 guard let self else { return }
+                self.isLoadingNextPage = loading
                 self.tableView.tableFooterView = loading ? self.loadMoreIndicator : UIView()
+                if !loading { self.scheduleNextPageIfNeeded() }
             })
             .disposed(by: disposeBag)
 
@@ -306,14 +407,17 @@ final class BookSearchViewController: UIViewController {
             })
             .disposed(by: disposeBag)
 
-        // 마지막 셀이 표시될 때 다음 페이지 요청
         tableView.rx.willDisplayCell
-            .filter { [weak self] _, indexPath in
-                guard let self else { return false }
-                return indexPath.row == self.tableView.numberOfRows(inSection: 0) - 1
-            }
-            .map { _ in }
-            .bind(to: loadNextPageRelay)
+            .subscribe(onNext: { [weak self] _, _ in
+                self?.scheduleCoverPrefetch()
+                self?.scheduleNextPageIfNeeded()
+            })
+            .disposed(by: disposeBag)
+
+        tableView.rx.itemSelected
+            .subscribe(onNext: { [weak self] indexPath in
+                self?.toggleBookDescription(at: indexPath)
+            })
             .disposed(by: disposeBag)
 
         // 검색 버튼 탭 시 헤더 영구 숨김 (dismiss 전까지 복원 안 함)
@@ -338,6 +442,8 @@ final class BookSearchViewController: UIViewController {
         tableView.rx.didScroll
             .subscribe(onNext: { [weak self] in
                 self?.view.endEditing(false)
+                self?.scheduleCoverPrefetch()
+                self?.scheduleNextPageIfNeeded()
             })
             .disposed(by: disposeBag)
 
@@ -353,6 +459,66 @@ final class BookSearchViewController: UIViewController {
                 self?.present(vc, animated: true)
             })
             .disposed(by: disposeBag)
+    }
+
+    // MARK: - Book Description
+
+    private func toggleBookDescription(at indexPath: IndexPath) {
+        tableView.deselectRow(at: indexPath, animated: false)
+
+        guard indexPath.row < bookDataSource.books.count,
+              let selectedCell = tableView.cellForRow(at: indexPath) as? BookRowCell else { return }
+
+        let previousRow = expandedRow
+        expandedRow = previousRow == indexPath.row ? nil : indexPath.row
+
+        // reloadRows는 높이 애니메이션 중 셀을 교체하므로 그림자가 임시 행 경계에
+        // 잘려 보인다. 기존 셀의 콘텐츠만 바꾸고 테이블에는 높이 재계산만 요청한다.
+        if let previousRow, previousRow != indexPath.row {
+            let previousIndexPath = IndexPath(row: previousRow, section: indexPath.section)
+            (tableView.cellForRow(at: previousIndexPath) as? BookRowCell)?.setExpanded(false)
+        }
+        selectedCell.setExpanded(expandedRow == indexPath.row)
+        tableView.performBatchUpdates(nil)
+    }
+
+    // MARK: - Pagination
+
+    private func scheduleNextPageIfNeeded() {
+        guard isScreenVisible, !paginationUpdateScheduled else { return }
+        paginationUpdateScheduled = true
+        DispatchQueue.main.async { [weak self] in
+            guard let self else { return }
+            self.paginationUpdateScheduled = false
+            guard self.isScreenVisible else { return }
+            let shouldRequest = self.paginationGate.shouldRequest(
+                lastVisibleRow: self.tableView.indexPathsForVisibleRows?.map(\.row).max(),
+                rowCount: self.bookDataSource.books.count,
+                isLoading: self.isLoadingBooks || self.isLoadingNextPage
+            )
+            if shouldRequest { self.loadNextPageRelay.accept(()) }
+        }
+    }
+
+    // MARK: - Cover Prefetch
+
+    private func scheduleCoverPrefetch() {
+        guard isScreenVisible, !isLoadingBooks, !prefetchUpdateScheduled else { return }
+        prefetchUpdateScheduled = true
+        // 같은 레이아웃에서 발생한 여러 willDisplay/scroll 이벤트를 한 번으로 합친다.
+        DispatchQueue.main.async { [weak self] in
+            guard let self else { return }
+            self.prefetchUpdateScheduled = false
+            guard self.isScreenVisible, !self.isLoadingBooks else { return }
+            guard let lastVisibleRow = self.tableView.indexPathsForVisibleRows?.map(\.row).max() else {
+                self.coverPrefetcher.stop()
+                return
+            }
+            self.coverPrefetcher.update(
+                books: self.bookDataSource.books, after: lastVisibleRow,
+                displayScale: self.view.traitCollection.displayScale
+            )
+        }
     }
 
     // MARK: - List Segment
@@ -459,12 +625,30 @@ private final class BookRowCell: UITableViewCell {
         return btn
     }()
 
+    private let summaryView = UIView()
+
+    private let descriptionContainer = UIView()
+
+    private let descriptionLabel: UILabel = {
+        let l = UILabel()
+        l.font = UIFont(name: "GoyangIlsan R", size: 12) ?? .systemFont(ofSize: 12)
+        l.textColor = UIColor.appPrimary.withAlphaComponent(0.75)
+        l.numberOfLines = 0
+        return l
+    }()
+
+    #if DEBUG
+    var performanceBatchID: UUID?
+    #endif
+
     var onRegister: ((Book) -> Void)?
     private var currentBook: Book?
     private let disposeBag = DisposeBag()
 
-    /// nil = 아직 미설정 (첫 configure 시 반드시 레이아웃 업데이트)
-    private var rankVisible: Bool?
+    private var rankVisible = true
+    private var rankedLeading: Constraint?
+    private var unrankedLeading: Constraint?
+    private var lastShadowBounds: CGRect = .null
 
     // MARK: - Init
 
@@ -481,6 +665,33 @@ private final class BookRowCell: UITableViewCell {
 
     required init?(coder: NSCoder) { fatalError() }
 
+    override func prepareForReuse() {
+        super.prepareForReuse()
+        thumbnailImageView.kf.cancelDownloadTask()
+        // 취소할 DownloadTask가 없는 디스크 캐시 조회도 이전 요청으로 처리되도록 초기화한다.
+        thumbnailImageView.kf.setImage(with: Optional<URL>.none)
+        currentBook = nil
+        onRegister = nil
+        rankLabel.text = nil
+        titleLabel.text = nil
+        authorLabel.text = nil
+        descriptionLabel.attributedText = nil
+        descriptionContainer.isHidden = true
+        #if DEBUG
+        performanceBatchID = nil
+        #endif
+    }
+
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        let bounds = cardView.bounds
+        guard bounds != lastShadowBounds else { return }
+        lastShadowBounds = bounds
+        cardView.layer.shadowPath = UIBezierPath(
+            roundedRect: bounds, cornerRadius: cardView.layer.cornerRadius
+        ).cgPath
+    }
+
     // MARK: - Setup
 
     private func setupCell() {
@@ -491,18 +702,31 @@ private final class BookRowCell: UITableViewCell {
 
         contentView.addSubview(cardView)
 
+        let contentStack = UIStackView(arrangedSubviews: [summaryView, descriptionContainer])
+        contentStack.axis = .vertical
+        cardView.addSubview(contentStack)
+
         let textStack = UIStackView(arrangedSubviews: [titleLabel, authorLabel])
         textStack.axis    = .vertical
         textStack.spacing = 3
 
         [rankLabel, thumbnailImageView, textStack, registerButton].forEach {
-            cardView.addSubview($0)
+            summaryView.addSubview($0)
         }
+        descriptionContainer.addSubview(descriptionLabel)
 
         cardView.snp.makeConstraints { make in
             make.top.equalToSuperview().offset(6)
             make.bottom.equalToSuperview().inset(6)
-            make.leading.trailing.equalToSuperview()
+            make.leading.trailing.equalToSuperview().inset(8)
+            make.height.greaterThanOrEqualTo(80)
+        }
+
+        contentStack.snp.makeConstraints { make in
+            make.edges.equalToSuperview()
+        }
+
+        summaryView.snp.makeConstraints { make in
             make.height.greaterThanOrEqualTo(80)
         }
 
@@ -512,12 +736,13 @@ private final class BookRowCell: UITableViewCell {
             make.width.equalTo(20)
         }
 
-        // thumbnailImageView 초기 constraints — rank 표시 모드 (configure에서 remakeConstraints)
+        thumbnailImageView.snp.prepareConstraints { make in
+            unrankedLeading = make.leading.equalToSuperview().offset(16).constraint
+        }
         thumbnailImageView.snp.makeConstraints { make in
-            make.leading.equalTo(rankLabel.snp.trailing).offset(14)
+            rankedLeading = make.leading.equalTo(rankLabel.snp.trailing).offset(14).constraint
             make.centerY.equalToSuperview()
-            make.width.equalTo(48)
-            make.height.equalTo(64)
+            make.size.equalTo(BookCoverImageOptions.size)
         }
 
         textStack.snp.makeConstraints { make in
@@ -531,16 +756,64 @@ private final class BookRowCell: UITableViewCell {
             make.centerY.equalToSuperview()
         }
 
+        descriptionLabel.snp.makeConstraints { make in
+            make.top.equalToSuperview().offset(4)
+            make.leading.trailing.equalToSuperview().inset(16)
+            make.bottom.equalToSuperview().inset(16)
+        }
+
+        descriptionContainer.isHidden = true
     }
 
     // MARK: - Configure
 
-    func configure(book: Book) {
+    func configure(book: Book, displayScale: CGFloat, isExpanded: Bool) {
+        thumbnailImageView.kf.cancelDownloadTask()
+        let imageOptions = BookCoverImageOptions.make(displayScale: displayScale)
         currentBook      = book
         rankLabel.text   = book.bestRank.map { "\($0)" }
         titleLabel.text  = book.title
         authorLabel.text = book.author
-        thumbnailImageView.kf.setImage(with: book.coverURL)
+
+        let description = book.description.trimmingCharacters(in: .whitespacesAndNewlines)
+        let paragraphStyle = NSMutableParagraphStyle()
+        paragraphStyle.lineHeightMultiple = 1.5
+        descriptionLabel.attributedText = NSAttributedString(
+            string: description.isEmpty ? "책 소개가 없습니다" : description,
+            attributes: [
+                .font: descriptionLabel.font as Any,
+                .foregroundColor: descriptionLabel.textColor as Any,
+                .paragraphStyle: paragraphStyle,
+            ]
+        )
+        setExpanded(isExpanded)
+        #if DEBUG
+        let coverSpan = BookSearchPerformance.Span(.coverLoaded, source: .table, id: performanceBatchID ?? UUID())
+        thumbnailImageView.kf.setImage(with: book.coverURL, options: imageOptions) { result in
+            switch result {
+            case .success(let value):
+                let cache: BookSearchPerformance.Cache
+                switch value.cacheType {
+                case .none: cache = .none
+                case .memory: cache = .memory
+                case .disk: cache = .disk
+                }
+                coverSpan.finish(cache: cache)
+            case .failure(let error):
+                if book.coverURL == nil {
+                    coverSpan.finish(.noURL)
+                } else if error.isTaskCancelled {
+                    coverSpan.finish(.cancelled)
+                } else if error.isNotCurrentTask {
+                    coverSpan.finish(.superseded)
+                } else {
+                    coverSpan.finish(.failed)
+                }
+            }
+        }
+        #else
+        thumbnailImageView.kf.setImage(with: book.coverURL, options: imageOptions)
+        #endif
 
         let showRank = book.bestRank != nil
         guard showRank != rankVisible else { return }
@@ -549,16 +822,18 @@ private final class BookRowCell: UITableViewCell {
         updateThumbnailLeading(showRank: showRank)
     }
 
+    func setExpanded(_ isExpanded: Bool) {
+        guard descriptionContainer.isHidden == isExpanded else { return }
+        descriptionContainer.isHidden = !isExpanded
+    }
+
     private func updateThumbnailLeading(showRank: Bool) {
-        thumbnailImageView.snp.remakeConstraints { make in
-            if showRank {
-                make.leading.equalTo(rankLabel.snp.trailing).offset(14)
-            } else {
-                make.leading.equalToSuperview().offset(16)
-            }
-            make.centerY.equalToSuperview()
-            make.width.equalTo(48)
-            make.height.equalTo(64)
+        if showRank {
+            unrankedLeading?.deactivate()
+            rankedLeading?.activate()
+        } else {
+            rankedLeading?.deactivate()
+            unrankedLeading?.activate()
         }
     }
 }

@@ -2,288 +2,108 @@
 //  BookSearchViewModel.swift
 //  Under_line
 //
-//  도서 검색 시트 ViewModel — MVVM Input/Output 패턴 (페이지네이션 지원)
-//
 
 import RxSwift
 import RxCocoa
 import Foundation
 
 final class BookSearchViewModel {
-
     enum BookListType: Equatable {
         case bestseller
         case newSpecial
     }
 
-    private enum DisplayMode: Equatable {
+    struct ListUpdate {
+        enum Change {
+            case replace
+            case append(from: Int)
+        }
+
+        // 전체 snapshot도 제공해 구독 재연결 시 안전하게 복원할 수 있다.
+        let books: [Book]
+        let change: Change
+    }
+
+    private enum DisplayMode {
         case list(BookListType)
         case search(String)
-    }
 
-    private enum NextPageRequest {
-        case search(query: String, page: Int)
-        case newSpecial(page: Int)
-    }
+        var pageSize: Int {
+            if case .list(.newSpecial) = self { return 10 }
+            return 50
+        }
 
-    private enum NextPageResult {
-        case search(query: String, page: Int, books: [Book])
-        case newSpecial(page: Int, books: [Book])
+        var maximumCount: Int {
+            if case .search = self { return 200 }
+            return 50
+        }
     }
-
-    // MARK: - Input
 
     struct Input {
-        let viewDidLoad:    Observable<Void>    // 베스트셀러 fetch 트리거
-        let listSelection:  Observable<BookListType>
-        let searchQuery:    Observable<String>  // searchTextField 텍스트 스트림
-        let searchTrigger:  Observable<Void>    // return 키 탭
-        let loadNextPage:   Observable<Void>    // 스크롤 하단 도달 시
-        let registerBook:   Observable<Book>    // 등록 버튼 탭
+        let viewDidLoad: Observable<Void>
+        let listSelection: Observable<BookListType>
+        let searchQuery: Observable<String>
+        let searchTrigger: Observable<Void>
+        let loadNextPage: Observable<Void>
+        let registerBook: Observable<Book>
     }
-
-    // MARK: - Output
 
     struct Output {
-        let books:             Driver<[Book]>   // UITableView 데이터 (누적)
-        let isLoading:         Driver<Bool>     // 초기 로딩 인디케이터
-        let isLoadingMore:     Driver<Bool>     // 추가 페이지 로딩 인디케이터
-        let errorMessage:      Signal<String>   // Toast 메시지 (1회성)
-        let registerCompleted: Signal<Void>     // 등록 완료 → 시트 닫기
+        let books: Driver<[Book]>
+        let listUpdates: Driver<ListUpdate>
+        let isLoading: Driver<Bool>
+        let isLoadingMore: Driver<Bool>
+        let errorMessage: Signal<String>
+        let registerCompleted: Signal<Void>
     }
-
-    // MARK: - Dependencies
 
     private let repository: BookRepositoryProtocol
     private let disposeBag = DisposeBag()
+    private let pageRequest = SerialDisposable()
+    private let updates = BehaviorRelay<ListUpdate>(value: .init(books: [], change: .replace))
+    private let isLoading = BehaviorRelay<Bool>(value: false)
+    private let isLoadingMore = BehaviorRelay<Bool>(value: false)
+    private let errorMessage = PublishRelay<String>()
+    private let registerCompleted = PublishRelay<Void>()
+    private var latestQuery = ""
+    private var mode: DisplayMode?
+    private var generation = UUID()
+    private var currentPage = 0
+    private var totalCount = 0
+    private var hasMorePages = false
 
     init(repository: BookRepositoryProtocol) {
         self.repository = repository
+        pageRequest.disposed(by: disposeBag)
     }
 
-    // MARK: - Transform
-
     func transform(input: Input) -> Output {
-        let isLoading            = BehaviorRelay<Bool>(value: false)
-        let isLoadingMore        = BehaviorRelay<Bool>(value: false)
-        let errorMessage         = PublishRelay<String>()
-        let latestQuery          = BehaviorRelay<String>(value: "")
-        let currentPage          = BehaviorRelay<Int>(value: 1)
-        let hasMorePages         = BehaviorRelay<Bool>(value: false)
-        let books                = BehaviorRelay<[Book]>(value: [])
-        let displayMode          = BehaviorRelay<DisplayMode>(value: .list(.bestseller))
-        // 이미 요청을 보낸 가장 높은 페이지 번호 — 동기적으로 설정해 중복 요청 차단
-        let highestRequestedPage = BehaviorRelay<Int>(value: 0)
-        // 검색 결과의 totalResults 기반으로 계산한 실제 최대 페이지
-        // Aladin API 한계: 페이지당 50개, 총 최대 200개 → 최대 4페이지
-        let effectiveMaxPage     = BehaviorRelay<Int>(value: 4)
-        // 현재 검색어의 실제 결과 수 — 누적 시 이 수만큼 잘라 중복 방지
-        let totalResultCount     = BehaviorRelay<Int>(value: 0)
-        let newSpecialPageSize   = 10
-        let newSpecialMaxCount   = 50
-
-        // 검색어 최신값 유지
         input.searchQuery
-            .bind(to: latestQuery)
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .subscribe(onNext: { [weak self] in self?.latestQuery = $0 })
             .disposed(by: disposeBag)
 
-        // 추천 목록 — viewDidLoad 시 베스트셀러, 탭 선택 시 해당 목록으로 교체
         Observable.merge(
-            input.viewDidLoad.map { BookListType.bestseller },
-            input.listSelection
+            input.viewDidLoad.map { DisplayMode.list(.bestseller) },
+            input.listSelection.map { DisplayMode.list($0) },
+            input.searchTrigger.compactMap { [weak self] _ -> DisplayMode? in
+                guard let self, !self.latestQuery.isEmpty else { return nil }
+                return .search(self.latestQuery)
+            }
         )
-            .do(onNext: { listType in
-                displayMode.accept(.list(listType))
-                currentPage.accept(1)
-                highestRequestedPage.accept(0)
-                hasMorePages.accept(false)
-                effectiveMaxPage.accept(listType == .newSpecial ? 5 : 1)
-                totalResultCount.accept(listType == .newSpecial ? newSpecialMaxCount : 0)
-            })
-            .flatMapLatest { [weak self] listType -> Observable<(BookListType, [Book])> in
-                guard let self else { return .empty() }
-                isLoading.accept(true)
-                let request: Observable<[Book]>
-                switch listType {
-                case .bestseller:
-                    request = rxAsync { try await self.repository.fetchBestsellers() }
-                case .newSpecial:
-                    request = rxAsync { try await self.repository.fetchNewSpecialBooks(page: 1) }
-                }
-                return request
-                    .do(
-                        onNext:  { _ in isLoading.accept(false) },
-                        onError: { _ in isLoading.accept(false) }
-                    )
-                    .catch { error in
-                        errorMessage.accept(error.localizedDescription)
-                        return .just([])
-                    }
-                    .map { (listType, $0) }
-            }
-            .subscribe(onNext: { listType, fetched in
-                guard displayMode.value == .list(listType) else { return }
-                books.accept(fetched)
-                currentPage.accept(1)
-                hasMorePages.accept(listType == .newSpecial && fetched.count >= newSpecialPageSize)
-            })
-            .disposed(by: disposeBag)
+        .subscribe(onNext: { [weak self] in self?.start($0) })
+        .disposed(by: disposeBag)
 
-        // 새 검색 — return 키 탭 시 1페이지부터 다시 시작
-        input.searchTrigger
-            .withLatestFrom(latestQuery)
-            .filter { !$0.trimmingCharacters(in: .whitespaces).isEmpty }
-            .do(onNext: { query in
-                currentPage.accept(1)
-                highestRequestedPage.accept(0)
-                hasMorePages.accept(false)
-                displayMode.accept(.search(query.trimmingCharacters(in: .whitespaces)))
-            })
-            .flatMapLatest { [weak self] query -> Observable<(books: [Book], totalResults: Int)> in
-                guard let self else { return .empty() }
-                isLoading.accept(true)
-                return rxAsync { try await self.repository.searchBooks(query: query, page: 1) }
-                    .do(
-                        onNext:  { _ in isLoading.accept(false) },
-                        onError: { _ in isLoading.accept(false) }
-                    )
-                    .catch { error in
-                        errorMessage.accept(error.localizedDescription)
-                        return .just((books: [], totalResults: 0))
-                    }
-            }
-            .subscribe(onNext: { result in
-                guard case .search = displayMode.value else { return }
-                // totalResults 기반으로 실제 페이지 수 계산 (API 한계 200개 = 4페이지 상한)
-                let cappedTotal = min(result.totalResults, 200)
-                let pages = cappedTotal == 0 ? 1 : Int(ceil(Double(cappedTotal) / 50.0))
-                effectiveMaxPage.accept(pages)
-                totalResultCount.accept(cappedTotal)
-                books.accept(result.books)
-                hasMorePages.accept(result.totalResults > result.books.count)
-            })
-            .disposed(by: disposeBag)
-
-        // 다음 페이지 — 스크롤 하단 도달 시
-        // highestRequestedPage: 요청 시작 즉시(동기) 갱신 → Driver 비동기 UI 업데이트 후
-        // willDisplayCell이 재발동해도 같은 페이지를 중복 요청하지 않음
         input.loadNextPage
-            .withLatestFrom(Observable.combineLatest(
-                isLoading.asObservable(),
-                hasMorePages.asObservable(),
-                latestQuery.asObservable(),
-                currentPage.asObservable(),
-                highestRequestedPage.asObservable(),
-                effectiveMaxPage.asObservable(),
-                displayMode.asObservable()
-            ))
-            .filter { isLoad, hasMore, query, page, highReq, maxPg, mode in
-                let nextPage = page + 1
-                guard !isLoad && hasMore && nextPage > highReq && nextPage <= maxPg else { return false }
-                switch mode {
-                case .list(.newSpecial):
-                    return true
-                case .list(.bestseller):
-                    return false
-                case .search(let normalizedQuery):
-                    return !query.trimmingCharacters(in: .whitespaces).isEmpty
-                        && normalizedQuery == query.trimmingCharacters(in: .whitespaces)
-                }
-            }
-            .map { _, _, query, page, _, _, mode -> NextPageRequest in
-                let nextPage = page + 1
-                switch mode {
-                case .list(.newSpecial):
-                    return .newSpecial(page: nextPage)
-                case .search:
-                    return .search(query: query, page: nextPage)
-                case .list(.bestseller):
-                    return .newSpecial(page: nextPage)
-                }
-            }
-            .do(onNext: { request in
-                // 동기적으로 선점 — 이후 중복 이벤트는 위 filter에서 차단됨
-                let nextPage: Int
-                switch request {
-                case .search(_, let page), .newSpecial(let page):
-                    nextPage = page
-                }
-                highestRequestedPage.accept(nextPage)
-                isLoadingMore.accept(true)
-            })
-            .flatMap { [weak self] request -> Observable<NextPageResult> in
-                guard let self else { return .empty() }
-                switch request {
-                case .search(let query, let nextPage):
-                    return rxAsync { try await self.repository.searchBooks(query: query, page: nextPage) }
-                        .do(onError: { _ in isLoadingMore.accept(false) })
-                        .catch { error in
-                            errorMessage.accept(error.localizedDescription)
-                            return .just((books: [], totalResults: 0))
-                        }
-                        .map { .search(query: query, page: nextPage, books: $0.books) }
-                case .newSpecial(let nextPage):
-                    return rxAsync { try await self.repository.fetchNewSpecialBooks(page: nextPage) }
-                        .do(onError: { _ in isLoadingMore.accept(false) })
-                        .catch { error in
-                            errorMessage.accept(error.localizedDescription)
-                            return .just([])
-                        }
-                        .map { .newSpecial(page: nextPage, books: $0) }
-                }
-            }
-            .observe(on: MainScheduler.instance)
-            .subscribe(onNext: { result in
-                switch result {
-                case .search(let query, let nextPage, let fetched):
-                    // 검색어가 바뀐 경우 무시 (스테일 응답 방어)
-                    let normalizedQuery = query.trimmingCharacters(in: .whitespaces)
-                    guard latestQuery.value == query,
-                          displayMode.value == .search(normalizedQuery) else {
-                        isLoadingMore.accept(false)
-                        return
-                    }
-                    currentPage.accept(nextPage)
-                    if !fetched.isEmpty {
-                        let combined = Array((books.value + fetched).prefix(totalResultCount.value))
-                        books.accept(combined)
-                        let reachedEnd = combined.count >= totalResultCount.value
-                            || fetched.count < 50
-                            || nextPage >= effectiveMaxPage.value
-                        if reachedEnd { hasMorePages.accept(false) }
-                    } else {
-                        hasMorePages.accept(false)
-                    }
-                case .newSpecial(let nextPage, let fetched):
-                    guard displayMode.value == .list(.newSpecial) else {
-                        isLoadingMore.accept(false)
-                        return
-                    }
-                    currentPage.accept(nextPage)
-                    if !fetched.isEmpty {
-                        let combined = Array((books.value + fetched).prefix(newSpecialMaxCount))
-                        books.accept(combined)
-                        let reachedEnd = combined.count >= newSpecialMaxCount
-                            || fetched.count < newSpecialPageSize
-                            || nextPage >= effectiveMaxPage.value
-                        if reachedEnd { hasMorePages.accept(false) }
-                    } else {
-                        hasMorePages.accept(false)
-                    }
-                }
-                isLoadingMore.accept(false)
-            })
+            .subscribe(onNext: { [weak self] in self?.loadNextPage() })
             .disposed(by: disposeBag)
-
-        // 등록 버튼 탭 → saveBook → registerCompleted
-        let registerCompleted = PublishRelay<Void>()
 
         input.registerBook
             .flatMapLatest { [weak self] book -> Observable<Void> in
                 guard let self else { return .empty() }
-                return rxAsync { try await self.repository.saveBook(book) }
-                    .catch { error in
-                        errorMessage.accept(error.localizedDescription)
+                return rxAsync { [repository = self.repository] in try await repository.saveBook(book) }
+                    .catch { [weak self] error in
+                        self?.errorMessage.accept(error.localizedDescription)
                         return .empty()
                     }
             }
@@ -291,11 +111,92 @@ final class BookSearchViewModel {
             .disposed(by: disposeBag)
 
         return Output(
-            books:             books.asDriver(),
-            isLoading:         isLoading.asDriver(),
-            isLoadingMore:     isLoadingMore.asDriver(),
-            errorMessage:      errorMessage.asSignal(),
+            books: updates.map(\.books).asDriver(onErrorJustReturn: []),
+            listUpdates: updates.asDriver(),
+            isLoading: isLoading.asDriver(),
+            isLoadingMore: isLoadingMore.asDriver(),
+            errorMessage: errorMessage.asSignal(),
             registerCompleted: registerCompleted.asSignal()
         )
+    }
+
+    private func start(_ mode: DisplayMode) {
+        // 같은 검색어·같은 탭으로 돌아와도 이전 응답과 구분한다.
+        generation = UUID()
+        pageRequest.disposable = Disposables.create()
+        self.mode = mode
+        currentPage = 0
+        totalCount = 0
+        hasMorePages = false
+        isLoading.accept(true)
+        isLoadingMore.accept(false)
+        request(mode: mode, page: 1, generation: generation)
+    }
+
+    private func loadNextPage() {
+        guard let mode, !isLoading.value, !isLoadingMore.value, hasMorePages else { return }
+        if case .search(let query) = mode, query != latestQuery { return }
+        // UI 이벤트가 반복되어도 응답 전에는 한 페이지만 요청한다.
+        isLoadingMore.accept(true)
+        request(mode: mode, page: currentPage + 1, generation: generation)
+    }
+
+    private func request(mode: DisplayMode, page: Int, generation: UUID) {
+        let request: Observable<(books: [Book], totalResults: Int)> = rxAsync { [repository] in
+            switch mode {
+            case .list(.bestseller):
+                let books = try await repository.fetchBestsellers()
+                return (books, books.count)
+            case .list(.newSpecial):
+                return (try await repository.fetchNewSpecialBooks(page: page), 50)
+            case .search(let query):
+                return try await repository.searchBooks(query: query, page: page)
+            }
+        }
+        pageRequest.disposable = request.subscribe(
+            onNext: { [weak self] result in
+                guard let self, self.generation == generation else { return }
+                self.receive(result, mode: mode, page: page)
+            },
+            onError: { [weak self] error in
+                guard let self, self.generation == generation else { return }
+                // 실패 시 currentPage와 hasMorePages를 유지해 동일 페이지 재시도를 허용한다.
+                if page == 1 {
+                    self.updates.accept(.init(books: [], change: .replace))
+                }
+                self.isLoading.accept(false)
+                self.isLoadingMore.accept(false)
+                if !(error is CancellationError) {
+                    self.errorMessage.accept(error.localizedDescription)
+                }
+            }
+        )
+    }
+
+    private func receive(_ result: (books: [Book], totalResults: Int), mode: DisplayMode, page: Int) {
+        if page == 1 { totalCount = min(max(result.totalResults, 0), mode.maximumCount) }
+        let previous = page == 1 ? [] : updates.value.books
+        let combined = Array((previous + result.books).prefix(totalCount))
+        currentPage = page
+        hasMorePages = !result.books.isEmpty
+            && combined.count < totalCount
+            && page * mode.pageSize < totalCount
+        switch mode {
+        case .list(.bestseller):
+            hasMorePages = false
+        case .list(.newSpecial):
+            hasMorePages = hasMorePages && result.books.count >= mode.pageSize
+        case .search:
+            // 첫 검색은 totalResults를 따른다. 후속 페이지가 짧으면 종료한다.
+            hasMorePages = hasMorePages && (page == 1 || result.books.count >= mode.pageSize)
+        }
+        // 상태 계산과 snapshot 반영 중 발생하는 UI 요청은 로딩 상태로 차단한다.
+        if page == 1 {
+            updates.accept(.init(books: combined, change: .replace))
+        } else if combined.count > previous.count {
+            updates.accept(.init(books: combined, change: .append(from: previous.count)))
+        }
+        isLoading.accept(false)
+        isLoadingMore.accept(false)
     }
 }

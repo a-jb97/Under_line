@@ -109,3 +109,13 @@ CLAUDE.md
 AGENTS.md
 
 # End of https://www.toptal.com/developers/gitignore/api/swift,swiftpackagemanager,xcode
+
+# Share the app scheme so Under_lineTests can run after checkout.
+!Under_line.xcodeproj/
+Under_line.xcodeproj/*
+!Under_line.xcodeproj/project.pbxproj
+!Under_line.xcodeproj/xcshareddata/
+Under_line.xcodeproj/xcshareddata/*
+!Under_line.xcodeproj/xcshareddata/xcschemes/
+Under_line.xcodeproj/xcshareddata/xcschemes/*
+!Under_line.xcodeproj/xcshareddata/xcschemes/Under_line.xcscheme
