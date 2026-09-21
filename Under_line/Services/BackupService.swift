@@ -114,9 +114,7 @@ final class BackupService {
         encoder.dateEncodingStrategy = .iso8601
         let data = try encoder.encode(payload)
 
-        let formatter = DateFormatter()
-        formatter.dateFormat = "yyyyMMdd_HHmmss"
-        let fileName = "underline_backup_\(formatter.string(from: Date())).json"
+        let fileName = "밑줄_백업.json"
         let tempURL = FileManager.default.temporaryDirectory.appendingPathComponent(fileName)
         try data.write(to: tempURL)
 
