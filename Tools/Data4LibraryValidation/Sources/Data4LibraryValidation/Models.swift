@@ -1,19 +1,5 @@
 import Foundation
-
-struct ValidationBook: Codable, Sendable {
-    let id: String
-    let titleQuery: String
-    let expectedTitle: String
-    let authorQuery: String
-    let expectedAuthors: [String]
-    let isbn13: String
-    let publisher: String
-    let publicationDate: String
-    let category: String
-    let recency: String
-    let tags: [String]
-    let selectionSource: String
-}
+import ValidationCore
 
 struct BookDocument: Codable, Sendable {
     let title: String?
@@ -50,20 +36,6 @@ struct BookDocument: Codable, Sendable {
 struct TimedDocuments: Sendable {
     let documents: [BookDocument]
     let elapsedMilliseconds: Double
-}
-
-struct CoverObservation: Codable, Sendable {
-    let urlPresent: Bool
-    let loaded: Bool
-    let statusCode: Int?
-    let mimeType: String?
-    let byteCount: Int?
-    let pixelWidth: Int?
-    let pixelHeight: Int?
-    let meetsResolution: Bool
-    let contentHash: String?
-    let elapsedMilliseconds: Double?
-    let error: String?
 }
 
 struct EndpointObservation: Codable, Sendable {
@@ -113,26 +85,6 @@ struct ValidationSummary: Codable, Sendable {
     let hotTrendBooks: ListObservation?
 }
 
-struct RateSummary: Sendable {
-    let successes: Int
-    let total: Int
-
-    var percentage: Double {
-        guard total > 0 else { return 0 }
-        return Double(successes) / Double(total) * 100
-    }
-}
-
-enum ISBN13Validator {
-    static func isValid(_ rawValue: String) -> Bool {
-        let digits = rawValue.compactMap(\.wholeNumberValue)
-        guard digits.count == 13, rawValue.count == 13 else { return false }
-        let sum = digits.dropLast().enumerated().reduce(0) { partial, pair in
-            partial + pair.element * (pair.offset.isMultiple(of: 2) ? 1 : 3)
-        }
-        return (10 - sum % 10) % 10 == digits.last
-    }
-}
 
 extension Dictionary where Key == String, Value == Any {
     func string(for keys: [String]) -> String? {

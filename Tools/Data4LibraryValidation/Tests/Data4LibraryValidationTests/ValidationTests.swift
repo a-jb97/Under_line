@@ -1,5 +1,6 @@
 import XCTest
 @testable import Data4LibraryValidation
+import ValidationCore
 
 final class ValidationTests: XCTestCase {
     func test_isbn13Validator_acceptsKnownValidISBNs() {

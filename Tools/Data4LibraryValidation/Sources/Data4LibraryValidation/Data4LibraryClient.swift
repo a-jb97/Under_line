@@ -1,6 +1,7 @@
 import CryptoKit
 import Foundation
 import ImageIO
+import ValidationCore
 
 enum ValidationError: LocalizedError {
     case invalidResponse

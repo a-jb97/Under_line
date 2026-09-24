@@ -1,6 +1,6 @@
-# 도서관 정보나루 검증 도구
+# 도서 API 검증 도구
 
-밑줄 앱의 프로덕션 타깃과 분리해 도서관 정보나루의 검색·상세·인기대출·대출 급상승 API를 검증하는 macOS Swift 실행 도구입니다.
+밑줄 앱의 프로덕션 타깃과 분리해 도서관 정보나루와 국립중앙도서관 ISBN 서지정보 API를 검증하는 macOS Swift Package입니다.
 
 ## 실행
 
@@ -52,3 +52,49 @@ swift test
 swift run data4library-validation --validate-catalog
 swift run data4library-validation --help
 ```
+
+## 국립중앙도서관 ISBN 서지정보 검증
+
+발급·승인된 인증키를 환경변수로만 전달합니다. `cert_key`는 URL query에 포함되므로 요청 URL이나 로그를 보고서에 저장하지 않으며, 응답 샘플에서도 같은 이름의 필드를 제거합니다.
+
+```sh
+cd Tools/Data4LibraryValidation
+read -rs "NLK_ISBN_API_KEY?국립중앙도서관 인증키: "
+export NLK_ISBN_API_KEY
+swift run nlk-isbn-validation --preflight-only
+swift run nlk-isbn-validation
+unset NLK_ISBN_API_KEY
+```
+
+API를 호출하지 않고 공통 25권과 최근 2년 15권 구성을 확인할 수 있습니다.
+
+```sh
+swift run nlk-isbn-validation --validate-catalog
+```
+
+기본 결과는 `.build/nlk-isbn-validation-report/`에 생성됩니다.
+
+- `summary.json`: 도서별 원시 관찰값
+- `results.csv`: 검색·메타데이터·표지·책소개·페이지 수 결과
+- `report.md`: 합격선과 해석
+- `comparison.md`, `comparison.json`: 정보나루 기준선과 직접 비교
+- `policy-inquiry.md`: iOS 직접 호출 및 인증키 정책 문의 초안
+- `response-samples/`: 인증정보를 제거한 실제 JSON 구조
+
+페이지 수 정확도를 독립 자료와 대조하려면 다음 배열 형식의 JSON을 전달합니다.
+
+```json
+[
+  {
+    "isbn13": "0000000000000",
+    "expectedPageCount": 345,
+    "source": "출판사 공식 페이지 URL 또는 실물 판권면"
+  }
+]
+```
+
+```sh
+swift run nlk-isbn-validation --page-ground-truth page-ground-truth.json
+```
+
+국립중앙도서관 공개 문서에는 iOS 앱 번들에 인증키를 포함해 직접 호출해도 되는지가 명시돼 있지 않습니다. 데이터 품질 결과와 별개로 공식 답변 전에는 프로덕션 채택으로 판정하지 않습니다.
