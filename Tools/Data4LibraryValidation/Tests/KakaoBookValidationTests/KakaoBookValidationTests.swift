@@ -119,7 +119,7 @@ final class KakaoBookValidationTests: XCTestCase {
 
         try KakaoReportWriter.write(summary: summary, to: directory)
 
-        for filename in ["summary.json", "books.csv", "report.md", "comparison.md", "comparison.json", "policy-inquiry.md"] {
+        for filename in ["summary.json", "books.csv", "report.md", "comparison.md", "comparison.json"] {
             XCTAssertTrue(FileManager.default.fileExists(atPath: directory.appendingPathComponent(filename).path))
         }
         let contents = try FileManager.default.contentsOfDirectory(at: directory, includingPropertiesForKeys: nil)

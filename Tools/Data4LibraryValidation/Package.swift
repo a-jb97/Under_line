@@ -7,7 +7,6 @@ let package = Package(
     platforms: [.macOS(.v13)],
     products: [
         .executable(name: "data4library-validation", targets: ["Data4LibraryValidation"]),
-        .executable(name: "nlk-isbn-validation", targets: ["NLKISBNValidation"]),
         .executable(name: "kakao-book-validation", targets: ["KakaoBookValidation"])
     ],
     targets: [
@@ -18,20 +17,12 @@ let package = Package(
             exclude: ["Resources"]
         ),
         .executableTarget(
-            name: "NLKISBNValidation",
-            dependencies: ["ValidationCore"]
-        ),
-        .executableTarget(
             name: "KakaoBookValidation",
             dependencies: ["ValidationCore"]
         ),
         .testTarget(
             name: "Data4LibraryValidationTests",
             dependencies: ["Data4LibraryValidation", "ValidationCore"]
-        ),
-        .testTarget(
-            name: "NLKISBNValidationTests",
-            dependencies: ["NLKISBNValidation", "ValidationCore"]
         ),
         .testTarget(
             name: "KakaoBookValidationTests",

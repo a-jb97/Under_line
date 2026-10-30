@@ -12,7 +12,6 @@ enum KakaoReportWriter {
         try Data(markdown(summary).utf8).write(to: directory.appendingPathComponent("report.md"), options: .atomic)
         try Data(comparison(summary).utf8).write(to: directory.appendingPathComponent("comparison.md"), options: .atomic)
         try comparisonJSON(summary).write(to: directory.appendingPathComponent("comparison.json"), options: .atomic)
-        try Data(policyInquiry.utf8).write(to: directory.appendingPathComponent("policy-inquiry.md"), options: .atomic)
     }
 
     private static func csv(_ summary: KakaoValidationSummary) -> String {
@@ -129,7 +128,7 @@ enum KakaoReportWriter {
         - 표본: \(summary.catalogCount)권, 검색별 \(summary.repetitions)회 반복
         - 검색 범위: 페이지당 \(summary.pageSize)건, 최대 \(summary.maximumResults)건
         - 데이터 판정: **\(dataDecision)**
-        - 프로덕션 판정: **REST API 키의 iOS 앱 내장 정책 공식 확인 전 보류**
+        - 프로덕션 판정: **밑줄의 메인 도서 검색 API로 채택**
         - 전체 페이지 수: **API 미지원 — 기존 사용자 입력 유지**
 
         ## 현재 단일 검색창 기준: 일반 검색 Top 50
@@ -234,7 +233,7 @@ enum KakaoReportWriter {
         | 최대 200건 누적 평균 | 63.67ms | \(format(validationAverage(generalTimings)))ms | \(format(validationAverage(targetedTimings)))ms |
         | 최대 200건 누적 P95 | 154.20ms | \(format(validationPercentile(generalTimings, 0.95)))ms | \(format(validationPercentile(targetedTimings, 0.95)))ms |
         | 검색 시도 오류율 | 0% | \(format(generalErrorRate))% | \(format(targetedErrorRate))% |
-        | iOS 직접 호출 정책 | - | 공식 확인 필요 | 공식 확인 필요 |
+        | 밑줄 채택 역할 | 목록·상세 보완 | 메인 검색 | 메인 검색 보조 지표 |
 
         > 카카오 일반 검색은 현재 단일 검색창과 가장 가까운 기준이며, 필드 지정 검색은 API의 잠재 성능을 확인하는 진단 지표다.
         """
@@ -307,19 +306,6 @@ enum KakaoReportWriter {
         ]
     }
 
-    private static let policyInquiry = """
-    # 카카오 책 검색 API 정책 문의 초안
-
-    밑줄 iOS 앱에서 Daum 책 검색 REST API를 활용하는 방안을 검토하고 있습니다.
-
-    1. App Store에 배포되는 iOS 앱에서 REST API 키로 `/v3/search/book`을 직접 호출해도 되는지 확인 부탁드립니다.
-    2. REST API 키를 앱 번들에 포함하는 구조가 이용 정책상 허용되는지, 서버 프록시가 권장인지 필수인지 확인 부탁드립니다.
-    3. iOS 번들 ID로 REST API 키 사용처를 제한할 수 있는지 확인 부탁드립니다.
-    4. 키 노출 또는 악용 시 이용 제한 기준과 키 교체·폐기 절차를 알려주세요.
-    5. 상용 앱에서 검색 결과의 서지정보, 책소개, 표지 이미지와 Daum 도서 상세 링크를 표시할 수 있는지 확인 부탁드립니다.
-    6. 응답 데이터 및 표지 이미지의 캐싱·리사이징 허용 범위와 출처 표기 의무를 알려주세요.
-    7. 문서에 명시되지 않은 초당 호출 제한이 있는지 확인 부탁드립니다.
-    """
 }
 
 private func rate<T>(_ values: [T], _ keyPath: KeyPath<T, Bool>) -> RateSummary {
