@@ -10,6 +10,7 @@
 		0D87311C557F8D907DC3FEE2 /* BookCoverPrefetcherTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 65FBD37B0BE6FA4C8B01669E /* BookCoverPrefetcherTests.swift */; };
 		103804231276CB2FFC03ECF7 /* BookRepositoryTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C3A971A1D87B790412F10A06 /* BookRepositoryTests.swift */; };
 		47A704EB8014364B169AAF78 /* BookSearchTableDataSourceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 37BCEDA5B15210C106A15036 /* BookSearchTableDataSourceTests.swift */; };
+		B7A4C1D8E2F3456789ABC001 /* KakaoBookSearchServiceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B7A4C1D8E2F3456789ABC002 /* KakaoBookSearchServiceTests.swift */; };
 		9E562CC22F71119200B65177 /* SnapKit in Frameworks */ = {isa = PBXBuildFile; productRef = 9E562CC12F71119200B65177 /* SnapKit */; };
 		9E562CC52F71120100B65177 /* Kingfisher in Frameworks */ = {isa = PBXBuildFile; productRef = 9E562CC42F71120100B65177 /* Kingfisher */; };
 		9E562CC82F71125600B65177 /* Toast in Frameworks */ = {isa = PBXBuildFile; productRef = 9E562CC72F71125600B65177 /* Toast */; };
@@ -76,6 +77,7 @@
 		9EBA91902F865000000EE9D1 /* SwiftUI.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = SwiftUI.framework; path = System/Library/Frameworks/SwiftUI.framework; sourceTree = SDKROOT; };
 		9EBA91A82F86501B000EE9D1 /* UnderLineWidgetExtension.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = UnderLineWidgetExtension.entitlements; sourceTree = "<group>"; };
 		A1B2C3D4E5F6012345678902 /* HTMLTextDecoderTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = HTMLTextDecoderTests.swift; sourceTree = "<group>"; };
+		B7A4C1D8E2F3456789ABC002 /* KakaoBookSearchServiceTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = KakaoBookSearchServiceTests.swift; sourceTree = "<group>"; };
 		C3A971A1D87B790412F10A06 /* BookRepositoryTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = BookRepositoryTests.swift; sourceTree = "<group>"; };
 		D51A8FC1C3ABAB9BE21F71DD /* Under_lineTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = Under_lineTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
@@ -170,6 +172,7 @@
 			isa = PBXGroup;
 			children = (
 				A1B2C3D4E5F6012345678902 /* HTMLTextDecoderTests.swift */,
+				B7A4C1D8E2F3456789ABC002 /* KakaoBookSearchServiceTests.swift */,
 				C3A971A1D87B790412F10A06 /* BookRepositoryTests.swift */,
 				65FBD37B0BE6FA4C8B01669E /* BookCoverPrefetcherTests.swift */,
 				87D5AC7E6A308B1AF12A36D6 /* BookSearchViewModelTests.swift */,
@@ -384,6 +387,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				A1B2C3D4E5F6012345678901 /* HTMLTextDecoderTests.swift in Sources */,
+				B7A4C1D8E2F3456789ABC001 /* KakaoBookSearchServiceTests.swift in Sources */,
 				103804231276CB2FFC03ECF7 /* BookRepositoryTests.swift in Sources */,
 				0D87311C557F8D907DC3FEE2 /* BookCoverPrefetcherTests.swift in Sources */,
 				E4A4A9C1125B8B5455DBC82E /* BookSearchViewModelTests.swift in Sources */,
