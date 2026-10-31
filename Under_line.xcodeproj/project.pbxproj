@@ -29,6 +29,7 @@
 		9EBA91AE2F86545F000EE9D1 /* GowunBatang-Bold.ttf in Resources */ = {isa = PBXBuildFile; fileRef = 9E562CDD2F7129A400B65177 /* GowunBatang-Bold.ttf */; };
 		9EBA91AF2F86545F000EE9D1 /* GowunBatang-Regular.ttf in Resources */ = {isa = PBXBuildFile; fileRef = 9E562CDE2F7129A400B65177 /* GowunBatang-Regular.ttf */; };
 		A1B2C3D4E5F6012345678901 /* HTMLTextDecoderTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F6012345678902 /* HTMLTextDecoderTests.swift */; };
+		D4A4B0010000000000000001 /* Data4LibraryBookListServiceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D4A4B0010000000000000002 /* Data4LibraryBookListServiceTests.swift */; };
 		E4A4A9C1125B8B5455DBC82E /* BookSearchViewModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 87D5AC7E6A308B1AF12A36D6 /* BookSearchViewModelTests.swift */; };
 /* End PBXBuildFile section */
 
@@ -79,6 +80,7 @@
 		A1B2C3D4E5F6012345678902 /* HTMLTextDecoderTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = HTMLTextDecoderTests.swift; sourceTree = "<group>"; };
 		B7A4C1D8E2F3456789ABC002 /* KakaoBookSearchServiceTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = KakaoBookSearchServiceTests.swift; sourceTree = "<group>"; };
 		C3A971A1D87B790412F10A06 /* BookRepositoryTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = BookRepositoryTests.swift; sourceTree = "<group>"; };
+		D4A4B0010000000000000002 /* Data4LibraryBookListServiceTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = Data4LibraryBookListServiceTests.swift; sourceTree = "<group>"; };
 		D51A8FC1C3ABAB9BE21F71DD /* Under_lineTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = Under_lineTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
@@ -171,6 +173,7 @@
 		465328A1622EA2F6BE211606 /* Under_lineTests */ = {
 			isa = PBXGroup;
 			children = (
+				D4A4B0010000000000000002 /* Data4LibraryBookListServiceTests.swift */,
 				A1B2C3D4E5F6012345678902 /* HTMLTextDecoderTests.swift */,
 				B7A4C1D8E2F3456789ABC002 /* KakaoBookSearchServiceTests.swift */,
 				C3A971A1D87B790412F10A06 /* BookRepositoryTests.swift */,
@@ -386,6 +389,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				D4A4B0010000000000000001 /* Data4LibraryBookListServiceTests.swift in Sources */,
 				A1B2C3D4E5F6012345678901 /* HTMLTextDecoderTests.swift in Sources */,
 				B7A4C1D8E2F3456789ABC001 /* KakaoBookSearchServiceTests.swift in Sources */,
 				103804231276CB2FFC03ECF7 /* BookRepositoryTests.swift in Sources */,
