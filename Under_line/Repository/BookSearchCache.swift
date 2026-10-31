@@ -9,7 +9,7 @@ final class BookSearchCache {
         case search(query: String, page: Int)
     }
 
-    typealias Result = (books: [Book], totalResults: Int)
+    typealias Result = BookSearchPage
 
     private struct Entry {
         let result: Result

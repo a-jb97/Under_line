@@ -13,7 +13,6 @@ import Alamofire
 protocol AladinAPIServiceProtocol {
     func fetchBestsellers() async throws -> [Book]
     func fetchNewSpecialBooks(page: Int) async throws -> [Book]
-    func searchBooks(query: String, page: Int) async throws -> (books: [Book], totalResults: Int)
     func fetchBookDetail(isbn13: String) async throws -> Book
 }
 
@@ -74,30 +73,6 @@ final class AladinAPIService: AladinAPIServiceProtocol {
         defer { mappingSpan.finish(count: response.item.count) }
         #endif
         return response.item.map { $0.toDomain() }
-    }
-
-    func searchBooks(query: String, page: Int) async throws -> (books: [Book], totalResults: Int) {
-        let params: Parameters = [
-            "ttbkey":       apiKey,
-            "Query":        query,
-            "MaxResults":   50,
-            "start":        page,
-            "SearchTarget": "Book",
-            "Cover":        "Big",
-            "output":       "js",
-            "Version":      "20131101"
-        ]
-        #if DEBUG
-        let responseSpan = BookSearchPerformance.Span(.responseDecoded, source: .search)
-        defer { responseSpan.finish(Task.isCancelled ? .cancelled : .failed) }
-        #endif
-        let response = try await request(endpoint: "ItemSearch.aspx", parameters: params)
-        #if DEBUG
-        responseSpan.finish(count: response.item.count)
-        let mappingSpan = BookSearchPerformance.Span(.domainMapping, source: .search, id: responseSpan.id)
-        defer { mappingSpan.finish(count: response.item.count) }
-        #endif
-        return (books: response.item.map { $0.toDomain() }, totalResults: response.totalResults)
     }
 
     func fetchBookDetail(isbn13: String) async throws -> Book {

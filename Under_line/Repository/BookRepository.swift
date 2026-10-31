@@ -16,7 +16,7 @@ protocol BookRepositoryProtocol {
     // Remote
     func fetchBestsellers() async throws -> [Book]
     func fetchNewSpecialBooks(page: Int) async throws -> [Book]
-    func searchBooks(query: String, page: Int) async throws -> (books: [Book], totalResults: Int)
+    func searchBooks(query: String, page: Int) async throws -> BookSearchPage
     func fetchBookDetail(isbn13: String) async throws -> Book
 
     // Local (BehaviorRelay 스트림 — Observable 유지)
@@ -33,16 +33,19 @@ protocol BookRepositoryProtocol {
 final class BookRepository: BookRepositoryProtocol {
 
     private let apiService: AladinAPIServiceProtocol
+    private let bookSearchService: BookSearchServiceProtocol
     private let modelContext: ModelContext
     private let searchCache: BookSearchCache
     private let savedBooksRelay = BehaviorRelay<[Book]>(value: [])
 
     init(
         apiService: AladinAPIServiceProtocol,
+        bookSearchService: BookSearchServiceProtocol,
         modelContext: ModelContext,
         searchCache: BookSearchCache? = nil
     ) {
         self.apiService   = apiService
+        self.bookSearchService = bookSearchService
         self.modelContext = modelContext
         self.searchCache = searchCache ?? BookSearchCache()
         refreshRelay()
@@ -55,7 +58,10 @@ final class BookRepository: BookRepositoryProtocol {
         if let cached = searchCache.result(for: .bestseller) { return cached.books }
         let books = try await apiService.fetchBestsellers()
         try Task.checkCancellation()
-        searchCache.insert((books, books.count), for: .bestseller)
+        searchCache.insert(
+            BookSearchPage(books: books, totalResults: books.count, isEnd: true),
+            for: .bestseller
+        )
         return books
     }
 
@@ -65,16 +71,19 @@ final class BookRepository: BookRepositoryProtocol {
         if let cached = searchCache.result(for: key) { return cached.books }
         let books = try await apiService.fetchNewSpecialBooks(page: page)
         try Task.checkCancellation()
-        searchCache.insert((books, books.count), for: key)
+        searchCache.insert(
+            BookSearchPage(books: books, totalResults: books.count, isEnd: books.count < 10),
+            for: key
+        )
         return books
     }
 
-    func searchBooks(query: String, page: Int) async throws -> (books: [Book], totalResults: Int) {
+    func searchBooks(query: String, page: Int) async throws -> BookSearchPage {
         try Task.checkCancellation()
         let normalizedQuery = query.trimmingCharacters(in: .whitespacesAndNewlines)
         let key = BookSearchCache.Key.search(query: normalizedQuery, page: page)
         if let cached = searchCache.result(for: key) { return cached }
-        let result = try await apiService.searchBooks(query: normalizedQuery, page: page)
+        let result = try await bookSearchService.searchBooks(query: normalizedQuery, page: page)
         try Task.checkCancellation()
         searchCache.insert(result, for: key)
         return result

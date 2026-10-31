@@ -21,13 +21,27 @@ final class BookRepositoryTests: XCTestCase {
 
     func test_searchWhitespace_reusesBooksAndTotalResults() async throws {
         let fixture = try Fixture()
+        fixture.searchAPI.isEnd = true
         let first = try await fixture.repository.searchBooks(query: " \n어린 왕자\t", page: 1)
-        fixture.api.books = []
-        fixture.api.totalResults = 0
+        fixture.searchAPI.books = []
+        fixture.searchAPI.totalResults = 0
+        fixture.searchAPI.isEnd = false
         let cached = try await fixture.repository.searchBooks(query: "어린 왕자", page: 1)
         XCTAssertEqual(cached.books.map(\.isbn13), first.books.map(\.isbn13))
         XCTAssertEqual(cached.totalResults, 120)
-        XCTAssertEqual(fixture.api.searchQueries.map(\.query), ["어린 왕자"])
+        XCTAssertTrue(cached.isEnd)
+        XCTAssertEqual(fixture.searchAPI.searchQueries.map(\.query), ["어린 왕자"])
+    }
+
+    func test_search_usesDedicatedBookSearchServiceOnly() async throws {
+        let fixture = try Fixture()
+
+        _ = try await fixture.repository.searchBooks(query: "책", page: 1)
+
+        XCTAssertEqual(fixture.searchAPI.searchQueries.map(\.query), ["책"])
+        XCTAssertEqual(fixture.api.bestsellerCalls, 0)
+        XCTAssertTrue(fixture.api.newSpecialPages.isEmpty)
+        XCTAssertEqual(fixture.api.detailCalls, 0)
     }
 
     func test_queryPageAndListType_doNotShareCache() async throws {
@@ -39,21 +53,21 @@ final class BookRepositoryTests: XCTestCase {
         _ = try await fixture.repository.fetchNewSpecialBooks(page: 1)
         _ = try await fixture.repository.fetchNewSpecialBooks(page: 2)
         _ = try await fixture.repository.fetchBestsellers()
-        XCTAssertEqual(fixture.api.searchQueries.count, 6)
-        XCTAssertEqual(fixture.api.searchQueries.map(\.page), [1, 1, 1, 1, 1, 2])
+        XCTAssertEqual(fixture.searchAPI.searchQueries.count, 6)
+        XCTAssertEqual(fixture.searchAPI.searchQueries.map(\.page), [1, 1, 1, 1, 1, 2])
         XCTAssertEqual(fixture.api.newSpecialPages, [1, 2])
         XCTAssertEqual(fixture.api.bestsellerCalls, 1)
     }
 
     func test_emptySuccess_isCached() async throws {
         let fixture = try Fixture()
-        fixture.api.books = []
-        fixture.api.totalResults = 0
+        fixture.searchAPI.books = []
+        fixture.searchAPI.totalResults = 0
         _ = try await fixture.repository.searchBooks(query: "빈 결과", page: 1)
         let result = try await fixture.repository.searchBooks(query: "빈 결과", page: 1)
         XCTAssertTrue(result.books.isEmpty)
         XCTAssertEqual(result.totalResults, 0)
-        XCTAssertEqual(fixture.api.searchQueries.count, 1)
+        XCTAssertEqual(fixture.searchAPI.searchQueries.count, 1)
     }
 
     func test_exactExpiry_requestsAgainWithoutExtendingOnRead() async throws {
@@ -69,15 +83,15 @@ final class BookRepositoryTests: XCTestCase {
 
     func test_expiry_startsAtResponseCompletion() async throws {
         let fixture = try Fixture()
-        fixture.api.onRequest = { fixture.clock.time = 400 }
+        fixture.onRequest = { fixture.clock.time = 400 }
         _ = try await fixture.repository.searchBooks(query: "책", page: 1)
-        fixture.api.onRequest = nil
+        fixture.onRequest = nil
         fixture.clock.time = 699
         _ = try await fixture.repository.searchBooks(query: "책", page: 1)
-        XCTAssertEqual(fixture.api.searchQueries.count, 1)
+        XCTAssertEqual(fixture.searchAPI.searchQueries.count, 1)
         fixture.clock.time = 700
         _ = try await fixture.repository.searchBooks(query: "책", page: 1)
-        XCTAssertEqual(fixture.api.searchQueries.count, 2)
+        XCTAssertEqual(fixture.searchAPI.searchQueries.count, 2)
     }
 
     func test_moreThanThirtyEntries_evictsLeastRecentlyUsed() async throws {
@@ -88,9 +102,9 @@ final class BookRepositoryTests: XCTestCase {
         _ = try await fixture.repository.searchBooks(query: "책 0", page: 1)
         _ = try await fixture.repository.fetchBestsellers()
         _ = try await fixture.repository.searchBooks(query: "책 0", page: 1)
-        XCTAssertEqual(fixture.api.searchQueries.count, 30)
+        XCTAssertEqual(fixture.searchAPI.searchQueries.count, 30)
         _ = try await fixture.repository.searchBooks(query: "책 1", page: 1)
-        XCTAssertEqual(fixture.api.searchQueries.count, 31)
+        XCTAssertEqual(fixture.searchAPI.searchQueries.count, 31)
     }
 
     func test_expiredEntries_areRemovedBeforeEvictingValidEntry() async throws {
@@ -113,18 +127,18 @@ final class BookRepositoryTests: XCTestCase {
     func test_failedRequests_areNotCached() async throws {
         let fixture = try Fixture()
         for request in fixture.remoteRequests {
-            fixture.api.onRequest = { throw StubError.failed }
+            fixture.onRequest = { throw StubError.failed }
             do {
                 try await request()
                 XCTFail("실패 응답은 호출자에게 전달되어야 함")
             } catch StubError.failed { }
-            fixture.api.onRequest = nil
+            fixture.onRequest = nil
             try await request()
             try await request()
         }
         XCTAssertEqual(fixture.api.bestsellerCalls, 2)
         XCTAssertEqual(fixture.api.newSpecialPages.count, 2)
-        XCTAssertEqual(fixture.api.searchQueries.count, 2)
+        XCTAssertEqual(fixture.searchAPI.searchQueries.count, 2)
     }
 
     func test_cancelledRequestsReturningSuccess_areNotCached() async throws {
@@ -132,7 +146,7 @@ final class BookRepositoryTests: XCTestCase {
         for request in fixture.remoteRequests {
             let started = expectation(description: "요청 시작")
             var continuation: CheckedContinuation<Void, Never>?
-            fixture.api.onRequest = {
+            fixture.onRequest = {
                 await withCheckedContinuation {
                     continuation = $0
                     started.fulfill()
@@ -146,12 +160,12 @@ final class BookRepositoryTests: XCTestCase {
                 try await task.value
                 XCTFail("취소 후 도착한 성공 응답은 저장되면 안 됨")
             } catch is CancellationError { }
-            fixture.api.onRequest = nil
+            fixture.onRequest = nil
             try await request()
         }
         XCTAssertEqual(fixture.api.bestsellerCalls, 2)
         XCTAssertEqual(fixture.api.newSpecialPages.count, 2)
-        XCTAssertEqual(fixture.api.searchQueries.count, 2)
+        XCTAssertEqual(fixture.searchAPI.searchQueries.count, 2)
     }
 
     func test_alreadyCancelledTask_doesNotReturnCachedResult() async throws {
@@ -169,7 +183,11 @@ final class BookRepositoryTests: XCTestCase {
     func test_newRepository_doesNotReusePreviousInstanceCache() async throws {
         let fixture = try Fixture()
         _ = try await fixture.repository.fetchBestsellers()
-        let another = BookRepository(apiService: fixture.api, modelContext: fixture.container.mainContext)
+        let another = BookRepository(
+            apiService: fixture.api,
+            bookSearchService: fixture.searchAPI,
+            modelContext: fixture.container.mainContext
+        )
         _ = try await another.fetchBestsellers()
         XCTAssertEqual(fixture.api.bestsellerCalls, 2)
     }
@@ -204,8 +222,8 @@ final class BookRepositoryTests: XCTestCase {
         query.onNext("어린 왕자 \n")
         nextPage.onNext(())
         await fulfillment(of: [secondPage], timeout: 2)
-        XCTAssertEqual(fixture.api.searchQueries.map(\.query), ["어린 왕자", "어린 왕자"])
-        XCTAssertEqual(fixture.api.searchQueries.map(\.page), [1, 2])
+        XCTAssertEqual(fixture.searchAPI.searchQueries.map(\.query), ["어린 왕자", "어린 왕자"])
+        XCTAssertEqual(fixture.searchAPI.searchQueries.map(\.page), [1, 2])
     }
 }
 
@@ -222,6 +240,7 @@ private final class TestClock {
 private final class Fixture {
     let clock = TestClock()
     let api = StubAladinAPIService()
+    let searchAPI = StubBookSearchService()
     let container: ModelContainer
     let repository: BookRepository
 
@@ -232,9 +251,19 @@ private final class Fixture {
         )
         let clock = clock
         repository = BookRepository(
-            apiService: api, modelContext: container.mainContext,
+            apiService: api,
+            bookSearchService: searchAPI,
+            modelContext: container.mainContext,
             searchCache: BookSearchCache(now: { clock.time })
         )
+    }
+
+    var onRequest: (() async throws -> Void)? {
+        get { api.onRequest }
+        set {
+            api.onRequest = newValue
+            searchAPI.onRequest = newValue
+        }
     }
 
     var remoteRequests: [() async throws -> Void] {
@@ -250,9 +279,7 @@ private final class Fixture {
 private final class StubAladinAPIService: AladinAPIServiceProtocol {
     var bestsellerCalls = 0
     var newSpecialPages: [Int] = []
-    var searchQueries: [(query: String, page: Int)] = []
     var detailCalls = 0
-    var totalResults = 120
     var onRequest: (() async throws -> Void)?
     var books = [Book(
         title: "테스트 도서", author: "저자", isbn13: "test", coverURL: nil,
@@ -272,14 +299,27 @@ private final class StubAladinAPIService: AladinAPIServiceProtocol {
         return books
     }
 
-    func searchBooks(query: String, page: Int) async throws -> (books: [Book], totalResults: Int) {
-        searchQueries.append((query, page))
-        try await onRequest?()
-        return (books, totalResults)
-    }
-
     func fetchBookDetail(isbn13: String) async throws -> Book {
         detailCalls += 1
         return books[0]
+    }
+}
+
+@MainActor
+private final class StubBookSearchService: BookSearchServiceProtocol {
+    var searchQueries: [(query: String, page: Int)] = []
+    var totalResults = 120
+    var isEnd = false
+    var onRequest: (() async throws -> Void)?
+    var books = [Book(
+        title: "테스트 도서", author: "저자", isbn13: "test", coverURL: nil,
+        publisher: "출판사", publishDate: nil, category: nil, bestRank: nil,
+        description: "설명", itemPage: nil, currentPage: nil
+    )]
+
+    func searchBooks(query: String, page: Int) async throws -> BookSearchPage {
+        searchQueries.append((query, page))
+        try await onRequest?()
+        return BookSearchPage(books: books, totalResults: totalResults, isEnd: isEnd)
     }
 }

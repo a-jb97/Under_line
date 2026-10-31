@@ -129,6 +129,23 @@ final class BookSearchViewModelTests: XCTestCase {
         XCTAssertEqual(h.repository.requests.count, 2)
     }
 
+    func test_shortMappedPage_continuesWhenKakaoReportsMoreResults() async {
+        let h = Harness()
+        let first = await requested(h) { h.search("책") }
+        await finish(first, .success((makeBooks(0..<50), 200)))
+        let second = await requested(h) { h.next.onNext(()) }
+        await finish(second, .success((makeBooks(50..<99), 200)), isEnd: false)
+
+        let third = await requested(h) { h.next.onNext(()) }
+        XCTAssertEqual(third.page, 3)
+        await finish(third, .success((makeBooks(99..<100), 200)), isEnd: true)
+
+        h.next.onNext(())
+        await drain()
+        XCTAssertEqual(h.books.count, 100)
+        XCTAssertEqual(h.repository.requests.map(\.page), [1, 2, 3])
+    }
+
     func test_firstPageFailure_clearsPreviousListAndCanSearchAgain() async {
         let h = Harness()
         let first = await requested(h) { h.list.onNext(.bestseller) }
@@ -157,10 +174,20 @@ final class BookSearchViewModelTests: XCTestCase {
         return h.repository.requests.last!
     }
 
-    private func finish(_ request: PendingRequest, _ result: Result<([Book], Int), Error>) async {
+    private func finish(
+        _ request: PendingRequest,
+        _ result: Result<([Book], Int), Error>,
+        isEnd: Bool? = nil
+    ) async {
         let returned = expectation(description: "응답 반환")
         request.onReturned = { returned.fulfill() }
-        request.continuation.resume(with: result)
+        request.continuation.resume(with: result.map { books, totalResults in
+            BookSearchPage(
+                books: books,
+                totalResults: totalResults,
+                isEnd: isEnd ?? (books.isEmpty || books.count < 50 || books.count >= totalResults)
+            )
+        })
         await fulfillment(of: [returned], timeout: 2)
         await drain()
     }
@@ -218,11 +245,11 @@ private final class Harness {
 @MainActor
 private final class PendingRequest {
     let page: Int
-    let continuation: CheckedContinuation<([Book], Int), Error>
+    let continuation: CheckedContinuation<BookSearchPage, Error>
     var wasCancelled = false
     var onReturned: (() -> Void)?
 
-    init(page: Int, continuation: CheckedContinuation<([Book], Int), Error>) {
+    init(page: Int, continuation: CheckedContinuation<BookSearchPage, Error>) {
         self.page = page
         self.continuation = continuation
     }
@@ -234,7 +261,7 @@ private final class ControlledRepository: BookRepositoryProtocol {
     var requests: [PendingRequest] = []
     var onRequested: (() -> Void)?
 
-    private func fetch(page: Int) async throws -> ([Book], Int) {
+    private func fetch(page: Int) async throws -> BookSearchPage {
         var pending: PendingRequest?
         defer {
             pending?.wasCancelled = Task.isCancelled
@@ -248,9 +275,9 @@ private final class ControlledRepository: BookRepositoryProtocol {
         }
     }
 
-    func fetchBestsellers() async throws -> [Book] { try await fetch(page: 1).0 }
-    func fetchNewSpecialBooks(page: Int) async throws -> [Book] { try await fetch(page: page).0 }
-    func searchBooks(query: String, page: Int) async throws -> (books: [Book], totalResults: Int) {
+    func fetchBestsellers() async throws -> [Book] { try await fetch(page: 1).books }
+    func fetchNewSpecialBooks(page: Int) async throws -> [Book] { try await fetch(page: page).books }
+    func searchBooks(query: String, page: Int) async throws -> BookSearchPage {
         try await fetch(page: page)
     }
     func fetchBookDetail(isbn13: String) async throws -> Book { throw StubError.failed }

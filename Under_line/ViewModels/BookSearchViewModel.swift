@@ -142,13 +142,14 @@ final class BookSearchViewModel {
     }
 
     private func request(mode: DisplayMode, page: Int, generation: UUID) {
-        let request: Observable<(books: [Book], totalResults: Int)> = rxAsync { [repository] in
+        let request: Observable<BookSearchPage> = rxAsync { [repository] in
             switch mode {
             case .list(.bestseller):
                 let books = try await repository.fetchBestsellers()
-                return (books, books.count)
+                return BookSearchPage(books: books, totalResults: books.count, isEnd: true)
             case .list(.newSpecial):
-                return (try await repository.fetchNewSpecialBooks(page: page), 50)
+                let books = try await repository.fetchNewSpecialBooks(page: page)
+                return BookSearchPage(books: books, totalResults: 50, isEnd: books.count < 10)
             case .search(let query):
                 return try await repository.searchBooks(query: query, page: page)
             }
@@ -173,7 +174,7 @@ final class BookSearchViewModel {
         )
     }
 
-    private func receive(_ result: (books: [Book], totalResults: Int), mode: DisplayMode, page: Int) {
+    private func receive(_ result: BookSearchPage, mode: DisplayMode, page: Int) {
         if page == 1 { totalCount = min(max(result.totalResults, 0), mode.maximumCount) }
         let previous = page == 1 ? [] : updates.value.books
         let combined = Array((previous + result.books).prefix(totalCount))
@@ -187,8 +188,8 @@ final class BookSearchViewModel {
         case .list(.newSpecial):
             hasMorePages = hasMorePages && result.books.count >= mode.pageSize
         case .search:
-            // 첫 검색은 totalResults를 따른다. 후속 페이지가 짧으면 종료한다.
-            hasMorePages = hasMorePages && (page == 1 || result.books.count >= mode.pageSize)
+            // ISBN13이 없는 문서가 제외되어 페이지가 짧아져도 카카오의 종료값을 따른다.
+            hasMorePages = hasMorePages && !result.isEnd
         }
         // 상태 계산과 snapshot 반영 중 발생하는 UI 요청은 로딩 상태로 차단한다.
         if page == 1 {
