@@ -14,8 +14,8 @@ import RxCocoa
 
 protocol BookRepositoryProtocol {
     // Remote
-    func fetchBestsellers() async throws -> [Book]
-    func fetchNewSpecialBooks(page: Int) async throws -> [Book]
+    func fetchPopularBooks() async throws -> [Book]
+    func fetchTrendingBooks() async throws -> [Book]
     func searchBooks(query: String, page: Int) async throws -> BookSearchPage
     func fetchBookDetail(isbn13: String) async throws -> Book
 
@@ -56,28 +56,26 @@ final class BookRepository: BookRepositoryProtocol {
 
     // MARK: Remote
 
-    func fetchBestsellers() async throws -> [Book] {
+    func fetchPopularBooks() async throws -> [Book] {
         try Task.checkCancellation()
-        if let cached = searchCache.result(for: .bestseller) { return cached.books }
+        if let cached = searchCache.result(for: .popular) { return cached.books }
         let books = try await bookListService.fetchPopularBooks()
         try Task.checkCancellation()
         searchCache.insert(
             BookSearchPage(books: books, totalResults: books.count, isEnd: true),
-            for: .bestseller
+            for: .popular
         )
         return books
     }
 
-    func fetchNewSpecialBooks(page: Int) async throws -> [Book] {
+    func fetchTrendingBooks() async throws -> [Book] {
         try Task.checkCancellation()
-        let key = BookSearchCache.Key.newSpecial(page: page)
-        if let cached = searchCache.result(for: key) { return cached.books }
-        guard page == 1 else { return [] }
+        if let cached = searchCache.result(for: .trending) { return cached.books }
         let books = try await bookListService.fetchTrendingBooks()
         try Task.checkCancellation()
         searchCache.insert(
-            BookSearchPage(books: books, totalResults: books.count, isEnd: books.count < 10),
-            for: key
+            BookSearchPage(books: books, totalResults: books.count, isEnd: true),
+            for: .trending
         )
         return books
     }

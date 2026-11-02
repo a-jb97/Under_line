@@ -19,8 +19,8 @@ final class Data4LibraryBookListServiceTests: XCTestCase {
             })
 
             XCTAssertEqual(request.url?.path, "/api/loanItemSrch")
-            XCTAssertEqual(parameters["startDt"]!, "20261001")
-            XCTAssertEqual(parameters["endDt"]!, "20261030")
+            XCTAssertEqual(parameters["startDt"]!, "2026-10-01")
+            XCTAssertEqual(parameters["endDt"]!, "2026-10-30")
             XCTAssertEqual(parameters["pageNo"]!, "1")
             XCTAssertEqual(parameters["pageSize"]!, "50")
             XCTAssertEqual(parameters["format"]!, "json")
@@ -40,6 +40,7 @@ final class Data4LibraryBookListServiceTests: XCTestCase {
         XCTAssertEqual(book.publishDate, "2026")
         XCTAssertEqual(book.category, "문학")
         XCTAssertEqual(book.bestRank, 1)
+        XCTAssertEqual(books.map(\.bestRank), [1, 2], "공동 순위 대신 응답 순서를 표시한다.")
         XCTAssertNil(book.coverURL, "정보나루 표지는 이용 정책상 앱 도메인으로 전달하지 않는다.")
         XCTAssertEqual(book.description, "")
         XCTAssertNil(book.itemPage)
@@ -50,13 +51,13 @@ final class Data4LibraryBookListServiceTests: XCTestCase {
         Data4LibraryStubURLProtocol.handler = { request in
             let date = try XCTUnwrap(Self.queryValue("searchDt", in: request))
             requestedDates.append(date)
-            let data = date == "20261030" ? Self.emptyTrendingResponse : Self.trendingResponse
+            let data = date == "2026-10-30" ? Self.emptyTrendingResponse : Self.trendingResponse
             return (Self.response(for: request), data)
         }
 
         let books = try await makeService().fetchTrendingBooks()
 
-        XCTAssertEqual(requestedDates, ["20261030", "20261029"])
+        XCTAssertEqual(requestedDates, ["2026-10-30", "2026-10-29"])
         XCTAssertEqual(books.map(\.isbn13), [
             "9788937460586",
             "9791162245651",
@@ -159,8 +160,8 @@ final class Data4LibraryBookListServiceTests: XCTestCase {
     func test_requestBuilder_rejectsMissingAPIKey() {
         XCTAssertThrowsError(try Data4LibraryBookListRequestBuilder.makePopularRequest(
             apiKey: " \n ",
-            startDate: "20261001",
-            endDate: "20261030"
+        startDate: "2026-10-01",
+        endDate: "2026-10-30"
         )) {
             XCTAssertEqual($0 as? Data4LibraryBookListError, .missingAPIKey)
         }
@@ -216,8 +217,8 @@ final class Data4LibraryBookListServiceTests: XCTestCase {
     private static let popularResponse = Data(#"""
     {
       "response": {
-        "resultNum": "1",
-        "numFound": 1,
+        "resultNum": "2",
+        "numFound": 2,
         "docs": [{
           "doc": {
             "no": 1,
@@ -230,6 +231,17 @@ final class Data4LibraryBookListServiceTests: XCTestCase {
             "class_nm": "문학",
             "bookImageURL": "https://example.com/data4library-cover.jpg",
             "bookDtlUrl": "https://example.com/detail",
+            "loan_count": "100"
+          }
+        }, {
+          "doc": {
+            "no": 2,
+            "ranking": "1",
+            "bookname": "공동 순위 도서",
+            "authors": "다른 저자",
+            "publisher": "테스트 출판사",
+            "publication_year": 2025,
+            "isbn13": "9791162245651",
             "loan_count": "100"
           }
         }]

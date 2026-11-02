@@ -9,8 +9,8 @@ import Foundation
 
 final class BookSearchViewModel {
     enum BookListType: Equatable {
-        case bestseller
-        case newSpecial
+        case popular
+        case trending
     }
 
     struct ListUpdate {
@@ -29,7 +29,6 @@ final class BookSearchViewModel {
         case search(String)
 
         var pageSize: Int {
-            if case .list(.newSpecial) = self { return 10 }
             return 50
         }
 
@@ -84,7 +83,7 @@ final class BookSearchViewModel {
             .disposed(by: disposeBag)
 
         Observable.merge(
-            input.viewDidLoad.map { DisplayMode.list(.bestseller) },
+            input.viewDidLoad.map { DisplayMode.list(.popular) },
             input.listSelection.map { DisplayMode.list($0) },
             input.searchTrigger.compactMap { [weak self] _ -> DisplayMode? in
                 guard let self, !self.latestQuery.isEmpty else { return nil }
@@ -144,11 +143,11 @@ final class BookSearchViewModel {
     private func request(mode: DisplayMode, page: Int, generation: UUID) {
         let request: Observable<BookSearchPage> = rxAsync { [repository] in
             switch mode {
-            case .list(.bestseller):
-                let books = try await repository.fetchBestsellers()
+            case .list(.popular):
+                let books = try await repository.fetchPopularBooks()
                 return BookSearchPage(books: books, totalResults: books.count, isEnd: true)
-            case .list(.newSpecial):
-                let books = try await repository.fetchNewSpecialBooks(page: page)
+            case .list(.trending):
+                let books = try await repository.fetchTrendingBooks()
                 return BookSearchPage(books: books, totalResults: books.count, isEnd: true)
             case .search(let query):
                 return try await repository.searchBooks(query: query, page: page)
@@ -183,10 +182,10 @@ final class BookSearchViewModel {
             && combined.count < totalCount
             && page * mode.pageSize < totalCount
         switch mode {
-        case .list(.bestseller):
+        case .list(.popular):
             hasMorePages = false
-        case .list(.newSpecial):
-            hasMorePages = hasMorePages && result.books.count >= mode.pageSize
+        case .list(.trending):
+            hasMorePages = false
         case .search:
             // ISBN13이 없는 문서가 제외되어 페이지가 짧아져도 카카오의 종료값을 따른다.
             hasMorePages = hasMorePages && !result.isEnd

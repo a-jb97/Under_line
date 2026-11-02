@@ -46,7 +46,7 @@ final class BookSearchViewModelTests: XCTestCase {
     func test_searchListSearch_ignoresOldSuccessAndErrorEvenForSameQuery() async {
         let h = Harness()
         let oldSearch = await requested(h) { h.search("같은 책") }
-        let oldList = await requested(h) { h.list.onNext(.newSpecial) }
+        let oldList = await requested(h) { h.list.onNext(.trending) }
         let current = await requested(h) { h.search("같은 책") }
         await finish(oldSearch, .success((makeBooks(900..<901), 1)))
         await finish(oldList, .failure(StubError.failed))
@@ -62,8 +62,8 @@ final class BookSearchViewModelTests: XCTestCase {
 
     func test_reselectingList_ignoresPreviousResponse() async {
         let h = Harness()
-        let first = await requested(h) { h.list.onNext(.newSpecial) }
-        let replacement = await requested(h) { h.list.onNext(.newSpecial) }
+        let first = await requested(h) { h.list.onNext(.trending) }
+        let replacement = await requested(h) { h.list.onNext(.trending) }
         await finish(first, .success((makeBooks(0..<10), 10)))
         XCTAssertTrue(first.wasCancelled)
         XCTAssertTrue(h.books.isEmpty)
@@ -87,9 +87,9 @@ final class BookSearchViewModelTests: XCTestCase {
         XCTAssertEqual(h.repository.requests.map(\.page), [1, 2, 3, 4])
     }
 
-    func test_newSpecial_usesSingleNonPaginatedResponse() async {
+    func test_trending_usesSingleNonPaginatedResponse() async {
         let h = Harness()
-        let request = await requested(h) { h.list.onNext(.newSpecial) }
+        let request = await requested(h) { h.list.onNext(.trending) }
         await finish(request, .success((makeBooks(0..<15), 15)))
         h.next.onNext(())
         await drain()
@@ -143,7 +143,7 @@ final class BookSearchViewModelTests: XCTestCase {
 
     func test_firstPageFailure_clearsPreviousListAndCanSearchAgain() async {
         let h = Harness()
-        let first = await requested(h) { h.list.onNext(.bestseller) }
+        let first = await requested(h) { h.list.onNext(.popular) }
         await finish(first, .success((makeBooks(0..<50), 50)))
         h.next.onNext(())
         await drain()
@@ -270,8 +270,8 @@ private final class ControlledRepository: BookRepositoryProtocol {
         }
     }
 
-    func fetchBestsellers() async throws -> [Book] { try await fetch(page: 1).books }
-    func fetchNewSpecialBooks(page: Int) async throws -> [Book] { try await fetch(page: page).books }
+    func fetchPopularBooks() async throws -> [Book] { try await fetch(page: 1).books }
+    func fetchTrendingBooks() async throws -> [Book] { try await fetch(page: 1).books }
     func searchBooks(query: String, page: Int) async throws -> BookSearchPage {
         try await fetch(page: page)
     }

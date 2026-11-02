@@ -120,7 +120,7 @@ final class Data4LibraryBookListService: Data4LibraryBookListServiceProtocol {
         #endif
 
         return decoded.response.documents.compactMap {
-            $0.toDomain(bestRank: $0.ranking)
+            $0.toDomain(bestRank: $0.sequence ?? $0.ranking)
         }
     }
 

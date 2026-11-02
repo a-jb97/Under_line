@@ -142,8 +142,8 @@ final class BookSearchViewController: UIViewController {
         return v
     }()
 
-    private lazy var bestsellerButton = makeListTabButton(title: "베스트셀러 50", selected: true)
-    private lazy var newSpecialButton = makeListTabButton(title: "추천 신간", selected: false)
+    private lazy var popularButton = makeListTabButton(title: "인기 대출 도서", selected: true)
+    private lazy var trendingButton = makeListTabButton(title: "요즘 뜨는 책", selected: false)
 
     private lazy var listSegmentContainerView: UIView = {
         let v = UIView()
@@ -222,8 +222,8 @@ final class BookSearchViewController: UIViewController {
     private func setupTableHeader() {
         let container = UIView()
         container.backgroundColor = .clear
-        listSegmentContainerView.addSubview(bestsellerButton)
-        listSegmentContainerView.addSubview(newSpecialButton)
+        listSegmentContainerView.addSubview(popularButton)
+        listSegmentContainerView.addSubview(trendingButton)
         container.addSubview(listSegmentContainerView)
         listSegmentContainerView.snp.makeConstraints { make in
             make.leading.equalToSuperview().offset(8)
@@ -231,14 +231,14 @@ final class BookSearchViewController: UIViewController {
             make.bottom.equalToSuperview().inset(6)
             make.height.equalTo(34)
         }
-        bestsellerButton.snp.makeConstraints { make in
+        popularButton.snp.makeConstraints { make in
             make.leading.top.bottom.equalToSuperview().inset(3)
             make.width.equalTo(94)
         }
-        newSpecialButton.snp.makeConstraints { make in
-            make.leading.equalTo(bestsellerButton.snp.trailing)
+        trendingButton.snp.makeConstraints { make in
+            make.leading.equalTo(popularButton.snp.trailing)
             make.trailing.top.bottom.equalToSuperview().inset(3)
-            make.width.equalTo(bestsellerButton)
+            make.width.equalTo(popularButton)
         }
         container.frame = CGRect(x: 0, y: 0, width: 0, height: 50)
         tableView.tableHeaderView = container
@@ -393,17 +393,17 @@ final class BookSearchViewController: UIViewController {
             })
             .disposed(by: disposeBag)
 
-        bestsellerButton.rx.tap
+        popularButton.rx.tap
             .subscribe(onNext: { [weak self] in
-                self?.selectListTab(.bestseller)
-                self?.listSelectionRelay.accept(.bestseller)
+                self?.selectListTab(.popular)
+                self?.listSelectionRelay.accept(.popular)
             })
             .disposed(by: disposeBag)
 
-        newSpecialButton.rx.tap
+        trendingButton.rx.tap
             .subscribe(onNext: { [weak self] in
-                self?.selectListTab(.newSpecial)
-                self?.listSelectionRelay.accept(.newSpecial)
+                self?.selectListTab(.trending)
+                self?.listSelectionRelay.accept(.trending)
             })
             .disposed(by: disposeBag)
 
@@ -524,8 +524,8 @@ final class BookSearchViewController: UIViewController {
     // MARK: - List Segment
 
     private func selectListTab(_ listType: BookSearchViewModel.BookListType) {
-        applyListTabStyle(to: bestsellerButton, selected: listType == .bestseller)
-        applyListTabStyle(to: newSpecialButton, selected: listType == .newSpecial)
+        applyListTabStyle(to: popularButton, selected: listType == .popular)
+        applyListTabStyle(to: trendingButton, selected: listType == .trending)
     }
 
     private func makeListTabButton(title: String, selected: Bool) -> UIButton {

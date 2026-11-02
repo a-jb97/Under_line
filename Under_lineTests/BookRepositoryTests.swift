@@ -8,13 +8,13 @@ import RxCocoa
 final class BookRepositoryTests: XCTestCase {
     func test_repeatedLists_reusesSeparateCachedResults() async throws {
         let fixture = try Fixture()
-        let bestseller = try await fixture.repository.fetchBestsellers()
-        let newSpecial = try await fixture.repository.fetchNewSpecialBooks(page: 1)
+        let popular = try await fixture.repository.fetchPopularBooks()
+        let trending = try await fixture.repository.fetchTrendingBooks()
         fixture.listAPI.books = []
-        let cachedBestseller = try await fixture.repository.fetchBestsellers()
-        let cachedNewSpecial = try await fixture.repository.fetchNewSpecialBooks(page: 1)
-        XCTAssertEqual(cachedBestseller.map(\.isbn13), bestseller.map(\.isbn13))
-        XCTAssertEqual(cachedNewSpecial.map(\.isbn13), newSpecial.map(\.isbn13))
+        let cachedPopular = try await fixture.repository.fetchPopularBooks()
+        let cachedTrending = try await fixture.repository.fetchTrendingBooks()
+        XCTAssertEqual(cachedPopular.map(\.isbn13), popular.map(\.isbn13))
+        XCTAssertEqual(cachedTrending.map(\.isbn13), trending.map(\.isbn13))
         XCTAssertEqual(fixture.listAPI.popularCalls, 1)
         XCTAssertEqual(fixture.listAPI.trendingCalls, 1)
     }
@@ -39,8 +39,6 @@ final class BookRepositoryTests: XCTestCase {
         _ = try await fixture.repository.searchBooks(query: "책", page: 1)
 
         XCTAssertEqual(fixture.searchAPI.searchQueries.map(\.query), ["책"])
-        XCTAssertEqual(fixture.api.bestsellerCalls, 0)
-        XCTAssertTrue(fixture.api.newSpecialPages.isEmpty)
         XCTAssertEqual(fixture.listAPI.popularCalls, 0)
         XCTAssertEqual(fixture.listAPI.trendingCalls, 0)
         XCTAssertEqual(fixture.api.detailCalls, 0)
@@ -52,9 +50,9 @@ final class BookRepositoryTests: XCTestCase {
             _ = try await fixture.repository.searchBooks(query: query, page: 1)
         }
         _ = try await fixture.repository.searchBooks(query: "어린 왕자", page: 2)
-        _ = try await fixture.repository.fetchNewSpecialBooks(page: 1)
-        _ = try await fixture.repository.fetchNewSpecialBooks(page: 2)
-        _ = try await fixture.repository.fetchBestsellers()
+        _ = try await fixture.repository.fetchTrendingBooks()
+        _ = try await fixture.repository.fetchTrendingBooks()
+        _ = try await fixture.repository.fetchPopularBooks()
         XCTAssertEqual(fixture.searchAPI.searchQueries.count, 6)
         XCTAssertEqual(fixture.searchAPI.searchQueries.map(\.page), [1, 1, 1, 1, 1, 2])
         XCTAssertEqual(fixture.listAPI.trendingCalls, 1)
@@ -74,12 +72,12 @@ final class BookRepositoryTests: XCTestCase {
 
     func test_exactExpiry_requestsAgainWithoutExtendingOnRead() async throws {
         let fixture = try Fixture()
-        _ = try await fixture.repository.fetchBestsellers()
+        _ = try await fixture.repository.fetchPopularBooks()
         fixture.clock.time = 299
-        _ = try await fixture.repository.fetchBestsellers()
+        _ = try await fixture.repository.fetchPopularBooks()
         XCTAssertEqual(fixture.listAPI.popularCalls, 1)
         fixture.clock.time = 300
-        _ = try await fixture.repository.fetchBestsellers()
+        _ = try await fixture.repository.fetchPopularBooks()
         XCTAssertEqual(fixture.listAPI.popularCalls, 2)
     }
 
@@ -102,7 +100,7 @@ final class BookRepositoryTests: XCTestCase {
             _ = try await fixture.repository.searchBooks(query: "책 \(index)", page: 1)
         }
         _ = try await fixture.repository.searchBooks(query: "책 0", page: 1)
-        _ = try await fixture.repository.fetchBestsellers()
+        _ = try await fixture.repository.fetchPopularBooks()
         _ = try await fixture.repository.searchBooks(query: "책 0", page: 1)
         XCTAssertEqual(fixture.searchAPI.searchQueries.count, 30)
         _ = try await fixture.repository.searchBooks(query: "책 1", page: 1)
@@ -115,14 +113,14 @@ final class BookRepositoryTests: XCTestCase {
             _ = try await fixture.repository.searchBooks(query: "책 \(index)", page: 1)
         }
         fixture.clock.time = 100
-        _ = try await fixture.repository.fetchBestsellers()
+        _ = try await fixture.repository.fetchPopularBooks()
         fixture.clock.time = 299
         for index in 0..<29 {
             _ = try await fixture.repository.searchBooks(query: "책 \(index)", page: 1)
         }
         fixture.clock.time = 300
-        _ = try await fixture.repository.fetchNewSpecialBooks(page: 1)
-        _ = try await fixture.repository.fetchBestsellers()
+        _ = try await fixture.repository.fetchTrendingBooks()
+        _ = try await fixture.repository.fetchPopularBooks()
         XCTAssertEqual(fixture.listAPI.popularCalls, 1)
     }
 
@@ -172,8 +170,8 @@ final class BookRepositoryTests: XCTestCase {
 
     func test_alreadyCancelledTask_doesNotReturnCachedResult() async throws {
         let fixture = try Fixture()
-        _ = try await fixture.repository.fetchBestsellers()
-        let task = Task { try await fixture.repository.fetchBestsellers() }
+        _ = try await fixture.repository.fetchPopularBooks()
+        let task = Task { try await fixture.repository.fetchPopularBooks() }
         task.cancel()
         do {
             _ = try await task.value
@@ -184,14 +182,14 @@ final class BookRepositoryTests: XCTestCase {
 
     func test_newRepository_doesNotReusePreviousInstanceCache() async throws {
         let fixture = try Fixture()
-        _ = try await fixture.repository.fetchBestsellers()
+        _ = try await fixture.repository.fetchPopularBooks()
         let another = BookRepository(
             apiService: fixture.api,
             bookSearchService: fixture.searchAPI,
             bookListService: fixture.listAPI,
             modelContext: fixture.container.mainContext
         )
-        _ = try await another.fetchBestsellers()
+        _ = try await another.fetchPopularBooks()
         XCTAssertEqual(fixture.listAPI.popularCalls, 2)
     }
 
@@ -264,9 +262,8 @@ private final class Fixture {
     }
 
     var onRequest: (() async throws -> Void)? {
-        get { api.onRequest }
+        get { searchAPI.onRequest }
         set {
-            api.onRequest = newValue
             searchAPI.onRequest = newValue
             listAPI.onRequest = newValue
         }
@@ -274,8 +271,8 @@ private final class Fixture {
 
     var remoteRequests: [() async throws -> Void] {
         [
-            { _ = try await self.repository.fetchBestsellers() },
-            { _ = try await self.repository.fetchNewSpecialBooks(page: 1) },
+            { _ = try await self.repository.fetchPopularBooks() },
+            { _ = try await self.repository.fetchTrendingBooks() },
             { _ = try await self.repository.searchBooks(query: "책", page: 1) }
         ]
     }
@@ -307,27 +304,12 @@ private final class StubData4LibraryBookListService: Data4LibraryBookListService
 
 @MainActor
 private final class StubAladinAPIService: AladinAPIServiceProtocol {
-    var bestsellerCalls = 0
-    var newSpecialPages: [Int] = []
     var detailCalls = 0
-    var onRequest: (() async throws -> Void)?
     var books = [Book(
         title: "테스트 도서", author: "저자", isbn13: "test", coverURL: nil,
         publisher: "출판사", publishDate: nil, category: nil, bestRank: nil,
         description: "설명", itemPage: nil, currentPage: nil
     )]
-
-    func fetchBestsellers() async throws -> [Book] {
-        bestsellerCalls += 1
-        try await onRequest?()
-        return books
-    }
-
-    func fetchNewSpecialBooks(page: Int) async throws -> [Book] {
-        newSpecialPages.append(page)
-        try await onRequest?()
-        return books
-    }
 
     func fetchBookDetail(isbn13: String) async throws -> Book {
         detailCalls += 1

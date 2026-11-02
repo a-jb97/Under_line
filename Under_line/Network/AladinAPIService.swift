@@ -11,8 +11,6 @@ import Alamofire
 // MARK: - Protocol
 
 protocol AladinAPIServiceProtocol {
-    func fetchBestsellers() async throws -> [Book]
-    func fetchNewSpecialBooks(page: Int) async throws -> [Book]
     func fetchBookDetail(isbn13: String) async throws -> Book
 }
 
@@ -25,54 +23,6 @@ final class AladinAPIService: AladinAPIServiceProtocol {
 
     init(apiKey: String) {
         self.apiKey = apiKey
-    }
-
-    func fetchBestsellers() async throws -> [Book] {
-        let params: Parameters = [
-            "ttbkey":       apiKey,
-            "QueryType":    "Bestseller",
-            "MaxResults":   50,
-            "start":        1,
-            "SearchTarget": "Book",
-            "Cover":        "Big",
-            "output":       "js",
-            "Version":      "20131101"
-        ]
-        #if DEBUG
-        let responseSpan = BookSearchPerformance.Span(.responseDecoded, source: .bestseller)
-        defer { responseSpan.finish(Task.isCancelled ? .cancelled : .failed) }
-        #endif
-        let response = try await request(endpoint: "ItemList.aspx", parameters: params)
-        #if DEBUG
-        responseSpan.finish(count: response.item.count)
-        let mappingSpan = BookSearchPerformance.Span(.domainMapping, source: .bestseller, id: responseSpan.id)
-        defer { mappingSpan.finish(count: response.item.count) }
-        #endif
-        return response.item.map { $0.toDomain() }
-    }
-
-    func fetchNewSpecialBooks(page: Int) async throws -> [Book] {
-        let params: Parameters = [
-            "ttbkey":       apiKey,
-            "QueryType":    "ItemNewSpecial",
-            "MaxResults":   10,
-            "start":        page,
-            "SearchTarget": "Book",
-            "Cover":        "Big",
-            "output":       "js",
-            "Version":      "20131101"
-        ]
-        #if DEBUG
-        let responseSpan = BookSearchPerformance.Span(.responseDecoded, source: .newSpecial)
-        defer { responseSpan.finish(Task.isCancelled ? .cancelled : .failed) }
-        #endif
-        let response = try await request(endpoint: "ItemList.aspx", parameters: params)
-        #if DEBUG
-        responseSpan.finish(count: response.item.count)
-        let mappingSpan = BookSearchPerformance.Span(.domainMapping, source: .newSpecial, id: responseSpan.id)
-        defer { mappingSpan.finish(count: response.item.count) }
-        #endif
-        return response.item.map { $0.toDomain() }
     }
 
     func fetchBookDetail(isbn13: String) async throws -> Book {

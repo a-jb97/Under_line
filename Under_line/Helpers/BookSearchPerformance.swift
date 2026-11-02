@@ -13,7 +13,7 @@ enum BookSearchPerformance {
     }
 
     enum Source: String {
-        case bestseller, newSpecial, popular, trending, search, table
+        case popular, trending, search, table
     }
 
     enum Outcome: String {

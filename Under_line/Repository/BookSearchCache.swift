@@ -4,8 +4,8 @@ import Foundation
 @MainActor
 final class BookSearchCache {
     enum Key: Hashable {
-        case bestseller
-        case newSpecial(page: Int)
+        case popular
+        case trending
         case search(query: String, page: Int)
     }
 
