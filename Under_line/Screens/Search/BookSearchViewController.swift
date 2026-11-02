@@ -642,12 +642,20 @@ private final class BookRowCell: UITableViewCell {
 
     private let descriptionContainer = UIView()
 
-    private let descriptionLabel: UILabel = {
-        let l = UILabel()
-        l.font = UIFont(name: "GoyangIlsan R", size: 12) ?? .systemFont(ofSize: 12)
-        l.textColor = UIColor.appPrimary.withAlphaComponent(0.75)
-        l.numberOfLines = 0
-        return l
+    private let descriptionTextView: UITextView = {
+        let textView = UITextView()
+        textView.backgroundColor = .clear
+        textView.font = UIFont(name: "GoyangIlsan R", size: 12) ?? .systemFont(ofSize: 12)
+        textView.textColor = UIColor.appPrimary.withAlphaComponent(0.75)
+        textView.isEditable = false
+        textView.isSelectable = false
+        textView.isScrollEnabled = true
+        textView.alwaysBounceVertical = false
+        textView.showsVerticalScrollIndicator = true
+        textView.scrollsToTop = false
+        textView.textContainerInset = .zero
+        textView.textContainer.lineFragmentPadding = 0
+        return textView
     }()
 
     #if DEBUG
@@ -688,7 +696,8 @@ private final class BookRowCell: UITableViewCell {
         rankLabel.text = nil
         titleLabel.text = nil
         authorLabel.text = nil
-        descriptionLabel.attributedText = nil
+        descriptionTextView.attributedText = nil
+        descriptionTextView.setContentOffset(.zero, animated: false)
         descriptionContainer.isHidden = true
         #if DEBUG
         performanceBatchID = nil
@@ -726,7 +735,7 @@ private final class BookRowCell: UITableViewCell {
         [rankLabel, thumbnailImageView, textStack, registerButton].forEach {
             summaryView.addSubview($0)
         }
-        descriptionContainer.addSubview(descriptionLabel)
+        descriptionContainer.addSubview(descriptionTextView)
 
         cardView.snp.makeConstraints { make in
             make.top.equalToSuperview().offset(6)
@@ -769,10 +778,14 @@ private final class BookRowCell: UITableViewCell {
             make.centerY.equalToSuperview()
         }
 
-        descriptionLabel.snp.makeConstraints { make in
+        let descriptionViewportHeight = ceil(
+            (descriptionTextView.font?.lineHeight ?? 14) * 1.5 * 7
+        )
+        descriptionTextView.snp.makeConstraints { make in
             make.top.equalToSuperview().offset(4)
             make.leading.trailing.equalToSuperview().inset(16)
             make.bottom.equalToSuperview().inset(16)
+            make.height.equalTo(descriptionViewportHeight)
         }
 
         descriptionContainer.isHidden = true
@@ -791,14 +804,15 @@ private final class BookRowCell: UITableViewCell {
         let description = book.description.trimmingCharacters(in: .whitespacesAndNewlines)
         let paragraphStyle = NSMutableParagraphStyle()
         paragraphStyle.lineHeightMultiple = 1.5
-        descriptionLabel.attributedText = NSAttributedString(
+        descriptionTextView.attributedText = NSAttributedString(
             string: description.isEmpty ? "책 소개가 없습니다" : description,
             attributes: [
-                .font: descriptionLabel.font as Any,
-                .foregroundColor: descriptionLabel.textColor as Any,
+                .font: descriptionTextView.font as Any,
+                .foregroundColor: descriptionTextView.textColor as Any,
                 .paragraphStyle: paragraphStyle,
             ]
         )
+        descriptionTextView.setContentOffset(.zero, animated: false)
         setExpanded(isExpanded)
         #if DEBUG
         let coverSpan = BookSearchPerformance.Span(.coverLoaded, source: .table, id: performanceBatchID ?? UUID())
