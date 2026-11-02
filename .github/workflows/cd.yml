@@ -55,9 +55,11 @@ jobs:
         env:
           ALADIN_TTB_KEY: ${{ secrets.ALADIN_TTB_KEY }}
           KAKAO_REST_API_KEY: ${{ secrets.KAKAO_REST_API_KEY }}
+          DATA4LIBRARY_API_KEY: ${{ secrets.DATA4LIBRARY_API_KEY }}
         run: |
           test -n "$ALADIN_TTB_KEY"
           test -n "$KAKAO_REST_API_KEY"
+          test -n "$DATA4LIBRARY_API_KEY"
           cat > Under_line/Network/AladinAPIKey.swift <<'SWIFT'
           enum AladinAPIKey {
               static let ttbKey = "__ALADIN_TTB_KEY__"
@@ -70,6 +72,12 @@ jobs:
           }
           SWIFT
           ruby -pi -e 'gsub("__KAKAO_REST_API_KEY__", ENV.fetch("KAKAO_REST_API_KEY"))' Under_line/Network/KakaoAPIKey.swift
+          cat > Under_line/Network/Data4LibraryAPIKey.swift <<'SWIFT'
+          enum Data4LibraryAPIKey {
+              static let authKey = "__DATA4LIBRARY_API_KEY__"
+          }
+          SWIFT
+          ruby -pi -e 'gsub("__DATA4LIBRARY_API_KEY__", ENV.fetch("DATA4LIBRARY_API_KEY"))' Under_line/Network/Data4LibraryAPIKey.swift
 
       - name: Upload to TestFlight
         env:

@@ -149,7 +149,7 @@ final class BookSearchViewModel {
                 return BookSearchPage(books: books, totalResults: books.count, isEnd: true)
             case .list(.newSpecial):
                 let books = try await repository.fetchNewSpecialBooks(page: page)
-                return BookSearchPage(books: books, totalResults: 50, isEnd: books.count < 10)
+                return BookSearchPage(books: books, totalResults: books.count, isEnd: true)
             case .search(let query):
                 return try await repository.searchBooks(query: query, page: page)
             }

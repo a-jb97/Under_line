@@ -238,7 +238,7 @@ final class Data4LibraryBookListService: Data4LibraryBookListServiceProtocol {
         formatter.calendar = calendar
         formatter.locale = Locale(identifier: "en_US_POSIX")
         formatter.timeZone = calendar.timeZone
-        formatter.dateFormat = "yyyyMMdd"
+        formatter.dateFormat = "yyyy-MM-dd"
         return formatter.string(from: date)
     }
 

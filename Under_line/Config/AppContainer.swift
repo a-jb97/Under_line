@@ -29,6 +29,7 @@ final class AppContainer {
         bookRepository = BookRepository(
             apiService:   AladinAPIService(apiKey: AladinAPIKey.ttbKey),
             bookSearchService: KakaoBookSearchService(apiKey: KakaoAPIKey.restAPIKey),
+            bookListService: Data4LibraryBookListService(apiKey: Data4LibraryAPIKey.authKey),
             modelContext: modelContainer.mainContext
         )
         sentenceRepository = SentenceRepository(modelContext: modelContainer.mainContext)

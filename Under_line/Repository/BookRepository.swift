@@ -34,6 +34,7 @@ final class BookRepository: BookRepositoryProtocol {
 
     private let apiService: AladinAPIServiceProtocol
     private let bookSearchService: BookSearchServiceProtocol
+    private let bookListService: Data4LibraryBookListServiceProtocol
     private let modelContext: ModelContext
     private let searchCache: BookSearchCache
     private let savedBooksRelay = BehaviorRelay<[Book]>(value: [])
@@ -41,11 +42,13 @@ final class BookRepository: BookRepositoryProtocol {
     init(
         apiService: AladinAPIServiceProtocol,
         bookSearchService: BookSearchServiceProtocol,
+        bookListService: Data4LibraryBookListServiceProtocol,
         modelContext: ModelContext,
         searchCache: BookSearchCache? = nil
     ) {
         self.apiService   = apiService
         self.bookSearchService = bookSearchService
+        self.bookListService = bookListService
         self.modelContext = modelContext
         self.searchCache = searchCache ?? BookSearchCache()
         refreshRelay()
@@ -56,7 +59,7 @@ final class BookRepository: BookRepositoryProtocol {
     func fetchBestsellers() async throws -> [Book] {
         try Task.checkCancellation()
         if let cached = searchCache.result(for: .bestseller) { return cached.books }
-        let books = try await apiService.fetchBestsellers()
+        let books = try await bookListService.fetchPopularBooks()
         try Task.checkCancellation()
         searchCache.insert(
             BookSearchPage(books: books, totalResults: books.count, isEnd: true),
@@ -69,7 +72,8 @@ final class BookRepository: BookRepositoryProtocol {
         try Task.checkCancellation()
         let key = BookSearchCache.Key.newSpecial(page: page)
         if let cached = searchCache.result(for: key) { return cached.books }
-        let books = try await apiService.fetchNewSpecialBooks(page: page)
+        guard page == 1 else { return [] }
+        let books = try await bookListService.fetchTrendingBooks()
         try Task.checkCancellation()
         searchCache.insert(
             BookSearchPage(books: books, totalResults: books.count, isEnd: books.count < 10),

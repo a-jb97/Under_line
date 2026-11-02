@@ -60,18 +60,16 @@ final class BookSearchViewModelTests: XCTestCase {
         XCTAssertFalse(h.loading)
     }
 
-    func test_reselectingList_ignoresPreviousPageResponse() async {
+    func test_reselectingList_ignoresPreviousResponse() async {
         let h = Harness()
         let first = await requested(h) { h.list.onNext(.newSpecial) }
-        await finish(first, .success((makeBooks(0..<10), 50)))
-        let oldPage = await requested(h) { h.next.onNext(()) }
         let replacement = await requested(h) { h.list.onNext(.newSpecial) }
-        await finish(oldPage, .success((makeBooks(10..<20), 50)))
-        XCTAssertTrue(oldPage.wasCancelled)
-        XCTAssertEqual(h.books.count, 10)
+        await finish(first, .success((makeBooks(0..<10), 10)))
+        XCTAssertTrue(first.wasCancelled)
+        XCTAssertTrue(h.books.isEmpty)
         XCTAssertTrue(h.loading)
         XCTAssertFalse(h.loadingMore)
-        await finish(replacement, .success((makeBooks(100..<110), 50)))
+        await finish(replacement, .success((makeBooks(100..<110), 10)))
         XCTAssertEqual(h.books.first?.isbn13, "100")
         guard case .replace = h.updates.last?.change else { return XCTFail("목록을 교체해야 함") }
     }
@@ -89,17 +87,14 @@ final class BookSearchViewModelTests: XCTestCase {
         XCTAssertEqual(h.repository.requests.map(\.page), [1, 2, 3, 4])
     }
 
-    func test_newSpecial_stopsAtFiftyAndFivePages() async {
+    func test_newSpecial_usesSingleNonPaginatedResponse() async {
         let h = Harness()
-        var request = await requested(h) { h.list.onNext(.newSpecial) }
-        for page in 1...5 {
-            await finish(request, .success((makeBooks(((page - 1) * 10)..<(page * 10)), 50)))
-            if page < 5 { request = await requested(h) { h.next.onNext(()) } }
-        }
+        let request = await requested(h) { h.list.onNext(.newSpecial) }
+        await finish(request, .success((makeBooks(0..<15), 15)))
         h.next.onNext(())
         await drain()
-        XCTAssertEqual(h.books.count, 50)
-        XCTAssertEqual(h.repository.requests.map(\.page), [1, 2, 3, 4, 5])
+        XCTAssertEqual(h.books.count, 15)
+        XCTAssertEqual(h.repository.requests.map(\.page), [1])
     }
 
     func test_emptyNextPage_finishesWithoutReloadingExistingRows() async {
