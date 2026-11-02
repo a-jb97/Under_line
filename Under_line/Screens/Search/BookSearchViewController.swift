@@ -332,23 +332,36 @@ final class BookSearchViewController: UIViewController {
             .drive(onNext: { [weak self] update in
                 guard let self else { return }
                 #if DEBUG
-                self.firstCellDisplaySpan?.finish(.superseded)
-                let batchID = UUID()
-                self.performanceBatchID = batchID
                 switch update.change {
-                case .replace: self.firstMeasuredRow = 0
+                case .replace:
+                    self.firstCellDisplaySpan?.finish(.superseded)
+                    let batchID = UUID()
+                    self.performanceBatchID = batchID
+                    self.firstMeasuredRow = 0
+                    self.firstCellDisplaySpan = update.books.isEmpty ? nil : BookSearchPerformance.Span(
+                        .firstCellWillDisplay, source: .table, id: batchID
+                    )
                 case .append(let start):
+                    self.firstCellDisplaySpan?.finish(.superseded)
+                    let batchID = UUID()
+                    self.performanceBatchID = batchID
                     self.firstMeasuredRow = start == self.bookDataSource.books.count && start < update.books.count ? start : 0
+                    self.firstCellDisplaySpan = update.books.isEmpty ? nil : BookSearchPerformance.Span(
+                        .firstCellWillDisplay, source: .table, id: batchID
+                    )
+                case .reload:
+                    break
                 }
-                self.firstCellDisplaySpan = update.books.isEmpty ? nil : BookSearchPerformance.Span(
-                    .firstCellWillDisplay, source: .table, id: batchID
-                )
                 #endif
                 if case .replace = update.change {
                     self.expandedRow = nil
                     self.coverPrefetcher.stop()
                 }
-                self.paginationGate.listDidUpdate()
+                if case .reload = update.change {
+                    // ISBN 보완은 페이지 상태를 변경하지 않는다.
+                } else {
+                    self.paginationGate.listDidUpdate()
+                }
                 self.bookDataSource.apply(update, to: self.tableView)
                 self.scheduleCoverPrefetch()
                 self.scheduleNextPageIfNeeded()

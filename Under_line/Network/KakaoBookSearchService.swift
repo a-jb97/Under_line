@@ -4,6 +4,7 @@ import Foundation
 enum KakaoBookSearchError: LocalizedError, Equatable {
     case missingAPIKey
     case emptyQuery
+    case invalidISBN
     case invalidPage
     case invalidRequest
     case invalidResponse
@@ -15,6 +16,8 @@ enum KakaoBookSearchError: LocalizedError, Equatable {
             return "카카오 API 키가 설정되지 않았습니다."
         case .emptyQuery:
             return "검색어를 입력해주세요."
+        case .invalidISBN:
+            return "올바른 ISBN13이 아닙니다."
         case .invalidPage:
             return "요청할 수 없는 검색 페이지입니다."
         case .invalidRequest:
@@ -30,8 +33,39 @@ enum KakaoBookSearchError: LocalizedError, Equatable {
 enum KakaoBookSearchRequestBuilder {
     static let endpoint = URL(string: "https://dapi.kakao.com/v3/search/book")!
     static let pageSize = 50
+    static let isbnPageSize = 10
 
     static func makeRequest(apiKey: String, query: String, page: Int) throws -> URLRequest {
+        try makeRequest(
+            apiKey: apiKey,
+            query: query,
+            page: page,
+            size: pageSize,
+            target: nil
+        )
+    }
+
+    static func makeISBNRequest(apiKey: String, isbn13: String) throws -> URLRequest {
+        let normalizedISBN = isbn13.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard ISBN13Parser.isbn13(in: normalizedISBN) == normalizedISBN else {
+            throw KakaoBookSearchError.invalidISBN
+        }
+        return try makeRequest(
+            apiKey: apiKey,
+            query: normalizedISBN,
+            page: 1,
+            size: isbnPageSize,
+            target: "isbn"
+        )
+    }
+
+    private static func makeRequest(
+        apiKey: String,
+        query: String,
+        page: Int,
+        size: Int,
+        target: String?
+    ) throws -> URLRequest {
         let normalizedKey = apiKey.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !normalizedKey.isEmpty else { throw KakaoBookSearchError.missingAPIKey }
         let normalizedQuery = query.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -42,9 +76,12 @@ enum KakaoBookSearchRequestBuilder {
         components?.queryItems = [
             URLQueryItem(name: "page", value: String(page)),
             URLQueryItem(name: "query", value: normalizedQuery),
-            URLQueryItem(name: "size", value: String(pageSize)),
+            URLQueryItem(name: "size", value: String(size)),
             URLQueryItem(name: "sort", value: "accuracy")
         ]
+        if let target {
+            components?.queryItems?.append(URLQueryItem(name: "target", value: target))
+        }
         guard let url = components?.url else { throw KakaoBookSearchError.invalidRequest }
         var request = URLRequest(url: url)
         request.cachePolicy = .reloadIgnoringLocalCacheData
@@ -66,14 +103,59 @@ final class KakaoBookSearchService: BookSearchServiceProtocol {
 
     func searchBooks(query: String, page: Int) async throws -> BookSearchPage {
         try Task.checkCancellation()
+        let performanceID = UUID()
         let request = try KakaoBookSearchRequestBuilder.makeRequest(
             apiKey: apiKey,
             query: query,
             page: page
         )
 
+        let decoded = try await execute(
+            request,
+            source: .search,
+            performanceID: performanceID
+        )
+
         #if DEBUG
-        let responseSpan = BookSearchPerformance.Span(.responseDecoded, source: .search)
+        let mappingSpan = BookSearchPerformance.Span(
+            .domainMapping,
+            source: .search,
+            id: performanceID
+        )
+        defer { mappingSpan.finish(count: decoded.documents.count) }
+        #endif
+
+        return BookSearchPage(
+            books: decoded.documents.compactMap { $0.toDomain() },
+            totalResults: decoded.meta.pageableCount,
+            isEnd: decoded.meta.isEnd
+        )
+    }
+
+    func fetchBook(isbn13: String) async throws -> Book? {
+        try Task.checkCancellation()
+        let normalizedISBN = isbn13.trimmingCharacters(in: .whitespacesAndNewlines)
+        let request = try KakaoBookSearchRequestBuilder.makeISBNRequest(
+            apiKey: apiKey,
+            isbn13: normalizedISBN
+        )
+        let decoded = try await execute(request, source: .isbnEnrichment)
+        return decoded.documents
+            .compactMap { $0.toDomain() }
+            .first { $0.isbn13 == normalizedISBN }
+    }
+
+    private func execute(
+        _ request: URLRequest,
+        source: BookSearchPerformance.Source,
+        performanceID: UUID = UUID()
+    ) async throws -> KakaoBookSearchResponse {
+        #if DEBUG
+        let responseSpan = BookSearchPerformance.Span(
+            .responseDecoded,
+            source: source,
+            id: performanceID
+        )
         defer { responseSpan.finish(Task.isCancelled ? .cancelled : .failed) }
         #endif
 
@@ -95,23 +177,14 @@ final class KakaoBookSearchService: BookSearchServiceProtocol {
         if let error = response.error { throw error }
         guard let data = response.data else { throw KakaoBookSearchError.invalidResponse }
 
-        let decoded: KakaoBookSearchResponse
         do {
-            decoded = try decoder.decode(KakaoBookSearchResponse.self, from: data)
+            let decoded = try decoder.decode(KakaoBookSearchResponse.self, from: data)
+            #if DEBUG
+            responseSpan.finish(count: decoded.documents.count)
+            #endif
+            return decoded
         } catch {
             throw KakaoBookSearchError.invalidResponse
         }
-
-        #if DEBUG
-        responseSpan.finish(count: decoded.documents.count)
-        let mappingSpan = BookSearchPerformance.Span(.domainMapping, source: .search, id: responseSpan.id)
-        defer { mappingSpan.finish(count: decoded.documents.count) }
-        #endif
-
-        return BookSearchPage(
-            books: decoded.documents.compactMap { $0.toDomain() },
-            totalResults: decoded.meta.pageableCount,
-            isEnd: decoded.meta.isEnd
-        )
     }
 }

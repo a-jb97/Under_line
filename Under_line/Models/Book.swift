@@ -20,3 +20,43 @@ struct Book {
     let itemPage: Int?           // 책 전체 페이지 수 (알라딘 상품 조회 API)
     let currentPage: Int?        // 사용자가 기록한 현재 읽은 페이지 (로컬 DB)
 }
+
+struct BookListMetadata {
+    let isbn13: String
+    let coverURL: URL?
+    let description: String
+
+    init(isbn13: String, coverURL: URL?, description: String) {
+        self.isbn13 = isbn13
+        self.coverURL = coverURL
+        self.description = description
+    }
+
+    init(book: Book) {
+        isbn13 = book.isbn13
+        coverURL = book.coverURL
+        description = book.description
+    }
+}
+
+extension Book {
+    func mergingListMetadata(from metadata: BookListMetadata) -> Book {
+        guard isbn13 == metadata.isbn13 else { return self }
+        let normalizedDescription = metadata.description.trimmingCharacters(
+            in: .whitespacesAndNewlines
+        )
+        return Book(
+            title: title,
+            author: author,
+            isbn13: isbn13,
+            coverURL: metadata.coverURL ?? coverURL,
+            publisher: publisher,
+            publishDate: publishDate,
+            category: category,
+            bestRank: bestRank,
+            description: normalizedDescription.isEmpty ? description : metadata.description,
+            itemPage: itemPage,
+            currentPage: currentPage
+        )
+    }
+}

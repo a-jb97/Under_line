@@ -17,6 +17,7 @@ protocol BookRepositoryProtocol {
     func fetchPopularBooks() async throws -> [Book]
     func fetchTrendingBooks() async throws -> [Book]
     func searchBooks(query: String, page: Int) async throws -> BookSearchPage
+    func fetchListBookMetadata(isbn13: String) async throws -> BookListMetadata?
     func fetchBookDetail(isbn13: String) async throws -> Book
 
     // Local (BehaviorRelay 스트림 — Observable 유지)
@@ -37,6 +38,8 @@ final class BookRepository: BookRepositoryProtocol {
     private let bookListService: Data4LibraryBookListServiceProtocol
     private let modelContext: ModelContext
     private let searchCache: BookSearchCache
+    private let metadataCache: BookSearchCache
+    private var metadataRequests: [String: Task<Book?, Error>] = [:]
     private let savedBooksRelay = BehaviorRelay<[Book]>(value: [])
 
     init(
@@ -44,13 +47,15 @@ final class BookRepository: BookRepositoryProtocol {
         bookSearchService: BookSearchServiceProtocol,
         bookListService: Data4LibraryBookListServiceProtocol,
         modelContext: ModelContext,
-        searchCache: BookSearchCache? = nil
+        searchCache: BookSearchCache? = nil,
+        metadataCache: BookSearchCache? = nil
     ) {
         self.apiService   = apiService
         self.bookSearchService = bookSearchService
         self.bookListService = bookListService
         self.modelContext = modelContext
         self.searchCache = searchCache ?? BookSearchCache()
+        self.metadataCache = metadataCache ?? BookSearchCache(lifetime: 30 * 60, capacity: 100)
         refreshRelay()
     }
 
@@ -89,6 +94,42 @@ final class BookRepository: BookRepositoryProtocol {
         try Task.checkCancellation()
         searchCache.insert(result, for: key)
         return result
+    }
+
+    func fetchListBookMetadata(isbn13: String) async throws -> BookListMetadata? {
+        try Task.checkCancellation()
+        let cacheKey = BookSearchCache.Key.metadata(isbn13: isbn13)
+        if let cached = metadataCache.result(for: cacheKey) {
+            return cached.books.first.map(BookListMetadata.init(book:))
+        }
+
+        let request: Task<Book?, Error>
+        if let ongoing = metadataRequests[isbn13] {
+            request = ongoing
+        } else {
+            request = Task { [bookSearchService] in
+                try await bookSearchService.fetchBook(isbn13: isbn13)
+            }
+            metadataRequests[isbn13] = request
+        }
+
+        do {
+            let book = try await request.value
+            metadataCache.insert(
+                BookSearchPage(
+                    books: book.map { [$0] } ?? [],
+                    totalResults: book == nil ? 0 : 1,
+                    isEnd: true
+                ),
+                for: cacheKey
+            )
+            metadataRequests.removeValue(forKey: isbn13)
+            try Task.checkCancellation()
+            return book.map(BookListMetadata.init(book:))
+        } catch {
+            metadataRequests.removeValue(forKey: isbn13)
+            throw error
+        }
     }
 
     func fetchBookDetail(isbn13: String) async throws -> Book {

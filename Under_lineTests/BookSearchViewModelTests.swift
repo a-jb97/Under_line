@@ -97,6 +97,59 @@ final class BookSearchViewModelTests: XCTestCase {
         XCTAssertEqual(h.repository.requests.map(\.page), [1])
     }
 
+    func test_listEnrichment_displaysBaseListThenReloadsMatchingRowWithFourRequestLimit() async {
+        let h = Harness()
+        h.repository.holdsMetadataRequests = true
+        let listRequest = await requested(h) { h.list.onNext(.popular) }
+        await finish(listRequest, .success((makeBooks(0..<6), 6)))
+
+        XCTAssertEqual(h.books.count, 6)
+        XCTAssertTrue(h.books.allSatisfy { $0.coverURL == nil && $0.description.isEmpty })
+        XCTAssertEqual(h.repository.metadataRequests.count, 4)
+
+        let first = h.repository.metadataRequests[0]
+        await finishMetadata(first, .success(metadataBook(isbn13: first.isbn13)))
+
+        XCTAssertEqual(h.repository.metadataRequests.count, 5)
+        let row = Int(first.isbn13)!
+        XCTAssertEqual(h.books[row].coverURL?.absoluteString, "https://example.com/\(first.isbn13).jpg")
+        XCTAssertEqual(h.books[row].description, "보완 설명")
+        XCTAssertEqual(h.books[row].title, "책")
+        guard case .reload(let rows) = h.updates.last?.change else {
+            return XCTFail("보완된 행만 갱신해야 함")
+        }
+        XCTAssertEqual(rows, [row])
+    }
+
+    func test_listEnrichment_failureContinuesWithNextISBN() async {
+        let h = Harness()
+        h.repository.holdsMetadataRequests = true
+        let listRequest = await requested(h) { h.list.onNext(.trending) }
+        await finish(listRequest, .success((makeBooks(0..<5), 5)))
+        XCTAssertEqual(h.repository.metadataRequests.count, 4)
+
+        await finishMetadata(h.repository.metadataRequests[0], .failure(StubError.failed))
+
+        XCTAssertEqual(h.repository.metadataRequests.count, 5)
+        XCTAssertTrue(h.errors.isEmpty)
+        XCTAssertEqual(h.books.count, 5)
+    }
+
+    func test_listEnrichment_ignoresResultAfterModeChanges() async {
+        let h = Harness()
+        h.repository.holdsMetadataRequests = true
+        let listRequest = await requested(h) { h.list.onNext(.popular) }
+        await finish(listRequest, .success((makeBooks(0..<1), 1)))
+        let oldMetadata = h.repository.metadataRequests[0]
+
+        let searchRequest = await requested(h) { h.search("다른 책") }
+        await finish(searchRequest, .success((makeBooks(100..<101), 1)))
+        await finishMetadata(oldMetadata, .success(metadataBook(isbn13: "0")))
+
+        XCTAssertEqual(h.books.map(\.isbn13), ["100"])
+        XCTAssertNil(h.books.first?.coverURL)
+    }
+
     func test_emptyNextPage_finishesWithoutReloadingExistingRows() async {
         let h = Harness()
         let first = await requested(h) { h.search("책") }
@@ -193,6 +246,23 @@ final class BookSearchViewModelTests: XCTestCase {
         }
     }
 
+    private func finishMetadata(
+        _ request: PendingMetadataRequest,
+        _ result: Result<BookListMetadata?, Error>
+    ) async {
+        request.continuation.resume(with: result)
+        await drain()
+        await drain()
+    }
+
+    private func metadataBook(isbn13: String) -> BookListMetadata {
+        BookListMetadata(
+            isbn13: isbn13,
+            coverURL: URL(string: "https://example.com/\(isbn13).jpg"),
+            description: "보완 설명"
+        )
+    }
+
     private func makeBooks(_ range: Range<Int>) -> [Book] {
         range.map { index in
             Book(title: "책", author: "저자", isbn13: "\(index)", coverURL: nil,
@@ -250,11 +320,24 @@ private final class PendingRequest {
     }
 }
 
+@MainActor
+private final class PendingMetadataRequest {
+    let isbn13: String
+    let continuation: CheckedContinuation<BookListMetadata?, Error>
+
+    init(isbn13: String, continuation: CheckedContinuation<BookListMetadata?, Error>) {
+        self.isbn13 = isbn13
+        self.continuation = continuation
+    }
+}
+
 /// 의도적으로 취소를 무시하고 응답해 ViewModel의 세대 교체를 검증한다.
 @MainActor
 private final class ControlledRepository: BookRepositoryProtocol {
     var requests: [PendingRequest] = []
+    var metadataRequests: [PendingMetadataRequest] = []
     var onRequested: (() -> Void)?
+    var holdsMetadataRequests = false
 
     private func fetch(page: Int) async throws -> BookSearchPage {
         var pending: PendingRequest?
@@ -274,6 +357,15 @@ private final class ControlledRepository: BookRepositoryProtocol {
     func fetchTrendingBooks() async throws -> [Book] { try await fetch(page: 1).books }
     func searchBooks(query: String, page: Int) async throws -> BookSearchPage {
         try await fetch(page: page)
+    }
+    func fetchListBookMetadata(isbn13: String) async throws -> BookListMetadata? {
+        guard holdsMetadataRequests else { return nil }
+        return try await withCheckedThrowingContinuation { continuation in
+            metadataRequests.append(PendingMetadataRequest(
+                isbn13: isbn13,
+                continuation: continuation
+            ))
+        }
     }
     func fetchBookDetail(isbn13: String) async throws -> Book { throw StubError.failed }
     func fetchSavedBooks() -> Observable<[Book]> { .just([]) }

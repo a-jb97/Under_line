@@ -200,6 +200,61 @@ final class BookRepositoryTests: XCTestCase {
         XCTAssertEqual(fixture.api.detailCalls, 2)
     }
 
+    func test_listMetadata_cachesFoundAndMissingResults() async throws {
+        let fixture = try Fixture()
+        _ = try await fixture.repository.fetchListBookMetadata(isbn13: "found")
+        _ = try await fixture.repository.fetchListBookMetadata(isbn13: "found")
+        fixture.searchAPI.isbnBook = nil
+        _ = try await fixture.repository.fetchListBookMetadata(isbn13: "missing")
+        _ = try await fixture.repository.fetchListBookMetadata(isbn13: "missing")
+
+        XCTAssertEqual(fixture.searchAPI.isbnQueries, ["found", "missing"])
+    }
+
+    func test_listMetadata_coalescesSameISBNRequest() async throws {
+        let fixture = try Fixture()
+        let started = expectation(description: "ISBN 요청 시작")
+        var continuation: CheckedContinuation<Void, Never>?
+        fixture.searchAPI.onISBNRequest = {
+            await withCheckedContinuation {
+                continuation = $0
+                started.fulfill()
+            }
+        }
+
+        async let first = fixture.repository.fetchListBookMetadata(isbn13: "same")
+        await fulfillment(of: [started], timeout: 2)
+        async let second = fixture.repository.fetchListBookMetadata(isbn13: "same")
+        await Task.yield()
+        XCTAssertEqual(fixture.searchAPI.isbnQueries, ["same"])
+        continuation?.resume()
+        _ = try await (first, second)
+    }
+
+    func test_listMetadata_doesNotCacheFailure() async throws {
+        let fixture = try Fixture()
+        fixture.searchAPI.onISBNRequest = { throw StubError.failed }
+        do {
+            _ = try await fixture.repository.fetchListBookMetadata(isbn13: "retry")
+            XCTFail("오류는 호출자에게 전달되어야 함")
+        } catch StubError.failed { }
+        fixture.searchAPI.onISBNRequest = nil
+        _ = try await fixture.repository.fetchListBookMetadata(isbn13: "retry")
+        XCTAssertEqual(fixture.searchAPI.isbnQueries, ["retry", "retry"])
+    }
+
+    func test_listMetadataCache_expiresAfterThirtyMinutes() async throws {
+        let fixture = try Fixture()
+        _ = try await fixture.repository.fetchListBookMetadata(isbn13: "found")
+        fixture.clock.time = 1_799
+        _ = try await fixture.repository.fetchListBookMetadata(isbn13: "found")
+        XCTAssertEqual(fixture.searchAPI.isbnQueries, ["found"])
+
+        fixture.clock.time = 1_800
+        _ = try await fixture.repository.fetchListBookMetadata(isbn13: "found")
+        XCTAssertEqual(fixture.searchAPI.isbnQueries, ["found", "found"])
+    }
+
     func test_viewModelPagination_usesSameNormalizedQuery() async throws {
         let fixture = try Fixture()
         let viewModel = BookSearchViewModel(repository: fixture.repository)
@@ -257,7 +312,12 @@ private final class Fixture {
             bookSearchService: searchAPI,
             bookListService: listAPI,
             modelContext: container.mainContext,
-            searchCache: BookSearchCache(now: { clock.time })
+            searchCache: BookSearchCache(now: { clock.time }),
+            metadataCache: BookSearchCache(
+                lifetime: 30 * 60,
+                capacity: 100,
+                now: { clock.time }
+            )
         )
     }
 
@@ -323,15 +383,27 @@ private final class StubBookSearchService: BookSearchServiceProtocol {
     var totalResults = 120
     var isEnd = false
     var onRequest: (() async throws -> Void)?
+    var onISBNRequest: (() async throws -> Void)?
+    var isbnQueries: [String] = []
     var books = [Book(
         title: "테스트 도서", author: "저자", isbn13: "test", coverURL: nil,
         publisher: "출판사", publishDate: nil, category: nil, bestRank: nil,
         description: "설명", itemPage: nil, currentPage: nil
     )]
+    var isbnBook: Book? {
+        get { books.first }
+        set { books = newValue.map { [$0] } ?? [] }
+    }
 
     func searchBooks(query: String, page: Int) async throws -> BookSearchPage {
         searchQueries.append((query, page))
         try await onRequest?()
         return BookSearchPage(books: books, totalResults: totalResults, isEnd: isEnd)
+    }
+
+    func fetchBook(isbn13: String) async throws -> Book? {
+        isbnQueries.append(isbn13)
+        try await onISBNRequest?()
+        return isbnBook
     }
 }

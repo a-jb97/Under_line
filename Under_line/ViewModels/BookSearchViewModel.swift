@@ -17,6 +17,7 @@ final class BookSearchViewModel {
         enum Change {
             case replace
             case append(from: Int)
+            case reload(rows: [Int])
         }
 
         // 전체 snapshot도 제공해 구독 재연결 시 안전하게 복원할 수 있다.
@@ -59,6 +60,7 @@ final class BookSearchViewModel {
     private let repository: BookRepositoryProtocol
     private let disposeBag = DisposeBag()
     private let pageRequest = SerialDisposable()
+    private let maximumConcurrentEnrichments = 4
     private let updates = BehaviorRelay<ListUpdate>(value: .init(books: [], change: .replace))
     private let isLoading = BehaviorRelay<Bool>(value: false)
     private let isLoadingMore = BehaviorRelay<Bool>(value: false)
@@ -70,6 +72,8 @@ final class BookSearchViewModel {
     private var currentPage = 0
     private var totalCount = 0
     private var hasMorePages = false
+    private var pendingEnrichmentISBNs: [String] = []
+    private var enrichmentTasks: [String: Task<Void, Never>] = [:]
 
     init(repository: BookRepositoryProtocol) {
         self.repository = repository
@@ -122,6 +126,7 @@ final class BookSearchViewModel {
     private func start(_ mode: DisplayMode) {
         // 같은 검색어·같은 탭으로 돌아와도 이전 응답과 구분한다.
         generation = UUID()
+        cancelEnrichment()
         pageRequest.disposable = Disposables.create()
         self.mode = mode
         currentPage = 0
@@ -198,5 +203,68 @@ final class BookSearchViewModel {
         }
         isLoading.accept(false)
         isLoadingMore.accept(false)
+
+        if page == 1, case .list = mode {
+            startEnrichment(for: combined, generation: generation)
+        }
+    }
+
+    private func startEnrichment(for books: [Book], generation: UUID) {
+        var seenISBNs = Set<String>()
+        pendingEnrichmentISBNs = books
+            .map(\.isbn13)
+            .filter { seenISBNs.insert($0).inserted }
+        scheduleEnrichment(generation: generation)
+    }
+
+    private func scheduleEnrichment(generation: UUID) {
+        guard self.generation == generation else { return }
+        while enrichmentTasks.count < maximumConcurrentEnrichments,
+              !pendingEnrichmentISBNs.isEmpty {
+            let isbn13 = pendingEnrichmentISBNs.removeFirst()
+            let task = Task { [weak self, repository] in
+                let metadata = try? await repository.fetchListBookMetadata(isbn13: isbn13)
+                guard let self else { return }
+                self.finishEnrichment(
+                    isbn13: isbn13,
+                    metadata: Task.isCancelled ? nil : metadata,
+                    generation: generation
+                )
+            }
+            enrichmentTasks[isbn13] = task
+        }
+    }
+
+    private func finishEnrichment(
+        isbn13: String,
+        metadata: BookListMetadata?,
+        generation: UUID
+    ) {
+        guard self.generation == generation else { return }
+        enrichmentTasks.removeValue(forKey: isbn13)
+
+        if let metadata {
+            var books = updates.value.books
+            var changedRows: [Int] = []
+            for index in books.indices where books[index].isbn13 == isbn13 {
+                let original = books[index]
+                let enriched = original.mergingListMetadata(from: metadata)
+                guard original.coverURL != enriched.coverURL
+                        || original.description != enriched.description else { continue }
+                books[index] = enriched
+                changedRows.append(index)
+            }
+            if !changedRows.isEmpty {
+                updates.accept(.init(books: books, change: .reload(rows: changedRows)))
+            }
+        }
+
+        scheduleEnrichment(generation: generation)
+    }
+
+    private func cancelEnrichment() {
+        pendingEnrichmentISBNs.removeAll()
+        enrichmentTasks.values.forEach { $0.cancel() }
+        enrichmentTasks.removeAll()
     }
 }

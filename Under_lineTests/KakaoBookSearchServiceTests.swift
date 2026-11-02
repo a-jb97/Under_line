@@ -41,6 +41,41 @@ final class KakaoBookSearchServiceTests: XCTestCase {
         XCTAssertThrowsError(try KakaoBookSearchRequestBuilder.makeRequest(
             apiKey: "key", query: "책", page: 51
         )) { XCTAssertEqual($0 as? KakaoBookSearchError, .invalidPage) }
+        XCTAssertThrowsError(try KakaoBookSearchRequestBuilder.makeISBNRequest(
+            apiKey: "key", isbn13: "invalid"
+        )) { XCTAssertEqual($0 as? KakaoBookSearchError, .invalidISBN) }
+    }
+
+    func test_isbnRequest_setsTargetAndReturnsOnlyExactISBN13() async throws {
+        StubURLProtocol.handler = { request in
+            let components = try XCTUnwrap(
+                URLComponents(url: try XCTUnwrap(request.url), resolvingAgainstBaseURL: false)
+            )
+            let parameters = Dictionary(uniqueKeysWithValues: (components.queryItems ?? []).map {
+                ($0.name, $0.value)
+            })
+            XCTAssertEqual(parameters["query"]!, "9788937460586")
+            XCTAssertEqual(parameters["target"]!, "isbn")
+            XCTAssertEqual(parameters["page"]!, "1")
+            XCTAssertEqual(parameters["size"]!, "10")
+            XCTAssertEqual(parameters["sort"]!, "accuracy")
+            return (Self.response(for: request), self.multipleISBNResponseData)
+        }
+
+        let book = try await makeService().fetchBook(isbn13: " 9788937460586\n")
+
+        XCTAssertEqual(book?.isbn13, "9788937460586")
+        XCTAssertEqual(book?.title, "목표 도서")
+    }
+
+    func test_isbnRequest_returnsNilWhenExactISBN13IsMissing() async throws {
+        StubURLProtocol.handler = { request in
+            (Self.response(for: request), self.emptyResponseData)
+        }
+
+        let book = try await makeService().fetchBook(isbn13: "9788937460586")
+
+        XCTAssertNil(book)
     }
 
     func test_responseDecodingAndMapping_usesExpectedISBN13AndBookFields() throws {
@@ -157,6 +192,32 @@ final class KakaoBookSearchServiceTests: XCTestCase {
         """#.utf8)
     }
 
+    private var multipleISBNResponseData: Data {
+        Data(#"""
+        {
+          "meta": {"total_count": 2, "pageable_count": 2, "is_end": true},
+          "documents": [
+            {
+              "title": "다른 판본", "contents": "다른 설명", "isbn": "9788937460587",
+              "datetime": "2025-01-01T00:00:00.000+09:00",
+              "authors": ["저자"], "publisher": "출판사", "thumbnail": ""
+            },
+            {
+              "title": "목표 도서", "contents": "목표 설명",
+              "isbn": "8937460588 9788937460586",
+              "datetime": "2026-09-17T00:00:00.000+09:00",
+              "authors": ["저자"], "publisher": "출판사",
+              "thumbnail": "https://example.com/target.jpg"
+            }
+          ]
+        }
+        """#.utf8)
+    }
+
+    private var emptyResponseData: Data {
+        Data(#"{"meta":{"total_count":0,"pageable_count":0,"is_end":true},"documents":[]}"#.utf8)
+    }
+
     private func decodeDocument(isbn: String) throws -> KakaoBookDocument {
         try JSONDecoder().decode(KakaoBookDocument.self, from: Data(#"""
         {
@@ -174,6 +235,13 @@ final class KakaoBookSearchServiceTests: XCTestCase {
             apiKey: "test-key",
             session: Session(configuration: configuration)
         )
+    }
+
+    private static func response(for request: URLRequest) -> HTTPURLResponse {
+        HTTPURLResponse(
+            url: request.url!, statusCode: 200,
+            httpVersion: nil, headerFields: ["Content-Type": "application/json"]
+        )!
     }
 }
 
