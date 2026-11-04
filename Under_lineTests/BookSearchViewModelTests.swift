@@ -213,6 +213,27 @@ final class BookSearchViewModelTests: XCTestCase {
         XCTAssertEqual(h.repository.requests.count, 3)
     }
 
+    func test_registration_ignoresRepeatedTapWhileDetailLookupIsPending() async {
+        let h = Harness()
+        h.repository.holdsRegistrations = true
+        let started = expectation(description: "등록 시작")
+        h.repository.onRegistrationRequested = { started.fulfill() }
+        let books = makeBooks(0..<2)
+
+        h.register.onNext(books[0])
+        await fulfillment(of: [started], timeout: 2)
+        h.register.onNext(books[1])
+        await drain()
+
+        XCTAssertEqual(h.repository.registrations.map(\.book.isbn13), ["0"])
+        XCTAssertEqual(h.registrationCompletedCount, 0)
+
+        h.repository.registrations[0].continuation.resume()
+        await drain()
+        await drain()
+        XCTAssertEqual(h.registrationCompletedCount, 1)
+    }
+
     private func requested(_ h: Harness, action: () -> Void) async -> PendingRequest {
         let started = expectation(description: "요청 시작")
         h.repository.onRequested = { started.fulfill() }
@@ -281,24 +302,29 @@ private final class Harness {
     let trigger = PublishSubject<Void>()
     let list = PublishSubject<BookSearchViewModel.BookListType>()
     let next = PublishSubject<Void>()
+    let register = PublishSubject<Book>()
     let bag = DisposeBag()
     let viewModel: BookSearchViewModel
     var updates: [BookSearchViewModel.ListUpdate] = []
     var errors: [String] = []
     var loading = false
     var loadingMore = false
+    var registrationCompletedCount = 0
     var books: [Book] { updates.last?.books ?? [] }
 
     init() {
         viewModel = BookSearchViewModel(repository: repository)
         let output = viewModel.transform(input: .init(
             viewDidLoad: .never(), listSelection: list, searchQuery: query,
-            searchTrigger: trigger, loadNextPage: next, registerBook: .never()
+            searchTrigger: trigger, loadNextPage: next, registerBook: register
         ))
         output.listUpdates.drive(onNext: { [weak self] in self?.updates.append($0) }).disposed(by: bag)
         output.isLoading.drive(onNext: { [weak self] in self?.loading = $0 }).disposed(by: bag)
         output.isLoadingMore.drive(onNext: { [weak self] in self?.loadingMore = $0 }).disposed(by: bag)
         output.errorMessage.emit(onNext: { [weak self] in self?.errors.append($0) }).disposed(by: bag)
+        output.registerCompleted.emit(onNext: { [weak self] in
+            self?.registrationCompletedCount += 1
+        }).disposed(by: bag)
     }
 
     func search(_ text: String) {
@@ -331,13 +357,27 @@ private final class PendingMetadataRequest {
     }
 }
 
+@MainActor
+private final class PendingRegistration {
+    let book: Book
+    let continuation: CheckedContinuation<Void, Error>
+
+    init(book: Book, continuation: CheckedContinuation<Void, Error>) {
+        self.book = book
+        self.continuation = continuation
+    }
+}
+
 /// 의도적으로 취소를 무시하고 응답해 ViewModel의 세대 교체를 검증한다.
 @MainActor
 private final class ControlledRepository: BookRepositoryProtocol {
     var requests: [PendingRequest] = []
     var metadataRequests: [PendingMetadataRequest] = []
+    var registrations: [PendingRegistration] = []
     var onRequested: (() -> Void)?
+    var onRegistrationRequested: (() -> Void)?
     var holdsMetadataRequests = false
+    var holdsRegistrations = false
 
     private func fetch(page: Int) async throws -> BookSearchPage {
         var pending: PendingRequest?
@@ -369,6 +409,13 @@ private final class ControlledRepository: BookRepositoryProtocol {
     }
     func fetchBookDetail(isbn13: String) async throws -> Book { throw StubError.failed }
     func fetchSavedBooks() -> Observable<[Book]> { .just([]) }
+    func registerSearchedBook(_ book: Book) async throws {
+        guard holdsRegistrations else { return }
+        try await withCheckedThrowingContinuation { continuation in
+            registrations.append(PendingRegistration(book: book, continuation: continuation))
+            onRegistrationRequested?()
+        }
+    }
     func saveBook(_ book: Book) async throws { }
     func deleteBook(_ book: Book) async throws { }
     func deleteAllBooks() async throws { }

@@ -22,6 +22,7 @@ protocol BookRepositoryProtocol {
 
     // Local (BehaviorRelay 스트림 — Observable 유지)
     func fetchSavedBooks() -> Observable<[Book]>
+    func registerSearchedBook(_ book: Book) async throws
     func saveBook(_ book: Book) async throws
     func deleteBook(_ book: Book) async throws
     func deleteAllBooks() async throws
@@ -35,7 +36,7 @@ final class BookRepository: BookRepositoryProtocol {
 
     private let apiService: AladinAPIServiceProtocol
     private let bookSearchService: BookSearchServiceProtocol
-    private let bookListService: Data4LibraryBookListServiceProtocol
+    private let data4LibraryService: Data4LibraryServiceProtocol
     private let modelContext: ModelContext
     private let searchCache: BookSearchCache
     private let metadataCache: BookSearchCache
@@ -45,14 +46,14 @@ final class BookRepository: BookRepositoryProtocol {
     init(
         apiService: AladinAPIServiceProtocol,
         bookSearchService: BookSearchServiceProtocol,
-        bookListService: Data4LibraryBookListServiceProtocol,
+        data4LibraryService: Data4LibraryServiceProtocol,
         modelContext: ModelContext,
         searchCache: BookSearchCache? = nil,
         metadataCache: BookSearchCache? = nil
     ) {
         self.apiService   = apiService
         self.bookSearchService = bookSearchService
-        self.bookListService = bookListService
+        self.data4LibraryService = data4LibraryService
         self.modelContext = modelContext
         self.searchCache = searchCache ?? BookSearchCache()
         self.metadataCache = metadataCache ?? BookSearchCache(lifetime: 30 * 60, capacity: 100)
@@ -64,7 +65,7 @@ final class BookRepository: BookRepositoryProtocol {
     func fetchPopularBooks() async throws -> [Book] {
         try Task.checkCancellation()
         if let cached = searchCache.result(for: .popular) { return cached.books }
-        let books = try await bookListService.fetchPopularBooks()
+        let books = try await data4LibraryService.fetchPopularBooks()
         try Task.checkCancellation()
         searchCache.insert(
             BookSearchPage(books: books, totalResults: books.count, isEnd: true),
@@ -76,7 +77,7 @@ final class BookRepository: BookRepositoryProtocol {
     func fetchTrendingBooks() async throws -> [Book] {
         try Task.checkCancellation()
         if let cached = searchCache.result(for: .trending) { return cached.books }
-        let books = try await bookListService.fetchTrendingBooks()
+        let books = try await data4LibraryService.fetchTrendingBooks()
         try Task.checkCancellation()
         searchCache.insert(
             BookSearchPage(books: books, totalResults: books.count, isEnd: true),
@@ -142,19 +143,24 @@ final class BookRepository: BookRepositoryProtocol {
         savedBooksRelay.asObservable()
     }
 
-    func saveBook(_ book: Book) async throws {
-        let isbn = book.isbn13
-        let duplicateDescriptor = FetchDescriptor<BookRecord>(
-            predicate: #Predicate { $0.isbn13 == isbn }
-        )
-        let existing = try modelContext.fetch(duplicateDescriptor)
-        guard existing.isEmpty else {
-            throw NSError(
-                domain: "BookRepository",
-                code: 409,
-                userInfo: [NSLocalizedDescriptionKey: "이미 등록된 도서입니다."]
-            )
+    func registerSearchedBook(_ book: Book) async throws {
+        try ensureBookIsNotSaved(isbn13: book.isbn13)
+
+        let detail: BookDetailMetadata?
+        do {
+            detail = try await data4LibraryService.fetchBookDetail(isbn13: book.isbn13)
+        } catch is CancellationError {
+            throw CancellationError()
+        } catch {
+            detail = nil
         }
+
+        try Task.checkCancellation()
+        try await saveBook(detail.map { book.mergingDetailMetadata(from: $0) } ?? book)
+    }
+
+    func saveBook(_ book: Book) async throws {
+        try ensureBookIsNotSaved(isbn13: book.isbn13)
         let allRecords = try modelContext.fetch(FetchDescriptor<BookRecord>())
         let maxOrder = allRecords.map { $0.sortOrder }.max() ?? -1
         let record = BookRecord(from: book)
@@ -245,6 +251,19 @@ final class BookRepository: BookRepositoryProtocol {
             savedBooksRelay.accept(records.map { $0.toDomain() })
         } catch {
             print("[BookRepository] refreshRelay 실패:", error)
+        }
+    }
+
+    private func ensureBookIsNotSaved(isbn13: String) throws {
+        let descriptor = FetchDescriptor<BookRecord>(
+            predicate: #Predicate { $0.isbn13 == isbn13 }
+        )
+        guard try modelContext.fetch(descriptor).isEmpty else {
+            throw NSError(
+                domain: "BookRepository",
+                code: 409,
+                userInfo: [NSLocalizedDescriptionKey: "이미 등록된 도서입니다."]
+            )
         }
     }
 }

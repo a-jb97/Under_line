@@ -39,6 +39,16 @@ struct BookListMetadata {
     }
 }
 
+struct BookDetailMetadata {
+    let isbn13: String
+    let title: String
+    let author: String
+    let publisher: String
+    let publishDate: String?
+    let coverURL: URL?
+    let description: String
+}
+
 extension Book {
     func mergingListMetadata(from metadata: BookListMetadata) -> Book {
         guard isbn13 == metadata.isbn13 else { return self }
@@ -58,5 +68,37 @@ extension Book {
             itemPage: itemPage,
             currentPage: currentPage
         )
+    }
+
+    func mergingDetailMetadata(from metadata: BookDetailMetadata) -> Book {
+        guard isbn13 == metadata.isbn13 else { return self }
+        return Book(
+            title: title.value(or: metadata.title),
+            author: author.value(or: metadata.author),
+            isbn13: isbn13,
+            coverURL: coverURL ?? metadata.coverURL,
+            publisher: publisher.value(or: metadata.publisher),
+            publishDate: publishDate.value(or: metadata.publishDate),
+            category: category,
+            bestRank: bestRank,
+            description: metadata.description.value(or: description),
+            itemPage: itemPage,
+            currentPage: currentPage
+        )
+    }
+}
+
+private extension String {
+    func value(or fallback: String) -> String {
+        trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? fallback : self
+    }
+}
+
+private extension Optional where Wrapped == String {
+    func value(or fallback: String?) -> String? {
+        guard let self, !self.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            return fallback
+        }
+        return self
     }
 }

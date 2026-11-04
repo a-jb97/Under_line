@@ -3,7 +3,7 @@ import XCTest
 @testable import Under_line
 
 @MainActor
-final class Data4LibraryBookListServiceTests: XCTestCase {
+final class Data4LibraryServiceTests: XCTestCase {
     override func tearDown() {
         Data4LibraryStubURLProtocol.handler = nil
         super.tearDown()
@@ -96,6 +96,45 @@ final class Data4LibraryBookListServiceTests: XCTestCase {
         XCTAssertEqual(requestCount, 7)
     }
 
+    func test_detailRequest_usesExactISBNAndMapsBookMetadata() async throws {
+        Data4LibraryStubURLProtocol.handler = { request in
+            let components = try XCTUnwrap(
+                URLComponents(url: try XCTUnwrap(request.url), resolvingAgainstBaseURL: false)
+            )
+            let parameters = Dictionary(uniqueKeysWithValues: (components.queryItems ?? []).map {
+                ($0.name, $0.value)
+            })
+
+            XCTAssertEqual(request.url?.path, "/api/srchDtlList")
+            XCTAssertEqual(parameters["isbn13"]!, "9788937460586")
+            XCTAssertEqual(parameters["loaninfoYN"]!, "N")
+            XCTAssertEqual(parameters["format"]!, "json")
+            XCTAssertEqual(parameters["authKey"]!, "test-key")
+            return (Self.response(for: request), Self.detailResponse)
+        }
+
+        let response = try await makeService().fetchBookDetail(isbn13: " 9788937460586\n")
+        let detail = try XCTUnwrap(response)
+
+        XCTAssertEqual(detail.isbn13, "9788937460586")
+        XCTAssertEqual(detail.title, "어린 왕자 & 여우")
+        XCTAssertEqual(detail.author, "생텍쥐페리")
+        XCTAssertEqual(detail.publisher, "테스트 출판사")
+        XCTAssertEqual(detail.publishDate, "2026-10-01")
+        XCTAssertEqual(detail.coverURL?.absoluteString, "https://example.com/detail-cover.jpg")
+        XCTAssertEqual(detail.description, "완전한 \"책소개\" & 설명")
+    }
+
+    func test_detailResponse_returnsNilWhenExactISBNIsMissing() async throws {
+        Data4LibraryStubURLProtocol.handler = { request in
+            (Self.response(for: request), Self.otherEditionDetailResponse)
+        }
+
+        let detail = try await makeService().fetchBookDetail(isbn13: "9788937460586")
+
+        XCTAssertNil(detail)
+    }
+
     func test_service_mapsEmbeddedAPIErrorReturnedWithHTTP200() async throws {
         Data4LibraryStubURLProtocol.handler = { request in
             let data = Data(#"{"response":{"error":"인증키가 유효하지 않습니다.","errCode":"E01"}}"#.utf8)
@@ -105,7 +144,7 @@ final class Data4LibraryBookListServiceTests: XCTestCase {
         do {
             _ = try await makeService().fetchPopularBooks()
             XCTFail("HTTP 200 내부 API 오류가 호출자에게 전달되어야 합니다.")
-        } catch let error as Data4LibraryBookListError {
+        } catch let error as Data4LibraryError {
             XCTAssertEqual(error, .api(
                 statusCode: 200,
                 code: "E01",
@@ -122,7 +161,7 @@ final class Data4LibraryBookListServiceTests: XCTestCase {
         do {
             _ = try await makeService().fetchPopularBooks()
             XCTFail("HTTP 오류 상태가 호출자에게 전달되어야 합니다.")
-        } catch let error as Data4LibraryBookListError {
+        } catch let error as Data4LibraryError {
             XCTAssertEqual(error, .api(statusCode: 503, code: nil, message: nil))
         }
     }
@@ -152,18 +191,24 @@ final class Data4LibraryBookListServiceTests: XCTestCase {
         do {
             _ = try await makeService().fetchPopularBooks()
             XCTFail("잘못된 응답은 invalidResponse여야 합니다.")
-        } catch let error as Data4LibraryBookListError {
+        } catch let error as Data4LibraryError {
             XCTAssertEqual(error, .invalidResponse)
         }
     }
 
     func test_requestBuilder_rejectsMissingAPIKey() {
-        XCTAssertThrowsError(try Data4LibraryBookListRequestBuilder.makePopularRequest(
+        XCTAssertThrowsError(try Data4LibraryRequestBuilder.makePopularRequest(
             apiKey: " \n ",
         startDate: "2026-10-01",
         endDate: "2026-10-30"
         )) {
-            XCTAssertEqual($0 as? Data4LibraryBookListError, .missingAPIKey)
+            XCTAssertEqual($0 as? Data4LibraryError, .missingAPIKey)
+        }
+        XCTAssertThrowsError(try Data4LibraryRequestBuilder.makeDetailRequest(
+            apiKey: "test-key",
+            isbn13: "invalid"
+        )) {
+            XCTAssertEqual($0 as? Data4LibraryError, .invalidISBN)
         }
     }
 
@@ -178,10 +223,10 @@ final class Data4LibraryBookListServiceTests: XCTestCase {
         catch { XCTFail("예상하지 못한 오류: \(error)") }
     }
 
-    private func makeService() -> Data4LibraryBookListService {
+    private func makeService() -> Data4LibraryService {
         let configuration = URLSessionConfiguration.ephemeral
         configuration.protocolClasses = [Data4LibraryStubURLProtocol.self]
-        return Data4LibraryBookListService(
+        return Data4LibraryService(
             apiKey: "test-key",
             session: Session(configuration: configuration),
             calendar: Self.koreanCalendar,
@@ -251,6 +296,41 @@ final class Data4LibraryBookListServiceTests: XCTestCase {
 
     private static let emptyTrendingResponse = Data(#"{"response":{"results":[]}}"#.utf8)
 
+    private static let detailResponse = Data(#"""
+    {
+      "response": {
+        "detail": [{
+          "book": {
+            "bookname": "다른 판본",
+            "authors": "다른 저자",
+            "publisher": "다른 출판사",
+            "publication_date": "2025-01-01",
+            "isbn13": "9791162245651",
+            "description": "다른 설명"
+          }
+        }, {
+          "book": {
+            "bookname": "어린 왕자 &amp; 여우",
+            "authors": "생텍쥐페리",
+            "publisher": "테스트 출판사",
+            "publication_date": "2026-10-01",
+            "isbn13": "9788937460586",
+            "bookImageURL": "https://example.com/detail-cover.jpg",
+            "description": "완전한 &quot;책소개&quot; &amp; 설명"
+          }
+        }]
+      }
+    }
+    """#.utf8)
+
+    private static let otherEditionDetailResponse = Data(#"""
+    {"response":{"detail":{"book":{
+      "bookname":"다른 판본","authors":"저자","publisher":"출판사",
+      "publication_date":"2025-01-01","isbn13":"9791162245651",
+      "description":"설명"
+    }}}}
+    """#.utf8)
+
     private static let trendingResponse = Data(#"""
     {
       "response": {
@@ -298,7 +378,7 @@ private final class Data4LibraryStubURLProtocol: URLProtocol, @unchecked Sendabl
 
     override func startLoading() {
         guard let handler = Self.handler else {
-            client?.urlProtocol(self, didFailWithError: Data4LibraryBookListError.invalidResponse)
+            client?.urlProtocol(self, didFailWithError: Data4LibraryError.invalidResponse)
             return
         }
         do {

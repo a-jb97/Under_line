@@ -102,9 +102,12 @@ final class BookSearchViewModel {
             .disposed(by: disposeBag)
 
         input.registerBook
-            .flatMapLatest { [weak self] book -> Observable<Void> in
+            .flatMapFirst { [weak self] book -> Observable<Void> in
                 guard let self else { return .empty() }
-                return rxAsync { [repository = self.repository] in try await repository.saveBook(book) }
+                return rxAsync {
+                    [repository = self.repository] in
+                    try await repository.registerSearchedBook(book)
+                }
                     .catch { [weak self] error in
                         self?.errorMessage.accept(error.localizedDescription)
                         return .empty()

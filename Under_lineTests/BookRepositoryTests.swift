@@ -186,7 +186,7 @@ final class BookRepositoryTests: XCTestCase {
         let another = BookRepository(
             apiService: fixture.api,
             bookSearchService: fixture.searchAPI,
-            bookListService: fixture.listAPI,
+            data4LibraryService: fixture.listAPI,
             modelContext: fixture.container.mainContext
         )
         _ = try await another.fetchPopularBooks()
@@ -255,6 +255,86 @@ final class BookRepositoryTests: XCTestCase {
         XCTAssertEqual(fixture.searchAPI.isbnQueries, ["found", "found"])
     }
 
+    func test_registerSearchedBook_prefersDetailDescriptionAndPreservesSearchMetadata() async throws {
+        let fixture = try Fixture()
+        let searchedBook = Book(
+            title: "카카오 제목", author: "카카오 저자", isbn13: "9788937460586",
+            coverURL: URL(string: "https://example.com/kakao.jpg"), publisher: "카카오 출판사",
+            publishDate: "2026-10-01", category: "소설", bestRank: 3,
+            description: "카카오 책소개", itemPage: nil, currentPage: nil
+        )
+        fixture.listAPI.detail = BookDetailMetadata(
+            isbn13: searchedBook.isbn13, title: "정보나루 제목", author: "정보나루 저자",
+            publisher: "정보나루 출판사", publishDate: "2025-01-01",
+            coverURL: URL(string: "https://example.com/data4library.jpg"),
+            description: "정보나루 상세 책소개"
+        )
+
+        try await fixture.repository.registerSearchedBook(searchedBook)
+
+        let record = try XCTUnwrap(fixture.savedRecords.first)
+        XCTAssertEqual(fixture.listAPI.detailCalls, [searchedBook.isbn13])
+        XCTAssertEqual(record.title, searchedBook.title)
+        XCTAssertEqual(record.author, searchedBook.author)
+        XCTAssertEqual(record.publisher, searchedBook.publisher)
+        XCTAssertEqual(record.publishDate, searchedBook.publishDate)
+        XCTAssertEqual(record.coverURLString, searchedBook.coverURL?.absoluteString)
+        XCTAssertEqual(record.bookDescription, "정보나루 상세 책소개")
+    }
+
+    func test_registerSearchedBook_fillsBlankSearchMetadataFromDetail() async throws {
+        let fixture = try Fixture()
+        let searchedBook = Book(
+            title: " ", author: "", isbn13: "9788937460586", coverURL: nil,
+            publisher: "\n", publishDate: nil, category: nil, bestRank: nil,
+            description: "", itemPage: nil, currentPage: nil
+        )
+        fixture.listAPI.detail = BookDetailMetadata(
+            isbn13: searchedBook.isbn13, title: "상세 제목", author: "상세 저자",
+            publisher: "상세 출판사", publishDate: "2026-10-01",
+            coverURL: URL(string: "https://example.com/detail.jpg"), description: "상세 설명"
+        )
+
+        try await fixture.repository.registerSearchedBook(searchedBook)
+
+        let record = try XCTUnwrap(fixture.savedRecords.first)
+        XCTAssertEqual(record.title, "상세 제목")
+        XCTAssertEqual(record.author, "상세 저자")
+        XCTAssertEqual(record.publisher, "상세 출판사")
+        XCTAssertEqual(record.publishDate, "2026-10-01")
+        XCTAssertEqual(record.coverURLString, "https://example.com/detail.jpg")
+        XCTAssertEqual(record.bookDescription, "상세 설명")
+    }
+
+    func test_registerSearchedBook_savesOriginalBookWhenDetailRequestFails() async throws {
+        let fixture = try Fixture()
+        let searchedBook = fixture.searchAPI.books[0]
+        fixture.listAPI.onDetailRequest = { throw StubError.failed }
+
+        try await fixture.repository.registerSearchedBook(searchedBook)
+
+        let record = try XCTUnwrap(fixture.savedRecords.first)
+        XCTAssertEqual(record.title, searchedBook.title)
+        XCTAssertEqual(record.bookDescription, searchedBook.description)
+    }
+
+    func test_registerSearchedBook_doesNotRequestDetailForDuplicateISBN() async throws {
+        let fixture = try Fixture()
+        let searchedBook = fixture.searchAPI.books[0]
+        try await fixture.repository.saveBook(searchedBook)
+
+        do {
+            try await fixture.repository.registerSearchedBook(searchedBook)
+            XCTFail("중복 도서는 등록되면 안 됨")
+        } catch let error as NSError {
+            XCTAssertEqual(error.code, 409)
+        }
+
+        XCTAssertTrue(fixture.listAPI.detailCalls.isEmpty)
+        let savedRecords = try fixture.savedRecords
+        XCTAssertEqual(savedRecords.count, 1)
+    }
+
     func test_viewModelPagination_usesSameNormalizedQuery() async throws {
         let fixture = try Fixture()
         let viewModel = BookSearchViewModel(repository: fixture.repository)
@@ -297,7 +377,7 @@ private final class Fixture {
     let clock = TestClock()
     let api = StubAladinAPIService()
     let searchAPI = StubBookSearchService()
-    let listAPI = StubData4LibraryBookListService()
+    let listAPI = StubData4LibraryService()
     let container: ModelContainer
     let repository: BookRepository
 
@@ -310,7 +390,7 @@ private final class Fixture {
         repository = BookRepository(
             apiService: api,
             bookSearchService: searchAPI,
-            bookListService: listAPI,
+            data4LibraryService: listAPI,
             modelContext: container.mainContext,
             searchCache: BookSearchCache(now: { clock.time }),
             metadataCache: BookSearchCache(
@@ -336,13 +416,20 @@ private final class Fixture {
             { _ = try await self.repository.searchBooks(query: "책", page: 1) }
         ]
     }
+
+    var savedRecords: [BookRecord] {
+        get throws { try container.mainContext.fetch(FetchDescriptor<BookRecord>()) }
+    }
 }
 
 @MainActor
-private final class StubData4LibraryBookListService: Data4LibraryBookListServiceProtocol {
+private final class StubData4LibraryService: Data4LibraryServiceProtocol {
     var popularCalls = 0
     var trendingCalls = 0
+    var detailCalls: [String] = []
     var onRequest: (() async throws -> Void)?
+    var onDetailRequest: (() async throws -> Void)?
+    var detail: BookDetailMetadata?
     var books = [Book(
         title: "테스트 도서", author: "저자", isbn13: "test", coverURL: nil,
         publisher: "출판사", publishDate: nil, category: nil, bestRank: nil,
@@ -359,6 +446,12 @@ private final class StubData4LibraryBookListService: Data4LibraryBookListService
         trendingCalls += 1
         try await onRequest?()
         return books
+    }
+
+    func fetchBookDetail(isbn13: String) async throws -> BookDetailMetadata? {
+        detailCalls.append(isbn13)
+        try await onDetailRequest?()
+        return detail
     }
 }
 

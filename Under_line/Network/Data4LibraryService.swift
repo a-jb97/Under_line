@@ -1,13 +1,15 @@
 import Alamofire
 import Foundation
 
-protocol Data4LibraryBookListServiceProtocol {
+protocol Data4LibraryServiceProtocol {
     func fetchPopularBooks() async throws -> [Book]
     func fetchTrendingBooks() async throws -> [Book]
+    func fetchBookDetail(isbn13: String) async throws -> BookDetailMetadata?
 }
 
-enum Data4LibraryBookListError: LocalizedError, Equatable {
+enum Data4LibraryError: LocalizedError, Equatable {
     case missingAPIKey
+    case invalidISBN
     case invalidDate
     case invalidRequest
     case invalidResponse
@@ -17,6 +19,8 @@ enum Data4LibraryBookListError: LocalizedError, Equatable {
         switch self {
         case .missingAPIKey:
             return "도서관 정보나루 API 키가 설정되지 않았습니다."
+        case .invalidISBN:
+            return "올바른 ISBN13이 아닙니다."
         case .invalidDate:
             return "도서 목록 조회 날짜를 계산할 수 없습니다."
         case .invalidRequest:
@@ -29,7 +33,7 @@ enum Data4LibraryBookListError: LocalizedError, Equatable {
     }
 }
 
-enum Data4LibraryBookListRequestBuilder {
+enum Data4LibraryRequestBuilder {
     private static let baseURL = URL(string: "https://data4library.kr/api/")!
     static let popularPageSize = 50
 
@@ -52,13 +56,24 @@ enum Data4LibraryBookListRequestBuilder {
         ])
     }
 
+    static func makeDetailRequest(apiKey: String, isbn13: String) throws -> URLRequest {
+        let normalizedISBN = isbn13.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard ISBN13Parser.isbn13(in: normalizedISBN) == normalizedISBN else {
+            throw Data4LibraryError.invalidISBN
+        }
+        return try makeRequest(endpoint: "srchDtlList", apiKey: apiKey, parameters: [
+            URLQueryItem(name: "isbn13", value: normalizedISBN),
+            URLQueryItem(name: "loaninfoYN", value: "N")
+        ])
+    }
+
     private static func makeRequest(
         endpoint: String,
         apiKey: String,
         parameters: [URLQueryItem]
     ) throws -> URLRequest {
         let normalizedKey = apiKey.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !normalizedKey.isEmpty else { throw Data4LibraryBookListError.missingAPIKey }
+        guard !normalizedKey.isEmpty else { throw Data4LibraryError.missingAPIKey }
 
         var components = URLComponents(
             url: baseURL.appendingPathComponent(endpoint),
@@ -68,7 +83,7 @@ enum Data4LibraryBookListRequestBuilder {
             URLQueryItem(name: "authKey", value: normalizedKey),
             URLQueryItem(name: "format", value: "json")
         ]
-        guard let url = components?.url else { throw Data4LibraryBookListError.invalidRequest }
+        guard let url = components?.url else { throw Data4LibraryError.invalidRequest }
 
         var request = URLRequest(url: url)
         request.cachePolicy = .reloadIgnoringLocalCacheData
@@ -76,9 +91,9 @@ enum Data4LibraryBookListRequestBuilder {
     }
 }
 
-final class Data4LibraryBookListService: Data4LibraryBookListServiceProtocol {
+final class Data4LibraryService: Data4LibraryServiceProtocol {
     private enum RequestSource {
-        case popular, trending
+        case popular, trending, detail
     }
 
     private let apiKey: String
@@ -91,7 +106,7 @@ final class Data4LibraryBookListService: Data4LibraryBookListServiceProtocol {
         apiKey: String,
         session: Session = .default,
         decoder: JSONDecoder = JSONDecoder(),
-        calendar: Calendar = Data4LibraryBookListService.koreanCalendar(),
+        calendar: Calendar = Data4LibraryService.koreanCalendar(),
         now: @escaping () -> Date = Date.init
     ) {
         self.apiKey = apiKey
@@ -104,7 +119,7 @@ final class Data4LibraryBookListService: Data4LibraryBookListServiceProtocol {
     func fetchPopularBooks() async throws -> [Book] {
         try Task.checkCancellation()
         let dates = try popularDateRange()
-        let request = try Data4LibraryBookListRequestBuilder.makePopularRequest(
+        let request = try Data4LibraryRequestBuilder.makePopularRequest(
             apiKey: apiKey,
             startDate: dates.start,
             endDate: dates.end
@@ -129,9 +144,9 @@ final class Data4LibraryBookListService: Data4LibraryBookListServiceProtocol {
 
         for daysAgo in 1...7 {
             guard let date = calendar.date(byAdding: .day, value: -daysAgo, to: now()) else {
-                throw Data4LibraryBookListError.invalidDate
+                throw Data4LibraryError.invalidDate
             }
-            let request = try Data4LibraryBookListRequestBuilder.makeTrendingRequest(
+            let request = try Data4LibraryRequestBuilder.makeTrendingRequest(
                 apiKey: apiKey,
                 searchDate: format(date)
             )
@@ -155,10 +170,26 @@ final class Data4LibraryBookListService: Data4LibraryBookListServiceProtocol {
         return []
     }
 
+    func fetchBookDetail(isbn13: String) async throws -> BookDetailMetadata? {
+        try Task.checkCancellation()
+        let normalizedISBN = isbn13.trimmingCharacters(in: .whitespacesAndNewlines)
+        let request = try Data4LibraryRequestBuilder.makeDetailRequest(
+            apiKey: apiKey,
+            isbn13: normalizedISBN
+        )
+        let decoded: Data4LibraryBookDetailResponse = try await execute(
+            request,
+            source: .detail
+        )
+        return decoded.response.books
+            .compactMap { $0.toMetadata() }
+            .first { $0.isbn13 == normalizedISBN }
+    }
+
     private func popularDateRange() throws -> (start: String, end: String) {
         guard let end = calendar.date(byAdding: .day, value: -1, to: now()),
               let start = calendar.date(byAdding: .day, value: -29, to: end) else {
-            throw Data4LibraryBookListError.invalidDate
+            throw Data4LibraryError.invalidDate
         }
         return (format(start), format(end))
     }
@@ -189,6 +220,7 @@ final class Data4LibraryBookListService: Data4LibraryBookListServiceProtocol {
         let performanceSource: BookSearchPerformance.Source = switch source {
         case .popular: .popular
         case .trending: .trending
+        case .detail: .data4LibraryDetail
         }
         let responseSpan = BookSearchPerformance.Span(
             .responseDecoded,
@@ -206,21 +238,21 @@ final class Data4LibraryBookListService: Data4LibraryBookListServiceProtocol {
         let embeddedError = response.data.flatMap(Data4LibraryAPIErrorPayload.find)
         let statusCode = response.response?.statusCode
         if let embeddedError {
-            throw Data4LibraryBookListError.api(
+            throw Data4LibraryError.api(
                 statusCode: statusCode,
                 code: embeddedError.code,
                 message: embeddedError.message
             )
         }
         if let statusCode, !(200..<300).contains(statusCode) {
-            throw Data4LibraryBookListError.api(
+            throw Data4LibraryError.api(
                 statusCode: statusCode,
                 code: nil,
                 message: nil
             )
         }
         if let error = response.error { throw error }
-        guard let data = response.data else { throw Data4LibraryBookListError.invalidResponse }
+        guard let data = response.data else { throw Data4LibraryError.invalidResponse }
 
         do {
             let decoded = try decoder.decode(Response.self, from: data)
@@ -229,7 +261,7 @@ final class Data4LibraryBookListService: Data4LibraryBookListServiceProtocol {
             #endif
             return decoded
         } catch {
-            throw Data4LibraryBookListError.invalidResponse
+            throw Data4LibraryError.invalidResponse
         }
     }
 
