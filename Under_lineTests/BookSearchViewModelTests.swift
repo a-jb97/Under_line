@@ -234,6 +234,29 @@ final class BookSearchViewModelTests: XCTestCase {
         XCTAssertEqual(h.registrationCompletedCount, 1)
     }
 
+    func test_descriptionExpansion_replacesKakaoDescriptionWithBookSupplement() async {
+        let h = Harness()
+        let listRequest = await requested(h) { h.search("책") }
+        await finish(listRequest, .success((makeBooks(0..<1), 1)))
+        h.repository.supplement = BookDetailMetadata(
+            isbn13: "0", title: "", author: "", publisher: "", publishDate: nil,
+            coverURL: nil, description: "정보나루 상세 책소개"
+        )
+        let requested = expectation(description: "상세 설명 요청")
+        h.repository.onSupplementRequested = { requested.fulfill() }
+
+        h.description.onNext(h.books[0])
+        await fulfillment(of: [requested], timeout: 2)
+        await drain()
+        await drain()
+
+        XCTAssertEqual(h.books[0].description, "정보나루 상세 책소개")
+        guard case .reload(let rows) = h.updates.last?.change else {
+            return XCTFail("설명이 변경된 행을 갱신해야 함")
+        }
+        XCTAssertEqual(rows, [0])
+    }
+
     private func requested(_ h: Harness, action: () -> Void) async -> PendingRequest {
         let started = expectation(description: "요청 시작")
         h.repository.onRequested = { started.fulfill() }
@@ -302,6 +325,7 @@ private final class Harness {
     let trigger = PublishSubject<Void>()
     let list = PublishSubject<BookSearchViewModel.BookListType>()
     let next = PublishSubject<Void>()
+    let description = PublishSubject<Book>()
     let register = PublishSubject<Book>()
     let bag = DisposeBag()
     let viewModel: BookSearchViewModel
@@ -316,7 +340,8 @@ private final class Harness {
         viewModel = BookSearchViewModel(repository: repository)
         let output = viewModel.transform(input: .init(
             viewDidLoad: .never(), listSelection: list, searchQuery: query,
-            searchTrigger: trigger, loadNextPage: next, registerBook: register
+            searchTrigger: trigger, loadNextPage: next,
+            descriptionBook: description, registerBook: register
         ))
         output.listUpdates.drive(onNext: { [weak self] in self?.updates.append($0) }).disposed(by: bag)
         output.isLoading.drive(onNext: { [weak self] in self?.loading = $0 }).disposed(by: bag)
@@ -376,8 +401,10 @@ private final class ControlledRepository: BookRepositoryProtocol {
     var registrations: [PendingRegistration] = []
     var onRequested: (() -> Void)?
     var onRegistrationRequested: (() -> Void)?
+    var onSupplementRequested: (() -> Void)?
     var holdsMetadataRequests = false
     var holdsRegistrations = false
+    var supplement: BookDetailMetadata?
 
     private func fetch(page: Int) async throws -> BookSearchPage {
         var pending: PendingRequest?
@@ -408,6 +435,10 @@ private final class ControlledRepository: BookRepositoryProtocol {
         }
     }
     func fetchBookDetail(isbn13: String) async throws -> Book { throw StubError.failed }
+    func fetchBookSupplement(isbn13: String) async throws -> BookDetailMetadata? {
+        onSupplementRequested?()
+        return supplement
+    }
     func fetchSavedBooks() -> Observable<[Book]> { .just([]) }
     func registerSearchedBook(_ book: Book) async throws {
         guard holdsRegistrations else { return }

@@ -18,6 +18,7 @@ protocol BookRepositoryProtocol {
     func fetchTrendingBooks() async throws -> [Book]
     func searchBooks(query: String, page: Int) async throws -> BookSearchPage
     func fetchListBookMetadata(isbn13: String) async throws -> BookListMetadata?
+    func fetchBookSupplement(isbn13: String) async throws -> BookDetailMetadata?
     func fetchBookDetail(isbn13: String) async throws -> Book
 
     // Local (BehaviorRelay 스트림 — Observable 유지)
@@ -41,6 +42,8 @@ final class BookRepository: BookRepositoryProtocol {
     private let searchCache: BookSearchCache
     private let metadataCache: BookSearchCache
     private var metadataRequests: [String: Task<Book?, Error>] = [:]
+    private var supplementCache: [String: BookDetailMetadata] = [:]
+    private var supplementRequests: [String: Task<BookDetailMetadata?, Error>] = [:]
     private let savedBooksRelay = BehaviorRelay<[Book]>(value: [])
 
     init(
@@ -137,6 +140,32 @@ final class BookRepository: BookRepositoryProtocol {
         try await apiService.fetchBookDetail(isbn13: isbn13)
     }
 
+    func fetchBookSupplement(isbn13: String) async throws -> BookDetailMetadata? {
+        try Task.checkCancellation()
+        if let cached = supplementCache[isbn13] { return cached }
+
+        let request: Task<BookDetailMetadata?, Error>
+        if let ongoing = supplementRequests[isbn13] {
+            request = ongoing
+        } else {
+            request = Task { [data4LibraryService] in
+                try await data4LibraryService.fetchBookDetail(isbn13: isbn13)
+            }
+            supplementRequests[isbn13] = request
+        }
+
+        do {
+            let metadata = try await request.value
+            supplementRequests.removeValue(forKey: isbn13)
+            if let metadata { supplementCache[isbn13] = metadata }
+            try Task.checkCancellation()
+            return metadata
+        } catch {
+            supplementRequests.removeValue(forKey: isbn13)
+            throw error
+        }
+    }
+
     // MARK: Local
 
     func fetchSavedBooks() -> Observable<[Book]> {
@@ -148,7 +177,7 @@ final class BookRepository: BookRepositoryProtocol {
 
         let detail: BookDetailMetadata?
         do {
-            detail = try await data4LibraryService.fetchBookDetail(isbn13: book.isbn13)
+            detail = try await fetchBookSupplement(isbn13: book.isbn13)
         } catch is CancellationError {
             throw CancellationError()
         } catch {

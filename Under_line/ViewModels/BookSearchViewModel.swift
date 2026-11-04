@@ -45,6 +45,7 @@ final class BookSearchViewModel {
         let searchQuery: Observable<String>
         let searchTrigger: Observable<Void>
         let loadNextPage: Observable<Void>
+        let descriptionBook: Observable<Book>
         let registerBook: Observable<Book>
     }
 
@@ -74,6 +75,7 @@ final class BookSearchViewModel {
     private var hasMorePages = false
     private var pendingEnrichmentISBNs: [String] = []
     private var enrichmentTasks: [String: Task<Void, Never>] = [:]
+    private var descriptionTask: Task<Void, Never>?
 
     init(repository: BookRepositoryProtocol) {
         self.repository = repository
@@ -99,6 +101,10 @@ final class BookSearchViewModel {
 
         input.loadNextPage
             .subscribe(onNext: { [weak self] in self?.loadNextPage() })
+            .disposed(by: disposeBag)
+
+        input.descriptionBook
+            .subscribe(onNext: { [weak self] in self?.enrichDescription(for: $0) })
             .disposed(by: disposeBag)
 
         input.registerBook
@@ -130,6 +136,8 @@ final class BookSearchViewModel {
         // 같은 검색어·같은 탭으로 돌아와도 이전 응답과 구분한다.
         generation = UUID()
         cancelEnrichment()
+        descriptionTask?.cancel()
+        descriptionTask = nil
         pageRequest.disposable = Disposables.create()
         self.mode = mode
         currentPage = 0
@@ -263,6 +271,32 @@ final class BookSearchViewModel {
         }
 
         scheduleEnrichment(generation: generation)
+    }
+
+    private func enrichDescription(for book: Book) {
+        let requestGeneration = generation
+        descriptionTask?.cancel()
+        descriptionTask = Task { [weak self, repository] in
+            let metadata = try? await repository.fetchBookSupplement(isbn13: book.isbn13)
+            guard !Task.isCancelled,
+                  let self,
+                  self.generation == requestGeneration,
+                  let metadata,
+                  !metadata.description.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+                return
+            }
+
+            var books = self.updates.value.books
+            var changedRows: [Int] = []
+            for index in books.indices where books[index].isbn13 == book.isbn13 {
+                let enriched = books[index].mergingDetailMetadata(from: metadata)
+                guard books[index].description != enriched.description else { continue }
+                books[index] = enriched
+                changedRows.append(index)
+            }
+            guard !changedRows.isEmpty else { return }
+            self.updates.accept(.init(books: books, change: .reload(rows: changedRows)))
+        }
     }
 
     private func cancelEnrichment() {

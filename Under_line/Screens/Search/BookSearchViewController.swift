@@ -20,6 +20,7 @@ final class BookSearchViewController: UIViewController {
     private let viewModel  = BookSearchViewModel(repository: AppContainer.shared.bookRepository)
     private let loadNextPageRelay  = PublishRelay<Void>()
     private let registerBookRelay  = PublishRelay<Book>()
+    private let descriptionBookRelay = PublishRelay<Book>()
     private let listSelectionRelay = PublishRelay<BookSearchViewModel.BookListType>()
 
     private let coverPrefetcher = BookCoverPrefetcher()
@@ -310,6 +311,7 @@ final class BookSearchViewController: UIViewController {
             searchQuery:   searchTextField.rx.text.orEmpty.asObservable(),
             searchTrigger: searchTextField.rx.controlEvent(.editingDidEndOnExit).asObservable(),
             loadNextPage:  loadNextPageRelay.asObservable(),
+            descriptionBook: descriptionBookRelay.asObservable(),
             registerBook:  registerBookRelay.asObservable()
         )
 
@@ -492,6 +494,9 @@ final class BookSearchViewController: UIViewController {
             (tableView.cellForRow(at: previousIndexPath) as? BookRowCell)?.setExpanded(false)
         }
         selectedCell.setExpanded(expandedRow == indexPath.row)
+        if expandedRow == indexPath.row {
+            descriptionBookRelay.accept(bookDataSource.books[indexPath.row])
+        }
         tableView.performBatchUpdates(nil)
     }
 

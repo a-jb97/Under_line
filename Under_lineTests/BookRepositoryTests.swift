@@ -270,9 +270,13 @@ final class BookRepositoryTests: XCTestCase {
             description: "정보나루 상세 책소개"
         )
 
+        let supplement = try await fixture.repository.fetchBookSupplement(
+            isbn13: searchedBook.isbn13
+        )
         try await fixture.repository.registerSearchedBook(searchedBook)
 
         let record = try XCTUnwrap(fixture.savedRecords.first)
+        XCTAssertEqual(supplement?.description, "정보나루 상세 책소개")
         XCTAssertEqual(fixture.listAPI.detailCalls, [searchedBook.isbn13])
         XCTAssertEqual(record.title, searchedBook.title)
         XCTAssertEqual(record.author, searchedBook.author)
@@ -345,7 +349,8 @@ final class BookRepositoryTests: XCTestCase {
         let secondPage = expectation(description: "다음 페이지")
         let output = viewModel.transform(input: .init(
             viewDidLoad: .never(), listSelection: .never(), searchQuery: query,
-            searchTrigger: search, loadNextPage: nextPage, registerBook: .never()
+            searchTrigger: search, loadNextPage: nextPage,
+            descriptionBook: .never(), registerBook: .never()
         ))
         let subscription = output.books.drive(onNext: { books in
             if books.count == 1 { firstPage.fulfill() }
