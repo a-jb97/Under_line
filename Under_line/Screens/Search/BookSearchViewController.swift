@@ -31,6 +31,7 @@ final class BookSearchViewController: UIViewController {
     private var paginationGate = BookSearchPaginationGate()
     private var isLoadingNextPage = false
     private var expandedRow: Int?
+    private var descriptionLoadingISBN: String?
     private lazy var bookDataSource = BookSearchTableDataSource { [weak self] tableView, indexPath, book in
         let cell = tableView.dequeueReusableCell(withIdentifier: BookRowCell.reuseID, for: indexPath) as! BookRowCell
         #if DEBUG
@@ -39,7 +40,8 @@ final class BookSearchViewController: UIViewController {
         cell.configure(
             book: book,
             displayScale: self?.view.traitCollection.displayScale ?? 1,
-            isExpanded: self?.expandedRow == indexPath.row
+            isExpanded: self?.expandedRow == indexPath.row,
+            isDescriptionLoading: self?.descriptionLoadingISBN == book.isbn13
         )
         cell.onRegister = { [weak self] in self?.registerBookRelay.accept($0) }
         return cell
@@ -357,6 +359,7 @@ final class BookSearchViewController: UIViewController {
                 #endif
                 if case .replace = update.change {
                     self.expandedRow = nil
+                    self.descriptionLoadingISBN = nil
                     self.coverPrefetcher.stop()
                 }
                 if case .reload = update.change {
@@ -399,6 +402,20 @@ final class BookSearchViewController: UIViewController {
                 style.backgroundColor = UIColor.appPrimary.withAlphaComponent(0.9)
                 style.messageFont = UIFont(name: "GowunBatang-Regular", size: 14) ?? .systemFont(ofSize: 14)
                 self?.view.makeToast(message, duration: 1.2, position: .center, style: style)
+            })
+            .disposed(by: disposeBag)
+
+        output.descriptionReady
+            .emit(onNext: { [weak self] isbn13 in
+                guard let self,
+                      let row = self.expandedRow,
+                      self.bookDataSource.books.indices.contains(row),
+                      self.bookDataSource.books[row].isbn13 == isbn13 else { return }
+                self.descriptionLoadingISBN = nil
+                let indexPath = IndexPath(row: row, section: 0)
+                (self.tableView.cellForRow(at: indexPath) as? BookRowCell)?
+                    .setDescriptionLoading(false)
+                self.tableView.performBatchUpdates(nil)
             })
             .disposed(by: disposeBag)
 
@@ -486,6 +503,9 @@ final class BookSearchViewController: UIViewController {
 
         let previousRow = expandedRow
         expandedRow = previousRow == indexPath.row ? nil : indexPath.row
+        descriptionLoadingISBN = expandedRow == nil
+            ? nil
+            : bookDataSource.books[indexPath.row].isbn13
 
         // reloadRows는 높이 애니메이션 중 셀을 교체하므로 그림자가 임시 행 경계에
         // 잘려 보인다. 기존 셀의 콘텐츠만 바꾸고 테이블에는 높이 재계산만 요청한다.
@@ -493,9 +513,11 @@ final class BookSearchViewController: UIViewController {
             let previousIndexPath = IndexPath(row: previousRow, section: indexPath.section)
             (tableView.cellForRow(at: previousIndexPath) as? BookRowCell)?.setExpanded(false)
         }
-        selectedCell.setExpanded(expandedRow == indexPath.row)
         if expandedRow == indexPath.row {
+            selectedCell.setDescriptionLoading(true)
             descriptionBookRelay.accept(bookDataSource.books[indexPath.row])
+        } else {
+            selectedCell.setExpanded(false)
         }
         tableView.performBatchUpdates(nil)
     }
@@ -663,6 +685,13 @@ private final class BookRowCell: UITableViewCell {
         return textView
     }()
 
+    private let descriptionLoadingIndicator: UIActivityIndicatorView = {
+        let indicator = UIActivityIndicatorView(style: .medium)
+        indicator.color = UIColor.walnut
+        indicator.hidesWhenStopped = true
+        return indicator
+    }()
+
     #if DEBUG
     var performanceBatchID: UUID?
     #endif
@@ -703,6 +732,8 @@ private final class BookRowCell: UITableViewCell {
         authorLabel.text = nil
         descriptionTextView.attributedText = nil
         descriptionTextView.setContentOffset(.zero, animated: false)
+        descriptionLoadingIndicator.stopAnimating()
+        descriptionTextView.isHidden = false
         descriptionContainer.isHidden = true
         #if DEBUG
         performanceBatchID = nil
@@ -741,6 +772,7 @@ private final class BookRowCell: UITableViewCell {
             summaryView.addSubview($0)
         }
         descriptionContainer.addSubview(descriptionTextView)
+        descriptionContainer.addSubview(descriptionLoadingIndicator)
 
         cardView.snp.makeConstraints { make in
             make.top.equalToSuperview().offset(6)
@@ -792,13 +824,21 @@ private final class BookRowCell: UITableViewCell {
             make.bottom.equalToSuperview().inset(16)
             make.height.equalTo(descriptionViewportHeight)
         }
+        descriptionLoadingIndicator.snp.makeConstraints { make in
+            make.center.equalToSuperview()
+        }
 
         descriptionContainer.isHidden = true
     }
 
     // MARK: - Configure
 
-    func configure(book: Book, displayScale: CGFloat, isExpanded: Bool) {
+    func configure(
+        book: Book,
+        displayScale: CGFloat,
+        isExpanded: Bool,
+        isDescriptionLoading: Bool
+    ) {
         thumbnailImageView.kf.cancelDownloadTask()
         let imageOptions = BookCoverImageOptions.make(displayScale: displayScale)
         currentBook      = book
@@ -819,6 +859,7 @@ private final class BookRowCell: UITableViewCell {
         )
         descriptionTextView.setContentOffset(.zero, animated: false)
         setExpanded(isExpanded)
+        setDescriptionLoading(isExpanded && isDescriptionLoading)
         #if DEBUG
         let coverSpan = BookSearchPerformance.Span(.coverLoaded, source: .table, id: performanceBatchID ?? UUID())
         thumbnailImageView.kf.setImage(with: book.coverURL, options: imageOptions) { result in
@@ -855,8 +896,22 @@ private final class BookRowCell: UITableViewCell {
     }
 
     func setExpanded(_ isExpanded: Bool) {
+        if !isExpanded {
+            descriptionLoadingIndicator.stopAnimating()
+            descriptionTextView.isHidden = false
+        }
         guard descriptionContainer.isHidden == isExpanded else { return }
         descriptionContainer.isHidden = !isExpanded
+    }
+
+    func setDescriptionLoading(_ isLoading: Bool) {
+        descriptionTextView.isHidden = isLoading
+        if isLoading {
+            descriptionContainer.isHidden = false
+            descriptionLoadingIndicator.startAnimating()
+        } else {
+            descriptionLoadingIndicator.stopAnimating()
+        }
     }
 
     private func updateThumbnailLeading(showRank: Bool) {

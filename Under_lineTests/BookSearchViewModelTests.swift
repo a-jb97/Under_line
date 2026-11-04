@@ -251,10 +251,33 @@ final class BookSearchViewModelTests: XCTestCase {
         await drain()
 
         XCTAssertEqual(h.books[0].description, "정보나루 상세 책소개")
+        XCTAssertEqual(h.descriptionReadyISBNs, ["0"])
         guard case .reload(let rows) = h.updates.last?.change else {
             return XCTFail("설명이 변경된 행을 갱신해야 함")
         }
         XCTAssertEqual(rows, [0])
+    }
+
+    func test_descriptionExpansion_emitsReadyWithKakaoFallbackWhenSupplementFails() async {
+        let h = Harness()
+        let kakaoBook = Book(
+            title: "책", author: "저자", isbn13: "fallback", coverURL: nil,
+            publisher: "출판사", publishDate: nil, category: nil, bestRank: nil,
+            description: "카카오 책소개", itemPage: nil, currentPage: nil
+        )
+        let listRequest = await requested(h) { h.search("책") }
+        await finish(listRequest, .success(([kakaoBook], 1)))
+        h.repository.supplementError = StubError.failed
+        let requested = expectation(description: "상세 설명 요청")
+        h.repository.onSupplementRequested = { requested.fulfill() }
+
+        h.description.onNext(kakaoBook)
+        await fulfillment(of: [requested], timeout: 2)
+        await drain()
+        await drain()
+
+        XCTAssertEqual(h.books[0].description, "카카오 책소개")
+        XCTAssertEqual(h.descriptionReadyISBNs, ["fallback"])
     }
 
     private func requested(_ h: Harness, action: () -> Void) async -> PendingRequest {
@@ -334,6 +357,7 @@ private final class Harness {
     var loading = false
     var loadingMore = false
     var registrationCompletedCount = 0
+    var descriptionReadyISBNs: [String] = []
     var books: [Book] { updates.last?.books ?? [] }
 
     init() {
@@ -347,6 +371,9 @@ private final class Harness {
         output.isLoading.drive(onNext: { [weak self] in self?.loading = $0 }).disposed(by: bag)
         output.isLoadingMore.drive(onNext: { [weak self] in self?.loadingMore = $0 }).disposed(by: bag)
         output.errorMessage.emit(onNext: { [weak self] in self?.errors.append($0) }).disposed(by: bag)
+        output.descriptionReady.emit(onNext: { [weak self] in
+            self?.descriptionReadyISBNs.append($0)
+        }).disposed(by: bag)
         output.registerCompleted.emit(onNext: { [weak self] in
             self?.registrationCompletedCount += 1
         }).disposed(by: bag)
@@ -405,6 +432,7 @@ private final class ControlledRepository: BookRepositoryProtocol {
     var holdsMetadataRequests = false
     var holdsRegistrations = false
     var supplement: BookDetailMetadata?
+    var supplementError: Error?
 
     private func fetch(page: Int) async throws -> BookSearchPage {
         var pending: PendingRequest?
@@ -437,6 +465,7 @@ private final class ControlledRepository: BookRepositoryProtocol {
     func fetchBookDetail(isbn13: String) async throws -> Book { throw StubError.failed }
     func fetchBookSupplement(isbn13: String) async throws -> BookDetailMetadata? {
         onSupplementRequested?()
+        if let supplementError { throw supplementError }
         return supplement
     }
     func fetchSavedBooks() -> Observable<[Book]> { .just([]) }

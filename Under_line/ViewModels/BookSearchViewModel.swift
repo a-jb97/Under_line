@@ -55,6 +55,7 @@ final class BookSearchViewModel {
         let isLoading: Driver<Bool>
         let isLoadingMore: Driver<Bool>
         let errorMessage: Signal<String>
+        let descriptionReady: Signal<String>
         let registerCompleted: Signal<Void>
     }
 
@@ -66,6 +67,7 @@ final class BookSearchViewModel {
     private let isLoading = BehaviorRelay<Bool>(value: false)
     private let isLoadingMore = BehaviorRelay<Bool>(value: false)
     private let errorMessage = PublishRelay<String>()
+    private let descriptionReady = PublishRelay<String>()
     private let registerCompleted = PublishRelay<Void>()
     private var latestQuery = ""
     private var mode: DisplayMode?
@@ -128,6 +130,7 @@ final class BookSearchViewModel {
             isLoading: isLoading.asDriver(),
             isLoadingMore: isLoadingMore.asDriver(),
             errorMessage: errorMessage.asSignal(),
+            descriptionReady: descriptionReady.asSignal(),
             registerCompleted: registerCompleted.asSignal()
         )
     }
@@ -277,25 +280,31 @@ final class BookSearchViewModel {
         let requestGeneration = generation
         descriptionTask?.cancel()
         descriptionTask = Task { [weak self, repository] in
-            let metadata = try? await repository.fetchBookSupplement(isbn13: book.isbn13)
+            let metadata: BookDetailMetadata?
+            do {
+                metadata = try await repository.fetchBookSupplement(isbn13: book.isbn13)
+            } catch {
+                metadata = nil
+            }
             guard !Task.isCancelled,
                   let self,
-                  self.generation == requestGeneration,
-                  let metadata,
-                  !metadata.description.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
-                return
-            }
+                  self.generation == requestGeneration else { return }
 
-            var books = self.updates.value.books
-            var changedRows: [Int] = []
-            for index in books.indices where books[index].isbn13 == book.isbn13 {
-                let enriched = books[index].mergingDetailMetadata(from: metadata)
-                guard books[index].description != enriched.description else { continue }
-                books[index] = enriched
-                changedRows.append(index)
+            if let metadata,
+               !metadata.description.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                var books = self.updates.value.books
+                var changedRows: [Int] = []
+                for index in books.indices where books[index].isbn13 == book.isbn13 {
+                    let enriched = books[index].mergingDetailMetadata(from: metadata)
+                    guard books[index].description != enriched.description else { continue }
+                    books[index] = enriched
+                    changedRows.append(index)
+                }
+                if !changedRows.isEmpty {
+                    self.updates.accept(.init(books: books, change: .reload(rows: changedRows)))
+                }
             }
-            guard !changedRows.isEmpty else { return }
-            self.updates.accept(.init(books: books, change: .reload(rows: changedRows)))
+            self.descriptionReady.accept(book.isbn13)
         }
     }
 
