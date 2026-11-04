@@ -40,6 +40,7 @@ final class BookSearchViewController: UIViewController {
         cell.configure(
             book: book,
             displayScale: self?.view.traitCollection.displayScale ?? 1,
+            descriptionWidth: max(tableView.bounds.width - 48, 1),
             isExpanded: self?.expandedRow == indexPath.row,
             isDescriptionLoading: self?.descriptionLoadingISBN == book.isbn13
         )
@@ -703,7 +704,17 @@ private final class BookRowCell: UITableViewCell {
     private var rankVisible = true
     private var rankedLeading: Constraint?
     private var unrankedLeading: Constraint?
+    private var descriptionHeightConstraint: Constraint?
+    private var descriptionMeasurementWidth: CGFloat = 0
+    private var descriptionIsLoading = false
+    private var lastDescriptionHeight: CGFloat = 0
     private var lastShadowBounds: CGRect = .null
+
+    private var maximumDescriptionHeight: CGFloat {
+        ceil((descriptionTextView.font?.lineHeight ?? 14) * 1.5 * 7)
+    }
+
+    private var loadingDescriptionHeight: CGFloat { 44 }
 
     // MARK: - Init
 
@@ -734,7 +745,12 @@ private final class BookRowCell: UITableViewCell {
         descriptionTextView.setContentOffset(.zero, animated: false)
         descriptionLoadingIndicator.stopAnimating()
         descriptionTextView.isHidden = false
+        descriptionTextView.isScrollEnabled = false
+        descriptionTextView.showsVerticalScrollIndicator = false
         descriptionContainer.isHidden = true
+        descriptionMeasurementWidth = 0
+        descriptionIsLoading = false
+        lastDescriptionHeight = 0
         #if DEBUG
         performanceBatchID = nil
         #endif
@@ -742,6 +758,12 @@ private final class BookRowCell: UITableViewCell {
 
     override func layoutSubviews() {
         super.layoutSubviews()
+        let measuredWidth = descriptionTextView.bounds.width
+        if measuredWidth > 0,
+           abs(measuredWidth - descriptionMeasurementWidth) > 0.5 {
+            descriptionMeasurementWidth = measuredWidth
+            updateDescriptionViewportHeight()
+        }
         let bounds = cardView.bounds
         guard bounds != lastShadowBounds else { return }
         lastShadowBounds = bounds
@@ -815,14 +837,13 @@ private final class BookRowCell: UITableViewCell {
             make.centerY.equalToSuperview()
         }
 
-        let descriptionViewportHeight = ceil(
-            (descriptionTextView.font?.lineHeight ?? 14) * 1.5 * 7
-        )
         descriptionTextView.snp.makeConstraints { make in
             make.top.equalToSuperview().offset(4)
             make.leading.trailing.equalToSuperview().inset(16)
             make.bottom.equalToSuperview().inset(16)
-            make.height.equalTo(descriptionViewportHeight)
+            descriptionHeightConstraint = make.height
+                .equalTo(maximumDescriptionHeight)
+                .constraint
         }
         descriptionLoadingIndicator.snp.makeConstraints { make in
             make.center.equalToSuperview()
@@ -836,6 +857,7 @@ private final class BookRowCell: UITableViewCell {
     func configure(
         book: Book,
         displayScale: CGFloat,
+        descriptionWidth: CGFloat,
         isExpanded: Bool,
         isDescriptionLoading: Bool
     ) {
@@ -857,6 +879,8 @@ private final class BookRowCell: UITableViewCell {
                 .paragraphStyle: paragraphStyle,
             ]
         )
+        descriptionMeasurementWidth = descriptionWidth
+        lastDescriptionHeight = 0
         descriptionTextView.setContentOffset(.zero, animated: false)
         setExpanded(isExpanded)
         setDescriptionLoading(isExpanded && isDescriptionLoading)
@@ -897,14 +921,17 @@ private final class BookRowCell: UITableViewCell {
 
     func setExpanded(_ isExpanded: Bool) {
         if !isExpanded {
+            descriptionIsLoading = false
             descriptionLoadingIndicator.stopAnimating()
             descriptionTextView.isHidden = false
+            updateDescriptionViewportHeight()
         }
         guard descriptionContainer.isHidden == isExpanded else { return }
         descriptionContainer.isHidden = !isExpanded
     }
 
     func setDescriptionLoading(_ isLoading: Bool) {
+        descriptionIsLoading = isLoading
         descriptionTextView.isHidden = isLoading
         if isLoading {
             descriptionContainer.isHidden = false
@@ -912,6 +939,36 @@ private final class BookRowCell: UITableViewCell {
         } else {
             descriptionLoadingIndicator.stopAnimating()
         }
+        updateDescriptionViewportHeight()
+    }
+
+    private func updateDescriptionViewportHeight() {
+        let targetHeight: CGFloat
+        let shouldScroll: Bool
+
+        if descriptionIsLoading {
+            targetHeight = loadingDescriptionHeight
+            shouldScroll = false
+        } else if descriptionMeasurementWidth > 0,
+                  descriptionTextView.attributedText.length > 0 {
+            descriptionTextView.isScrollEnabled = false
+            let fittingSize = descriptionTextView.sizeThatFits(CGSize(
+                width: descriptionMeasurementWidth,
+                height: .greatestFiniteMagnitude
+            ))
+            let contentHeight = ceil(fittingSize.height)
+            targetHeight = min(contentHeight, maximumDescriptionHeight)
+            shouldScroll = contentHeight > maximumDescriptionHeight + 0.5
+        } else {
+            targetHeight = maximumDescriptionHeight
+            shouldScroll = false
+        }
+
+        descriptionTextView.isScrollEnabled = shouldScroll
+        descriptionTextView.showsVerticalScrollIndicator = shouldScroll
+        guard abs(targetHeight - lastDescriptionHeight) > 0.5 else { return }
+        lastDescriptionHeight = targetHeight
+        descriptionHeightConstraint?.update(offset: targetHeight)
     }
 
     private func updateThumbnailLeading(showRank: Bool) {
