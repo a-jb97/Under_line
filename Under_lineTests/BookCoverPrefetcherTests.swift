@@ -5,7 +5,7 @@ import Kingfisher
 
 @MainActor
 final class BookCoverPrefetcherTests: XCTestCase {
-    func test_prefetchWindow_limitsRowsAndConcurrentRequests() {
+    func test_prefetchWindow_limitsRowsAndConcurrentRequests() async {
         let fixture = Fixture()
         fixture.prefetcher.update(books: makeBooks(count: 25), after: 3, displayScale: 3)
         XCTAssertEqual(fixture.tasks.map(\.url), [url(4), url(5)])
@@ -19,7 +19,7 @@ final class BookCoverPrefetcherTests: XCTestCase {
         XCTAssertEqual(fixture.runningCount, 0)
     }
 
-    func test_scrolling_preservesOverlappingRequestAndCancelsObsoleteOne() {
+    func test_scrolling_preservesOverlappingRequestAndCancelsObsoleteOne() async {
         let fixture = Fixture()
         let books = makeBooks(count: 20)
         fixture.prefetcher.update(books: books, after: 0, displayScale: 3)
@@ -33,7 +33,7 @@ final class BookCoverPrefetcherTests: XCTestCase {
         XCTAssertEqual(fixture.tasks.count, 3)
     }
 
-    func test_stopAndRestart_ignoresLateCompletionFromPreviousList() {
+    func test_stopAndRestart_ignoresLateCompletionFromPreviousList() async {
         let fixture = Fixture()
         let books = makeBooks(count: 20)
         fixture.prefetcher.update(books: books, after: 0, displayScale: 3)
@@ -49,7 +49,7 @@ final class BookCoverPrefetcherTests: XCTestCase {
         XCTAssertEqual(fixture.tasks.last?.url, url(3))
     }
 
-    func test_duplicateAndMissingCovers_doNotExpandBeyondTenRows() {
+    func test_duplicateAndMissingCovers_doNotExpandBeyondTenRows() async {
         let fixture = Fixture()
         let books = (0..<15).map { index in
             makeBook(index: index, cover: index < 10 ? nil : url(10))
@@ -61,7 +61,7 @@ final class BookCoverPrefetcherTests: XCTestCase {
         XCTAssertEqual(fixture.tasks.count, 1)
     }
 
-    func test_lastRowOrEmptyList_stopsPrefetching() {
+    func test_lastRowOrEmptyList_stopsPrefetching() async {
         let fixture = Fixture()
         let books = makeBooks(count: 15)
         fixture.prefetcher.update(books: books, after: 0, displayScale: 3)
@@ -72,7 +72,7 @@ final class BookCoverPrefetcherTests: XCTestCase {
         XCTAssertEqual(fixture.tasks.count, 2)
     }
 
-    func test_displayScaleChange_restartsWithNewPixelSize() {
+    func test_displayScaleChange_restartsWithNewPixelSize() async {
         let fixture = Fixture()
         let books = makeBooks(count: 15)
         fixture.prefetcher.update(books: books, after: 0, displayScale: 2)
