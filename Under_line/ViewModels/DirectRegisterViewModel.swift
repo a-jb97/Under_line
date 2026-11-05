@@ -22,6 +22,7 @@ final class DirectRegisterViewModel {
         let coverURLString: Observable<String>
         let category:       Observable<String>
         let description:    Observable<String>
+        let itemPage:       Observable<String>
         let registerTap:    Observable<Void>
     }
 
@@ -52,16 +53,21 @@ final class DirectRegisterViewModel {
             input.title,
             input.author,
             input.publisher,
-            input.isbn
-        ) { title, author, publisher, isbn in
-            !title.trimmingCharacters(in: .whitespaces).isEmpty &&
+            input.isbn,
+            input.itemPage
+        ) { title, author, publisher, isbn, itemPage in
+            let normalizedItemPage = itemPage.trimmingCharacters(in: .whitespacesAndNewlines)
+            let isItemPageValid = normalizedItemPage.isEmpty
+                || (Int(normalizedItemPage).map { $0 > 0 } ?? false)
+            return !title.trimmingCharacters(in: .whitespaces).isEmpty &&
             !author.trimmingCharacters(in: .whitespaces).isEmpty &&
             !publisher.trimmingCharacters(in: .whitespaces).isEmpty &&
-            !isbn.trimmingCharacters(in: .whitespaces).isEmpty
+            !isbn.trimmingCharacters(in: .whitespaces).isEmpty &&
+            isItemPageValid
         }
         .asDriver(onErrorJustReturn: false)
 
-        let formData = Observable.combineLatest(
+        let bookData = Observable.combineLatest(
             input.title,
             input.author,
             input.publisher,
@@ -71,12 +77,14 @@ final class DirectRegisterViewModel {
             input.category,
             input.description
         )
+        let formData = Observable.combineLatest(bookData, input.itemPage)
 
         input.registerTap
             .withLatestFrom(formData)
             .flatMapLatest { [weak self] args -> Observable<Void> in
                 guard let self else { return .empty() }
-                let (title, author, publisher, isbn, publishDate, coverURLStr, categoryRaw, desc) = args
+                let (bookData, itemPageText) = args
+                let (title, author, publisher, isbn, publishDate, coverURLStr, categoryRaw, desc) = bookData
 
                 let category = categoryRaw.trimmingCharacters(in: .whitespaces).isEmpty
                     ? "미정"
@@ -95,6 +103,11 @@ final class DirectRegisterViewModel {
                     return "\(raw.prefix(4))-\(raw.dropFirst(4).prefix(2))-\(raw.suffix(2))"
                 }()
 
+                let itemPage: Int? = {
+                    let raw = itemPageText.trimmingCharacters(in: .whitespacesAndNewlines)
+                    return raw.isEmpty ? nil : Int(raw)
+                }()
+
                 let book = Book(
                     title:       title.trimmingCharacters(in: .whitespaces),
                     author:      author.trimmingCharacters(in: .whitespaces),
@@ -105,7 +118,7 @@ final class DirectRegisterViewModel {
                     category:    category,
                     bestRank:    nil,
                     description: desc.trimmingCharacters(in: .whitespaces),
-                    itemPage:    nil,
+                    itemPage:    itemPage,
                     currentPage: nil
                 )
 
