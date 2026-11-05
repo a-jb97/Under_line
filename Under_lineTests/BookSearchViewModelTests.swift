@@ -462,7 +462,6 @@ private final class ControlledRepository: BookRepositoryProtocol {
             ))
         }
     }
-    func fetchBookDetail(isbn13: String) async throws -> Book { throw StubError.failed }
     func fetchBookSupplement(isbn13: String) async throws -> BookDetailMetadata? {
         onSupplementRequested?()
         if let supplementError { throw supplementError }
@@ -479,6 +478,6 @@ private final class ControlledRepository: BookRepositoryProtocol {
     func saveBook(_ book: Book) async throws { }
     func deleteBook(_ book: Book) async throws { }
     func deleteAllBooks() async throws { }
-    func updateCurrentPage(isbn13: String, page: Int) async throws { }
+    func updateReadingProgress(isbn13: String, itemPage: Int, currentPage: Int) async throws { }
     func reorderBooks(orderedISBNs: [String]) async throws { }
 }

@@ -12,27 +12,25 @@ import RxCocoa
 
 final class ReadingRecordViewController: UIViewController {
 
-    var onPageRecorded: ((Int) -> Void)?
+    var onProgressRecorded: ((ReadingProgress) -> Void)?
 
     private let book: Book
-    private let currentItemPage: Int?
-    private let initialPage: Int?
+    private var currentItemPage: Int?
+    private var currentPage: Int?
     private let disposeBag = DisposeBag()
 
     private lazy var viewModel = ReadingRecordViewModel(
         book: book,
-        readingSessionRepository: AppContainer.shared.readingSessionRepository,
-        bookRepository: AppContainer.shared.bookRepository
+        readingSessionRepository: AppContainer.shared.readingSessionRepository
     )
     private let viewDidAppearRelay = PublishRelay<Void>()
     private let tabSelectedRelay   = BehaviorRelay<Int>(value: 0)
     private let timerStoppedRelay  = PublishRelay<Int>()
-    private let pageRecordedRelay  = PublishRelay<Int>()
 
     init(book: Book, currentItemPage: Int?, initialPage: Int?) {
         self.book = book
         self.currentItemPage = currentItemPage
-        self.initialPage = initialPage
+        currentPage = initialPage
         super.init(nibName: nil, bundle: nil)
     }
 
@@ -418,12 +416,7 @@ final class ReadingRecordViewController: UIViewController {
     // MARK: - Progress
 
     private func configureProgress() {
-        guard let itemPage = currentItemPage else { return }
-        if let page = initialPage, page > 0 {
-            progressSectionView.configure(currentPage: page, itemPage: itemPage)
-        } else {
-            progressSectionView.showNoProgress(itemPage: itemPage)
-        }
+        progressSectionView.configure(itemPage: currentItemPage, currentPage: currentPage)
     }
 
     // MARK: - ViewModel Binding
@@ -432,8 +425,7 @@ final class ReadingRecordViewController: UIViewController {
         let output = viewModel.transform(input: ReadingRecordViewModel.Input(
             viewDidAppear: viewDidAppearRelay.asObservable(),
             tabSelected:   tabSelectedRelay.asObservable(),
-            timerStopped:  timerStoppedRelay.asObservable(),
-            pageRecorded:  pageRecordedRelay.asObservable()
+            timerStopped:  timerStoppedRelay.asObservable()
         ))
 
         output.chartPoints
@@ -454,14 +446,22 @@ final class ReadingRecordViewController: UIViewController {
 
         progressSectionView.editButtonTap
             .subscribe(onNext: { [weak self] in
-                guard let self, let itemPage = self.currentItemPage else { return }
-                let vc = PageRecordViewController(itemPage: itemPage)
+                guard let self else { return }
+                let vc = PageRecordViewController(
+                    isbn13: self.book.isbn13,
+                    itemPage: self.currentItemPage,
+                    currentPage: self.currentPage
+                )
                 vc.modalPresentationStyle = .pageSheet
-                vc.onPageRecorded = { [weak self] page in
+                vc.onProgressRecorded = { [weak self] progress in
                     guard let self else { return }
-                    self.progressSectionView.configure(currentPage: page, itemPage: itemPage)
-                    self.onPageRecorded?(page)
-                    self.pageRecordedRelay.accept(page)
+                    self.currentItemPage = progress.itemPage
+                    self.currentPage = progress.currentPage
+                    self.progressSectionView.configure(
+                        itemPage: progress.itemPage,
+                        currentPage: progress.currentPage
+                    )
+                    self.onProgressRecorded?(progress)
                 }
                 self.present(vc, animated: true)
             })

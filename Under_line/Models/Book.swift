@@ -17,7 +17,7 @@ struct Book {
     let category: String?       // 도서 카테고리
     let bestRank: Int?           // 순위형 목록에서만 값, 검색 결과는 nil
     let description: String
-    let itemPage: Int?           // 책 전체 페이지 수 (알라딘 상품 조회 API)
+    let itemPage: Int?           // 사용자가 입력한 책 전체 페이지 수
     let currentPage: Int?        // 사용자가 기록한 현재 읽은 페이지 (로컬 DB)
 }
 

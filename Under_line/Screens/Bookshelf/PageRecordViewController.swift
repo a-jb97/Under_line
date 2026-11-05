@@ -2,7 +2,7 @@
 //  PageRecordViewController.swift
 //  Under_line
 //
-//  독서 진행률 편집 화면 — editButton 탭 시 pageSheet으로 present
+//  독서 진행률 편집 화면 — 전체/현재 페이지를 함께 입력
 //
 
 import UIKit
@@ -13,101 +13,79 @@ import Toast
 
 final class PageRecordViewController: UIViewController {
 
-    var onPageRecorded: ((Int) -> Void)?
+    var onProgressRecorded: ((ReadingProgress) -> Void)?
 
-    private let itemPage: Int
+    private let initialItemPage: Int?
+    private let initialCurrentPage: Int?
     private let disposeBag = DisposeBag()
-
-    // MARK: - UI Components
+    private let viewModel: PageRecordViewModel
 
     private let handleBar: UIView = {
-        let v = UIView()
-        v.backgroundColor = UIColor.walnut.withAlphaComponent(0.25)
-        v.layer.cornerRadius = 2.5
-        return v
+        let view = UIView()
+        view.backgroundColor = UIColor.walnut.withAlphaComponent(0.25)
+        view.layer.cornerRadius = 2.5
+        return view
     }()
 
     private let sheetTitleLabel: UILabel = {
-        let l = UILabel()
-        l.text = "독서 진행률"
-        l.font = UIFont(name: "GowunBatang-Bold", size: 22)
+        let label = UILabel()
+        label.text = "독서 진행률"
+        label.font = UIFont(name: "GowunBatang-Bold", size: 22)
             ?? .systemFont(ofSize: 22, weight: .semibold)
-        l.textColor = .accent
-        return l
+        label.textColor = .accent
+        return label
     }()
 
-    private let fieldLabel: UILabel = {
-        let l = UILabel()
-        l.text = "읽은 페이지"
-        l.font = UIFont(name: "GoyangIlsan R", size: 14)
-            ?? .systemFont(ofSize: 14, weight: .semibold)
-        l.textColor = .accent
-        return l
-    }()
+    private let itemPageLabel = PageRecordViewController.makeFieldLabel(title: "전체 페이지")
+    private let currentPageLabel = PageRecordViewController.makeFieldLabel(title: "읽은 페이지")
+    private let itemPageContainer = PageRecordViewController.makeInputContainer()
+    private let currentPageContainer = PageRecordViewController.makeInputContainer()
+    private let itemPageTextField = PageRecordViewController.makeTextField(placeholder: "예 : 320")
+    private let currentPageTextField = PageRecordViewController.makeTextField(placeholder: "예 : 120")
 
-    private let inputContainer: UIView = {
-        let v = UIView()
-        v.layer.cornerRadius = 10
-        v.layer.borderWidth  = 1
-        v.layer.borderColor  = UIColor.walnut.cgColor
-        return v
-    }()
-
-    private let pageTextField: UITextField = {
-        let tf = UITextField()
-        tf.keyboardType = .numberPad
-        tf.font = UIFont(name: "GoyangIlsan R", size: 14)
-            ?? .systemFont(ofSize: 14)
-        tf.textColor = .accent
-        tf.backgroundColor = .clear
-        return tf
-    }()
-
-    private let recordButton: UIButton = {
-        let btn = UIButton(type: .system)
-        btn.setTitle("페이지 기록", for: .normal)
-        btn.titleLabel?.font = UIFont(name: "GowunBatang-Bold", size: 18)
+    private let saveButton: UIButton = {
+        let button = UIButton(type: .system)
+        button.setTitle("저장하기", for: .normal)
+        button.titleLabel?.font = UIFont(name: "GowunBatang-Bold", size: 18)
             ?? .boldSystemFont(ofSize: 18)
-        btn.setTitleColor(UIColor.background, for: .normal)
-        btn.backgroundColor = UIColor.walnut
-        btn.layer.cornerRadius = 12
-        return btn
+        button.setTitleColor(UIColor.background, for: .normal)
+        button.backgroundColor = UIColor.walnut
+        button.layer.cornerRadius = 12
+        return button
     }()
 
-    // MARK: - Init
-
-    init(itemPage: Int) {
-        self.itemPage = itemPage
+    init(isbn13: String, itemPage: Int?, currentPage: Int?) {
+        initialItemPage = itemPage
+        initialCurrentPage = currentPage
+        viewModel = PageRecordViewModel(
+            isbn13: isbn13,
+            repository: AppContainer.shared.bookRepository
+        )
         super.init(nibName: nil, bundle: nil)
     }
 
     required init?(coder: NSCoder) { fatalError() }
 
-    // MARK: - Lifecycle
-
     override func viewDidLoad() {
         super.viewDidLoad()
         setupUI()
         setupConstraints()
-        bindActions()
+        configureInitialValues()
+        bindViewModel()
         configureSheet()
     }
 
     override func viewDidAppear(_ animated: Bool) {
         super.viewDidAppear(animated)
-        pageTextField.becomeFirstResponder()
+        (initialItemPage == nil ? itemPageTextField : currentPageTextField).becomeFirstResponder()
     }
-
-    // MARK: - Setup
 
     private func setupUI() {
         view.backgroundColor = UIColor.background
-        view.addSubview(handleBar)
-        view.addSubview(sheetTitleLabel)
-        view.addSubview(fieldLabel)
-        inputContainer.addSubview(pageTextField)
-        view.addSubview(inputContainer)
-        view.addSubview(recordButton)
+        [handleBar, sheetTitleLabel, itemPageLabel, itemPageContainer,
+         currentPageLabel, currentPageContainer, saveButton].forEach(view.addSubview)
+        itemPageContainer.addSubview(itemPageTextField)
+        currentPageContainer.addSubview(currentPageTextField)
     }
 
     private func setupConstraints() {
@@ -117,79 +95,117 @@ final class PageRecordViewController: UIViewController {
             make.width.equalTo(36)
             make.height.equalTo(5)
         }
-
         sheetTitleLabel.snp.makeConstraints { make in
             make.top.equalTo(handleBar.snp.bottom).offset(11)
             make.leading.trailing.equalToSuperview().inset(24)
             make.height.equalTo(52)
         }
-
-        fieldLabel.snp.makeConstraints { make in
+        itemPageLabel.snp.makeConstraints { make in
             make.top.equalTo(sheetTitleLabel.snp.bottom).offset(5)
             make.leading.trailing.equalToSuperview().inset(24)
         }
-
-        inputContainer.snp.makeConstraints { make in
-            make.top.equalTo(fieldLabel.snp.bottom).offset(8)
+        itemPageContainer.snp.makeConstraints { make in
+            make.top.equalTo(itemPageLabel.snp.bottom).offset(8)
             make.leading.trailing.equalToSuperview().inset(24)
             make.height.equalTo(48)
         }
-
-        pageTextField.snp.makeConstraints { make in
-            make.leading.trailing.equalToSuperview().inset(16)
-            make.centerY.equalToSuperview()
+        currentPageLabel.snp.makeConstraints { make in
+            make.top.equalTo(itemPageContainer.snp.bottom).offset(16)
+            make.leading.trailing.equalToSuperview().inset(24)
         }
-
-        recordButton.snp.makeConstraints { make in
-            make.top.equalTo(inputContainer.snp.bottom).offset(20)
+        currentPageContainer.snp.makeConstraints { make in
+            make.top.equalTo(currentPageLabel.snp.bottom).offset(8)
+            make.leading.trailing.equalToSuperview().inset(24)
+            make.height.equalTo(48)
+        }
+        [itemPageTextField, currentPageTextField].forEach { textField in
+            textField.snp.makeConstraints { make in
+                make.leading.trailing.equalToSuperview().inset(16)
+                make.centerY.equalToSuperview()
+            }
+        }
+        saveButton.snp.makeConstraints { make in
+            make.top.equalTo(currentPageContainer.snp.bottom).offset(20)
             make.leading.trailing.equalToSuperview().inset(24)
             make.height.equalTo(52)
         }
     }
 
+    private func configureInitialValues() {
+        itemPageTextField.text = initialItemPage.map(String.init)
+        currentPageTextField.text = initialCurrentPage.flatMap { $0 > 0 ? String($0) : nil }
+    }
+
+    private func bindViewModel() {
+        let output = viewModel.transform(input: .init(
+            itemPage: itemPageTextField.rx.text.orEmpty.asObservable(),
+            currentPage: currentPageTextField.rx.text.orEmpty.asObservable(),
+            saveTap: saveButton.rx.tap.asObservable()
+        ))
+
+        output.isSaveEnabled
+            .drive(onNext: { [weak self] isEnabled in
+                self?.saveButton.isEnabled = isEnabled
+                self?.saveButton.alpha = isEnabled ? 1 : 0.4
+            })
+            .disposed(by: disposeBag)
+
+        output.saveCompleted
+            .emit(onNext: { [weak self] progress in
+                self?.onProgressRecorded?(progress)
+                self?.dismiss(animated: true)
+            })
+            .disposed(by: disposeBag)
+
+        output.errorMessage
+            .emit(onNext: { [weak self] message in
+                var style = ToastStyle()
+                style.backgroundColor = UIColor.appPrimary.withAlphaComponent(0.9)
+                style.messageFont = UIFont(name: "GowunBatang-Regular", size: 14)
+                    ?? .systemFont(ofSize: 14)
+                self?.view.window?.makeToast(
+                    message,
+                    duration: 1.2,
+                    position: .center,
+                    style: style
+                )
+            })
+            .disposed(by: disposeBag)
+    }
+
     private func configureSheet() {
         guard let sheet = sheetPresentationController else { return }
-        // handleBar(17) + sheetTitleLabel(63) + fieldLabel(22) + inputContainer(56) + recordButton(72) + bottom(16) = 246
-        let detent = UISheetPresentationController.Detent.custom { _ in 246 }
-        sheet.detents = [detent]
+        sheet.detents = [.custom { _ in 342 }]
         sheet.prefersGrabberVisible = false
     }
 
-    // MARK: - Bindings
+    private static func makeFieldLabel(title: String) -> UILabel {
+        let label = UILabel()
+        label.text = title
+        label.font = UIFont(name: "GoyangIlsan R", size: 14)
+            ?? .systemFont(ofSize: 14, weight: .semibold)
+        label.textColor = .accent
+        return label
+    }
 
-    private func bindActions() {
-        let isNonEmpty = pageTextField.rx.text.orEmpty
-            .asDriver()
-            .map { !$0.isEmpty }
+    private static func makeInputContainer() -> UIView {
+        let view = UIView()
+        view.layer.cornerRadius = 10
+        view.layer.borderWidth = 1
+        view.layer.borderColor = UIColor.walnut.cgColor
+        return view
+    }
 
-        isNonEmpty
-            .drive(recordButton.rx.isEnabled)
-            .disposed(by: disposeBag)
-
-        isNonEmpty
-            .map { $0 ? CGFloat(1.0) : CGFloat(0.4) }
-            .drive(recordButton.rx.alpha)
-            .disposed(by: disposeBag)
-
-        recordButton.rx.tap
-            .withLatestFrom(pageTextField.rx.text.orEmpty)
-            .subscribe(onNext: { [weak self] text in
-                guard let self, let page = Int(text) else { return }
-                if page > self.itemPage {
-                    var style = ToastStyle()
-                    style.backgroundColor = UIColor.appPrimary.withAlphaComponent(0.9)
-                    style.messageFont = UIFont(name: "GowunBatang-Regular", size: 14) ?? .systemFont(ofSize: 14)
-                    self.view.window?.makeToast(
-                        "전체 페이지보다 많은 페이지는 기록할 수 없습니다.",
-                        duration: 1.2,
-                        position: .center,
-                        style: style
-                    )
-                    return
-                }
-                self.onPageRecorded?(page)
-                self.dismiss(animated: true)
-            })
-            .disposed(by: disposeBag)
+    private static func makeTextField(placeholder: String) -> UITextField {
+        let textField = UITextField()
+        textField.keyboardType = .numberPad
+        textField.font = UIFont(name: "GoyangIlsan R", size: 14) ?? .systemFont(ofSize: 14)
+        textField.textColor = .accent
+        textField.backgroundColor = .clear
+        textField.attributedPlaceholder = NSAttributedString(
+            string: placeholder,
+            attributes: [.foregroundColor: UIColor.appPrimary.withAlphaComponent(0.4)]
+        )
+        return textField
     }
 }

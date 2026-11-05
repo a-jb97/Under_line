@@ -27,7 +27,6 @@ final class AppContainer {
             fatalError("SwiftData ModelContainer 초기화 실패 — 스키마 변경 또는 디스크 문제를 확인하세요. 오류: \(error)")
         }
         bookRepository = BookRepository(
-            apiService:   AladinAPIService(apiKey: AladinAPIKey.ttbKey),
             bookSearchService: KakaoBookSearchService(apiKey: KakaoAPIKey.restAPIKey),
             data4LibraryService: Data4LibraryService(apiKey: Data4LibraryAPIKey.authKey),
             modelContext: modelContainer.mainContext

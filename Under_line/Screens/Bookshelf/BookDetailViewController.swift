@@ -18,12 +18,10 @@ final class BookDetailViewController: UIViewController {
     private let disposeBag          = DisposeBag()
     private lazy var viewModel      = BookDetailViewModel(
         book:               book,
-        sentenceRepository: AppContainer.shared.sentenceRepository,
-        bookRepository:     AppContainer.shared.bookRepository
+        sentenceRepository: AppContainer.shared.sentenceRepository
     )
     private let viewWillAppearRelay    = PublishRelay<Void>()
     private let deleteSentenceRelay    = PublishRelay<Sentence>()
-    private let updateCurrentPageRelay = PublishRelay<Int>()
 
     private var sentences: [Sentence] = []
     private var highlightLayers: [(view: UIView, layer: CAGradientLayer)] = []
@@ -43,6 +41,8 @@ final class BookDetailViewController: UIViewController {
 
     init(book: Book) {
         self.book = book
+        currentItemPage = book.itemPage
+        latestCurrentPage = book.currentPage
         super.init(nibName: nil, bundle: nil)
     }
 
@@ -245,6 +245,10 @@ final class BookDetailViewController: UIViewController {
         setupUI()
         setupConstraints()
         configureWithBook()
+        progressSectionView.configure(
+            itemPage: currentItemPage,
+            currentPage: latestCurrentPage
+        )
         bindViewModel()
         bindActions()
     }
@@ -497,8 +501,7 @@ final class BookDetailViewController: UIViewController {
     private func bindViewModel() {
         let output = viewModel.transform(input: BookDetailViewModel.Input(
             viewWillAppear:    viewWillAppearRelay.asObservable(),
-            deleteSentence:    deleteSentenceRelay.asObservable(),
-            updateCurrentPage: updateCurrentPageRelay.asObservable()
+            deleteSentence:    deleteSentenceRelay.asObservable()
         ))
 
         output.sentences
@@ -506,19 +509,6 @@ final class BookDetailViewController: UIViewController {
                 guard let self else { return }
                 self.sentences = sentences
                 self.renderQuotePages()
-            })
-            .disposed(by: disposeBag)
-
-        output.itemPage
-            .drive(onNext: { [weak self] itemPage in
-                guard let self, let itemPage else { return }
-                self.currentItemPage = itemPage
-                if let currentPage = self.book.currentPage, currentPage > 0 {
-                    self.latestCurrentPage = currentPage
-                    self.progressSectionView.configure(currentPage: currentPage, itemPage: itemPage)
-                } else {
-                    self.progressSectionView.showNoProgress(itemPage: itemPage)
-                }
             })
             .disposed(by: disposeBag)
 
@@ -919,10 +909,14 @@ final class BookDetailViewController: UIViewController {
                     currentItemPage: self.currentItemPage,
                     initialPage:     self.latestCurrentPage
                 )
-                vc.onPageRecorded = { [weak self] page in
-                    guard let self, let itemPage = self.currentItemPage else { return }
-                    self.latestCurrentPage = page
-                    self.progressSectionView.configure(currentPage: page, itemPage: itemPage)
+                vc.onProgressRecorded = { [weak self] progress in
+                    guard let self else { return }
+                    self.currentItemPage = progress.itemPage
+                    self.latestCurrentPage = progress.currentPage
+                    self.progressSectionView.configure(
+                        itemPage: progress.itemPage,
+                        currentPage: progress.currentPage
+                    )
                 }
                 self.navigationController?.pushViewController(vc, animated: true)
             })
@@ -951,14 +945,21 @@ final class BookDetailViewController: UIViewController {
 
         progressSectionView.editButtonTap
             .subscribe(onNext: { [weak self] in
-                guard let self, let itemPage = self.currentItemPage else { return }
-                let vc = PageRecordViewController(itemPage: itemPage)
+                guard let self else { return }
+                let vc = PageRecordViewController(
+                    isbn13: self.book.isbn13,
+                    itemPage: self.currentItemPage,
+                    currentPage: self.latestCurrentPage
+                )
                 vc.modalPresentationStyle = .pageSheet
-                vc.onPageRecorded = { [weak self] page in
+                vc.onProgressRecorded = { [weak self] progress in
                     guard let self else { return }
-                    self.latestCurrentPage = page
-                    self.progressSectionView.configure(currentPage: page, itemPage: itemPage)
-                    self.updateCurrentPageRelay.accept(page)
+                    self.currentItemPage = progress.itemPage
+                    self.latestCurrentPage = progress.currentPage
+                    self.progressSectionView.configure(
+                        itemPage: progress.itemPage,
+                        currentPage: progress.currentPage
+                    )
                 }
                 self.present(vc, animated: true)
             })

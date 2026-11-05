@@ -6,6 +6,29 @@ import RxCocoa
 
 @MainActor
 final class BookRepositoryTests: XCTestCase {
+    func test_pageRecordValidation_blankCurrentPageDefaultsToZero() throws {
+        let progress = try PageRecordViewModel.validate(
+            itemPage: " 320 ",
+            currentPage: " "
+        ).get()
+
+        XCTAssertEqual(progress, ReadingProgress(itemPage: 320, currentPage: 0))
+    }
+
+    func test_pageRecordValidation_rejectsInvalidItemPage() {
+        XCTAssertEqual(
+            PageRecordViewModel.validate(itemPage: "0", currentPage: "0"),
+            .failure(.invalidItemPage)
+        )
+    }
+
+    func test_pageRecordValidation_rejectsCurrentPageOverItemPage() {
+        XCTAssertEqual(
+            PageRecordViewModel.validate(itemPage: "320", currentPage: "321"),
+            .failure(.currentPageExceedsItemPage)
+        )
+    }
+
     func test_repeatedLists_reusesSeparateCachedResults() async throws {
         let fixture = try Fixture()
         let popular = try await fixture.repository.fetchPopularBooks()
@@ -41,7 +64,6 @@ final class BookRepositoryTests: XCTestCase {
         XCTAssertEqual(fixture.searchAPI.searchQueries.map(\.query), ["책"])
         XCTAssertEqual(fixture.listAPI.popularCalls, 0)
         XCTAssertEqual(fixture.listAPI.trendingCalls, 0)
-        XCTAssertEqual(fixture.api.detailCalls, 0)
     }
 
     func test_queryPageAndListType_doNotShareCache() async throws {
@@ -184,20 +206,12 @@ final class BookRepositoryTests: XCTestCase {
         let fixture = try Fixture()
         _ = try await fixture.repository.fetchPopularBooks()
         let another = BookRepository(
-            apiService: fixture.api,
             bookSearchService: fixture.searchAPI,
             data4LibraryService: fixture.listAPI,
             modelContext: fixture.container.mainContext
         )
         _ = try await another.fetchPopularBooks()
         XCTAssertEqual(fixture.listAPI.popularCalls, 2)
-    }
-
-    func test_bookDetail_remainsUncached() async throws {
-        let fixture = try Fixture()
-        _ = try await fixture.repository.fetchBookDetail(isbn13: "test")
-        _ = try await fixture.repository.fetchBookDetail(isbn13: "test")
-        XCTAssertEqual(fixture.api.detailCalls, 2)
     }
 
     func test_listMetadata_cachesFoundAndMissingResults() async throws {
@@ -339,6 +353,36 @@ final class BookRepositoryTests: XCTestCase {
         XCTAssertEqual(savedRecords.count, 1)
     }
 
+    func test_updateReadingProgress_savesItemAndCurrentPageTogether() async throws {
+        let fixture = try Fixture()
+        try await fixture.repository.saveBook(fixture.searchAPI.books[0])
+
+        try await fixture.repository.updateReadingProgress(
+            isbn13: "test",
+            itemPage: 320,
+            currentPage: 120
+        )
+
+        let record = try XCTUnwrap(fixture.savedRecords.first)
+        XCTAssertEqual(record.itemPage, 320)
+        XCTAssertEqual(record.currentPage, 120)
+    }
+
+    func test_updateReadingProgress_missingBookThrowsNotFound() async throws {
+        let fixture = try Fixture()
+
+        do {
+            try await fixture.repository.updateReadingProgress(
+                isbn13: "missing",
+                itemPage: 320,
+                currentPage: 120
+            )
+            XCTFail("등록되지 않은 도서의 진행률은 저장되면 안 됨")
+        } catch let error as NSError {
+            XCTAssertEqual(error.code, 404)
+        }
+    }
+
     func test_viewModelPagination_usesSameNormalizedQuery() async throws {
         let fixture = try Fixture()
         let viewModel = BookSearchViewModel(repository: fixture.repository)
@@ -380,7 +424,6 @@ private final class TestClock {
 @MainActor
 private final class Fixture {
     let clock = TestClock()
-    let api = StubAladinAPIService()
     let searchAPI = StubBookSearchService()
     let listAPI = StubData4LibraryService()
     let container: ModelContainer
@@ -393,7 +436,6 @@ private final class Fixture {
         )
         let clock = clock
         repository = BookRepository(
-            apiService: api,
             bookSearchService: searchAPI,
             data4LibraryService: listAPI,
             modelContext: container.mainContext,
@@ -457,21 +499,6 @@ private final class StubData4LibraryService: Data4LibraryServiceProtocol {
         detailCalls.append(isbn13)
         try await onDetailRequest?()
         return detail
-    }
-}
-
-@MainActor
-private final class StubAladinAPIService: AladinAPIServiceProtocol {
-    var detailCalls = 0
-    var books = [Book(
-        title: "테스트 도서", author: "저자", isbn13: "test", coverURL: nil,
-        publisher: "출판사", publishDate: nil, category: nil, bestRank: nil,
-        description: "설명", itemPage: nil, currentPage: nil
-    )]
-
-    func fetchBookDetail(isbn13: String) async throws -> Book {
-        detailCalls += 1
-        return books[0]
     }
 }
 

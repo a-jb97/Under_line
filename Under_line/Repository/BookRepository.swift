@@ -19,7 +19,6 @@ protocol BookRepositoryProtocol {
     func searchBooks(query: String, page: Int) async throws -> BookSearchPage
     func fetchListBookMetadata(isbn13: String) async throws -> BookListMetadata?
     func fetchBookSupplement(isbn13: String) async throws -> BookDetailMetadata?
-    func fetchBookDetail(isbn13: String) async throws -> Book
 
     // Local (BehaviorRelay 스트림 — Observable 유지)
     func fetchSavedBooks() -> Observable<[Book]>
@@ -27,7 +26,7 @@ protocol BookRepositoryProtocol {
     func saveBook(_ book: Book) async throws
     func deleteBook(_ book: Book) async throws
     func deleteAllBooks() async throws
-    func updateCurrentPage(isbn13: String, page: Int) async throws
+    func updateReadingProgress(isbn13: String, itemPage: Int, currentPage: Int) async throws
     func reorderBooks(orderedISBNs: [String]) async throws
 }
 
@@ -35,7 +34,6 @@ protocol BookRepositoryProtocol {
 
 final class BookRepository: BookRepositoryProtocol {
 
-    private let apiService: AladinAPIServiceProtocol
     private let bookSearchService: BookSearchServiceProtocol
     private let data4LibraryService: Data4LibraryServiceProtocol
     private let modelContext: ModelContext
@@ -47,14 +45,12 @@ final class BookRepository: BookRepositoryProtocol {
     private let savedBooksRelay = BehaviorRelay<[Book]>(value: [])
 
     init(
-        apiService: AladinAPIServiceProtocol,
         bookSearchService: BookSearchServiceProtocol,
         data4LibraryService: Data4LibraryServiceProtocol,
         modelContext: ModelContext,
         searchCache: BookSearchCache? = nil,
         metadataCache: BookSearchCache? = nil
     ) {
-        self.apiService   = apiService
         self.bookSearchService = bookSearchService
         self.data4LibraryService = data4LibraryService
         self.modelContext = modelContext
@@ -134,10 +130,6 @@ final class BookRepository: BookRepositoryProtocol {
             metadataRequests.removeValue(forKey: isbn13)
             throw error
         }
-    }
-
-    func fetchBookDetail(isbn13: String) async throws -> Book {
-        try await apiService.fetchBookDetail(isbn13: isbn13)
     }
 
     func fetchBookSupplement(isbn13: String) async throws -> BookDetailMetadata? {
@@ -241,12 +233,19 @@ final class BookRepository: BookRepositoryProtocol {
         refreshRelay()
     }
 
-    func updateCurrentPage(isbn13: String, page: Int) async throws {
+    func updateReadingProgress(isbn13: String, itemPage: Int, currentPage: Int) async throws {
         let descriptor = FetchDescriptor<BookRecord>(
             predicate: #Predicate { $0.isbn13 == isbn13 }
         )
-        let records = try modelContext.fetch(descriptor)
-        records.first?.currentPage = page
+        guard let record = try modelContext.fetch(descriptor).first else {
+            throw NSError(
+                domain: "BookRepository",
+                code: 404,
+                userInfo: [NSLocalizedDescriptionKey: "등록된 도서를 찾을 수 없습니다."]
+            )
+        }
+        record.itemPage = itemPage
+        record.currentPage = currentPage
         try modelContext.save()
         refreshRelay()
     }
