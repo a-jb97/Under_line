@@ -81,24 +81,22 @@ final class HTMLTextDecoderTests: XCTestCase {
         let json = #"""
         {
           "title": "어린 왕자 &amp; 여우",
-          "author": "생텍쥐페리",
-          "isbn13": "9780000000000",
-          "cover": "https://example.com/cover.jpg",
+          "contents": "중요한 것은 &quot;눈&quot;에 보이지 않아",
+          "isbn": "8937460588 9788937460586",
+          "datetime": "2026-09-17T00:00:00.000+09:00",
+          "authors": ["생텍쥐페리"],
           "publisher": "테스트 출판사",
-          "pubDate": "2026-09-17",
-          "categoryName": "국내도서>소설",
-          "bestRank": 1,
-          "description": "중요한 것은 &quot;눈&quot;에 보이지 않아"
+          "thumbnail": "https://example.com/cover.jpg"
         }
         """#.data(using: .utf8)!
-        let item = try JSONDecoder().decode(AladinBookItem.self, from: json)
-        let book = item.toDomain()
+        let item = try JSONDecoder().decode(KakaoBookDocument.self, from: json)
+        let book = try XCTUnwrap(item.toDomain())
         XCTAssertEqual(book.title, "어린 왕자 & 여우")
         XCTAssertEqual(book.description, "중요한 것은 \"눈\"에 보이지 않아")
         XCTAssertEqual(book.author, "생텍쥐페리")
-        XCTAssertEqual(book.isbn13, "9780000000000")
-        XCTAssertEqual(book.category, "소설")
-        XCTAssertEqual(book.bestRank, 1)
+        XCTAssertEqual(book.isbn13, "9788937460586")
+        XCTAssertEqual(book.publishDate, "2026-09-17")
+        XCTAssertEqual(book.coverURL?.absoluteString, "https://example.com/cover.jpg")
     }
 
     func test_fastPathBenchmark_comparesSameInputWithLegacyParser() {

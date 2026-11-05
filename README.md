@@ -56,7 +56,7 @@
 
 ## 주요 기능
 
-- 알라딘 Open API 기반 도서 검색 및 추천 도서 제공
+- 카카오 책 검색과 도서관 정보나루의 대출 목록 기반 도서 제공
 
 - 카메라 촬영과 밑줄 제스처를 이용한 OCR 문장 수집
 
@@ -118,7 +118,8 @@ flowchart LR
     VM --> RP["Repository Protocol"]
     RP --> REPO["Repository"]
     REPO --> SD[("SwiftData")]
-    REPO --> API["Aladin Open API"]
+    REPO --> KAKAO["카카오 책 검색 API"]
+    REPO --> DATA4LIBRARY["도서관 정보나루 API"]
 
     SD --> CACHE["WidgetCacheService"]
     CACHE --> GROUP[("App Group<br/>JSON Cache")]
@@ -130,7 +131,7 @@ flowchart LR
 
 - ViewModel은 `Input`과 `Output`으로 사용자 이벤트와 화면 상태를 구분
 - `rxAsync`로 `async throws` 작업을 Observable로 연결하고 Dispose 시 내부 Task 취소
-- Repository가 Aladin API와 SwiftData 접근을 담당하며 ViewController의 데이터 계층 직접 접근 차단
+- Repository가 카카오·도서관 정보나루 API와 SwiftData 접근을 담당하며 ViewController의 데이터 계층 직접 접근 차단
 - 메인 앱은 UIKit과 SnapKit, Widget 및 Live Activity는 SwiftUI로 구성
 
 ## 기술 스택
@@ -142,7 +143,7 @@ flowchart LR
 | Persistence | SwiftData, UserDefaults, App Group |
 | Camera · OCR | AVFoundation, Vision |
 | Extension | WidgetKit, ActivityKit |
-| Network | Alamofire, Aladin Open API |
+| Network | Alamofire, 카카오 책 검색 API, 도서관 정보나루 API |
 | Image | Kingfisher, UIGraphicsImageRenderer |
 | Deployment | GitHub Actions, Fastlane, Match, TestFlight |
 
@@ -153,7 +154,7 @@ Under_line/
 ├── Screens/         # 화면과 사용자 상호작용
 ├── ViewModels/      # RxSwift Input/Output 기반 화면 로직
 ├── Repository/      # SwiftData 및 네트워크 데이터 접근
-├── Network/         # Aladin API와 DTO 매핑
+├── Network/         # 카카오·도서관 정보나루 API와 DTO 매핑
 ├── Models/          # 도메인 모델과 SwiftData Record
 ├── Services/        # 백업, 위젯 캐시, Live Activity
 ├── Views/           # 재사용 가능한 UI 컴포넌트
@@ -177,5 +178,5 @@ Archive & TestFlight 업로드
 
 - GitHub Actions에서 Swift Package 캐시 복원, 앱 빌드, TestFlight 업로드 자동화
 - Fastlane Match로 메인 앱과 Widget Extension의 배포 인증서 및 프로비저닝 프로파일 관리
-- 알라딘 API 키와 App Store Connect·Match 인증 정보는 GitHub Secrets로 주입
+- 카카오·도서관 정보나루 API 키와 App Store Connect·Match 인증 정보는 GitHub Secrets로 주입
 - 로컬 API 키 파일은 `.gitignore`로 제외하여 저장소에 비밀 값이 포함되지 않도록 관리

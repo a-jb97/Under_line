@@ -1,6 +1,6 @@
 import UIKit
 
-/// 알라딘 응답의 HTML 문자 참조를 일반 문자열로 바꾼다.
+/// 도서 API 응답에 남은 HTML 문자 참조를 일반 문자열로 바꾼다.
 /// 단순 문자열은 가볍게 처리하고 실제 HTML은 기존 Foundation 파서에 맡긴다.
 @MainActor
 enum HTMLTextDecoder {

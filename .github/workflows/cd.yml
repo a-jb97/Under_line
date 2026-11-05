@@ -53,19 +53,11 @@ jobs:
 
       - name: Create API key files
         env:
-          ALADIN_TTB_KEY: ${{ secrets.ALADIN_TTB_KEY }}
           KAKAO_REST_API_KEY: ${{ secrets.KAKAO_REST_API_KEY }}
           DATA4LIBRARY_API_KEY: ${{ secrets.DATA4LIBRARY_API_KEY }}
         run: |
-          test -n "$ALADIN_TTB_KEY"
           test -n "$KAKAO_REST_API_KEY"
           test -n "$DATA4LIBRARY_API_KEY"
-          cat > Under_line/Network/AladinAPIKey.swift <<'SWIFT'
-          enum AladinAPIKey {
-              static let ttbKey = "__ALADIN_TTB_KEY__"
-          }
-          SWIFT
-          ruby -pi -e 'gsub("__ALADIN_TTB_KEY__", ENV.fetch("ALADIN_TTB_KEY"))' Under_line/Network/AladinAPIKey.swift
           cat > Under_line/Network/KakaoAPIKey.swift <<'SWIFT'
           enum KakaoAPIKey {
               static let restAPIKey = "__KAKAO_REST_API_KEY__"
