@@ -178,7 +178,7 @@ final class ReadingRecordViewController: UIViewController {
 
     private func setupUI() {
         view.backgroundColor = UIColor.background
-        bookTitleLabel.text = book.title
+        bookTitleLabel.text = book.displayTitle
         timerDialView.persistenceKey = "timer_\(book.isbn13)"
 
         view.addSubview(scrollView)
@@ -477,7 +477,7 @@ final class ReadingRecordViewController: UIViewController {
                 let mgr = ReadingActivityManager.shared
                 switch event {
                 case .started(let total, let remaining, let end):
-                    mgr.startActivity(bookTitle: self.book.title, isbn13: self.book.isbn13,
+                    mgr.startActivity(bookTitle: self.book.displayTitle, isbn13: self.book.isbn13,
                                       totalSeconds: total, remainingSeconds: remaining,
                                       timerEndDate: end)
                 case .paused(let remaining):

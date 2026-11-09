@@ -53,6 +53,7 @@ struct Data4LibraryBookDetailDocument: Decodable, Sendable {
     let isbn13: String
     let bookImageURL: String?
     let description: String
+    let category: String?
 
     nonisolated init(from decoder: any Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
@@ -63,6 +64,7 @@ struct Data4LibraryBookDetailDocument: Decodable, Sendable {
         isbn13 = container.decodeFlexibleString(forKey: .isbn13) ?? ""
         bookImageURL = container.decodeFlexibleString(forKey: .bookImageURL)
         description = container.decodeFlexibleString(forKey: .description) ?? ""
+        category = container.decodeFlexibleString(forKey: .category)
     }
 
     private enum CodingKeys: String, CodingKey {
@@ -70,6 +72,7 @@ struct Data4LibraryBookDetailDocument: Decodable, Sendable {
         case authors, publisher
         case publicationDate = "publication_date"
         case isbn13, bookImageURL, description
+        case category = "class_nm"
     }
 }
 
@@ -80,11 +83,12 @@ extension Data4LibraryBookDetailDocument {
         return BookDetailMetadata(
             isbn13: normalizedISBN,
             title: HTMLTextDecoder.decode(title),
-            author: HTMLTextDecoder.decode(authors),
+            author: LibraryAuthor.normalized(authors),
             publisher: HTMLTextDecoder.decode(publisher),
             publishDate: publicationDate?.nilIfBlank,
             coverURL: normalizedCover.flatMap(URL.init(string:)),
-            description: HTMLTextDecoder.decode(description)
+            description: HTMLTextDecoder.decode(description),
+            category: category.map(HTMLTextDecoder.decode).flatMap(BookGenre.known)
         )
     }
 }

@@ -29,7 +29,7 @@ final class WidgetCacheService {
                     let book = books.first { $0.isbn13 == sentence.bookISBN }
                     WidgetCacheWriter.shared.write(
                         sentence:   sentence,
-                        bookTitle:  book?.title ?? "알 수 없음",
+                        bookTitle:  book?.displayTitle ?? "알 수 없음",
                         bookAuthor: book?.author ?? ""
                     )
                 })

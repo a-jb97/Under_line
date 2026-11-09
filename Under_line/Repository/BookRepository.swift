@@ -265,12 +265,20 @@ final class BookRepository: BookRepositoryProtocol {
                 sortBy: [SortDescriptor(\BookRecord.savedAt, order: .reverse)]
             )
             let allRecords = try modelContext.fetch(allDescriptor)
+            var needsSave = false
+            for record in allRecords where BookGenre.known(record.category) == nil {
+                if record.category != BookGenre.unknown {
+                    record.category = BookGenre.unknown
+                    needsSave = true
+                }
+            }
             if allRecords.count > 1 && allRecords.allSatisfy({ $0.sortOrder == 0 }) {
                 for (index, record) in allRecords.enumerated() {
                     record.sortOrder = index
                 }
-                try modelContext.save()
+                needsSave = true
             }
+            if needsSave { try modelContext.save() }
 
             let descriptor = FetchDescriptor<BookRecord>(
                 sortBy: [SortDescriptor(\BookRecord.sortOrder, order: .forward)]

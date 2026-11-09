@@ -190,24 +190,24 @@ final class StatisticsViewModel {
         var counts: [String: Int] = [:]
         for sentence in sentences {
             let raw = bookMap[sentence.bookISBN]?.category?.trimmingCharacters(in: .whitespaces) ?? ""
-            let key = raw.isEmpty ? "기타" : raw
+            let key = BookGenre.normalized(raw)
             counts[key, default: 0] += 1
         }
         return buildDonutData(from: counts, total: sentences.count)
     }
 
-    private static func computeAuthorData(sentences: [Sentence], books: [Book]) -> SentenceDonutData {
+    static func computeAuthorData(sentences: [Sentence], books: [Book]) -> SentenceDonutData {
         var bookMap: [String: Book] = [:]
         for book in books { bookMap[book.isbn13] = book }
 
         var counts: [String: Int] = [:]
         for sentence in sentences {
             let fullAuthor  = bookMap[sentence.bookISBN]?.author ?? ""
-            let rawFirst = fullAuthor.components(separatedBy: ",").first?
+            let rawFirst = LibraryAuthor.normalized(fullAuthor).components(separatedBy: ",").first?
                 .trimmingCharacters(in: .whitespaces) ?? ""
             let firstAuthor = rawFirst
                 .replacingOccurrences(of: "\\(지은이\\)", with: "", options: .regularExpression)
-                .trimmingCharacters(in: .whitespaces)
+                .trimmingCharacters(in: .whitespacesAndNewlines)
             let key = firstAuthor.isEmpty ? "알 수 없음" : firstAuthor
             counts[key, default: 0] += 1
         }

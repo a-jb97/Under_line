@@ -455,7 +455,7 @@ final class BookDetailViewController: UIViewController {
     // MARK: - Book Data
 
     private func configureWithBook() {
-        bookTitleLabel.text  = book.title
+        bookTitleLabel.text  = book.displayTitle
         bookAuthorLabel.text = book.author
 
         var publisherStr = book.publisher
@@ -464,12 +464,8 @@ final class BookDetailViewController: UIViewController {
         }
         publisherLabel.text = publisherStr
 
-        if let category = book.category, !category.isEmpty {
-            genreTagLabel.text    = category
-            genreTagView.isHidden = false
-        } else {
-            genreTagView.isHidden = true
-        }
+        genreTagLabel.text = BookGenre.normalized(book.category)
+        genreTagView.isHidden = false
 
         if let coverURL = book.coverURL {
             bookCoverView.kf.setImage(with: coverURL) { [weak self] result in
@@ -994,7 +990,7 @@ final class BookDetailViewController: UIViewController {
             .subscribe(onNext: { [weak self] _ in
                 guard let self, !self.sentences.isEmpty else { return }
                 let sentence = self.sentences[self.pageControl.currentPage]
-                let editorVC = QuoteCardEditorViewController(sentence: sentence, bookTitle: self.book.title)
+                let editorVC = QuoteCardEditorViewController(sentence: sentence, bookTitle: self.book.displayTitle)
                 editorVC.modalPresentationStyle = .overFullScreen
                 editorVC.modalTransitionStyle   = .crossDissolve
                 self.present(editorVC, animated: true)

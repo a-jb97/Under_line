@@ -152,7 +152,7 @@ extension Data4LibraryBookDocument {
         guard let normalizedISBN = ISBN13Parser.isbn13(in: isbn13) else { return nil }
         return Book(
             title: HTMLTextDecoder.decode(title),
-            author: HTMLTextDecoder.decode(authors),
+            author: LibraryAuthor.normalized(authors),
             isbn13: normalizedISBN,
             coverURL: nil,
             publisher: HTMLTextDecoder.decode(publisher),

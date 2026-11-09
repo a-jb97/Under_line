@@ -21,12 +21,14 @@ final class BookSearchViewController: UIViewController {
     private let loadNextPageRelay  = PublishRelay<Void>()
     private let registerBookRelay  = PublishRelay<Book>()
     private let descriptionBookRelay = PublishRelay<Book>()
+    private let visibleRowsRelay = PublishRelay<[Int]>()
     private let listSelectionRelay = PublishRelay<BookSearchViewModel.BookListType>()
 
     private let coverPrefetcher = BookCoverPrefetcher()
     private var isScreenVisible = false
     private var isLoadingBooks = false
     private var prefetchUpdateScheduled = false
+    private var enrichmentUpdateScheduled = false
     private var paginationUpdateScheduled = false
     private var paginationGate = BookSearchPaginationGate()
     private var isLoadingNextPage = false
@@ -181,18 +183,21 @@ final class BookSearchViewController: UIViewController {
         super.viewDidAppear(animated)
         isScreenVisible = true
         scheduleCoverPrefetch()
+        scheduleEnrichmentWindowUpdate()
         scheduleNextPageIfNeeded()
     }
 
     override func viewWillDisappear(_ animated: Bool) {
         super.viewWillDisappear(animated)
         isScreenVisible = false
+        visibleRowsRelay.accept([])
         coverPrefetcher.stop()
     }
 
     override func viewDidLayoutSubviews() {
         super.viewDidLayoutSubviews()
         scheduleCoverPrefetch()
+        scheduleEnrichmentWindowUpdate()
         scheduleNextPageIfNeeded()
     }
 
@@ -314,6 +319,7 @@ final class BookSearchViewController: UIViewController {
             searchQuery:   searchTextField.rx.text.orEmpty.asObservable(),
             searchTrigger: searchTextField.rx.controlEvent(.editingDidEndOnExit).asObservable(),
             loadNextPage:  loadNextPageRelay.asObservable(),
+            visibleRows: visibleRowsRelay.asObservable(),
             descriptionBook: descriptionBookRelay.asObservable(),
             registerBook:  registerBookRelay.asObservable()
         )
@@ -370,6 +376,7 @@ final class BookSearchViewController: UIViewController {
                 }
                 self.bookDataSource.apply(update, to: self.tableView)
                 self.scheduleCoverPrefetch()
+                self.scheduleEnrichmentWindowUpdate()
                 self.scheduleNextPageIfNeeded()
             })
             .disposed(by: disposeBag)
@@ -382,6 +389,7 @@ final class BookSearchViewController: UIViewController {
                     self.coverPrefetcher.stop()
                 } else {
                     self.scheduleCoverPrefetch()
+                    self.scheduleEnrichmentWindowUpdate()
                     self.scheduleNextPageIfNeeded()
                 }
             })
@@ -443,6 +451,7 @@ final class BookSearchViewController: UIViewController {
         tableView.rx.willDisplayCell
             .subscribe(onNext: { [weak self] _, _ in
                 self?.scheduleCoverPrefetch()
+                self?.scheduleEnrichmentWindowUpdate()
                 self?.scheduleNextPageIfNeeded()
             })
             .disposed(by: disposeBag)
@@ -476,6 +485,7 @@ final class BookSearchViewController: UIViewController {
             .subscribe(onNext: { [weak self] in
                 self?.view.endEditing(false)
                 self?.scheduleCoverPrefetch()
+                self?.scheduleEnrichmentWindowUpdate()
                 self?.scheduleNextPageIfNeeded()
             })
             .disposed(by: disposeBag)
@@ -562,6 +572,19 @@ final class BookSearchViewController: UIViewController {
         }
     }
 
+    // MARK: - List Metadata
+
+    private func scheduleEnrichmentWindowUpdate() {
+        guard isScreenVisible, !isLoadingBooks, !enrichmentUpdateScheduled else { return }
+        enrichmentUpdateScheduled = true
+        DispatchQueue.main.async { [weak self] in
+            guard let self else { return }
+            self.enrichmentUpdateScheduled = false
+            guard self.isScreenVisible, !self.isLoadingBooks else { return }
+            self.visibleRowsRelay.accept(self.tableView.indexPathsForVisibleRows?.map(\.row) ?? [])
+        }
+    }
+
     // MARK: - List Segment
 
     private func selectListTab(_ listType: BookSearchViewModel.BookListType) {
@@ -645,6 +668,14 @@ private final class BookRowCell: UITableViewCell {
             ?? .systemFont(ofSize: 13)
         l.textColor = UIColor.walnut
         return l
+    }()
+
+    private let publisherLabel: UILabel = {
+        let label = UILabel()
+        label.font = UIFont(name: "GowunBatang-Regular", size: 13)
+            ?? .systemFont(ofSize: 13)
+        label.textColor = UIColor.walnut
+        return label
     }()
 
     private let registerButton: UIButton = {
@@ -741,6 +772,8 @@ private final class BookRowCell: UITableViewCell {
         rankLabel.text = nil
         titleLabel.text = nil
         authorLabel.text = nil
+        publisherLabel.text = nil
+        publisherLabel.isHidden = true
         descriptionTextView.attributedText = nil
         descriptionTextView.setContentOffset(.zero, animated: false)
         descriptionLoadingIndicator.stopAnimating()
@@ -786,7 +819,7 @@ private final class BookRowCell: UITableViewCell {
         contentStack.axis = .vertical
         cardView.addSubview(contentStack)
 
-        let textStack = UIStackView(arrangedSubviews: [titleLabel, authorLabel])
+        let textStack = UIStackView(arrangedSubviews: [titleLabel, authorLabel, publisherLabel])
         textStack.axis    = .vertical
         textStack.spacing = 3
 
@@ -830,6 +863,8 @@ private final class BookRowCell: UITableViewCell {
             make.leading.equalTo(thumbnailImageView.snp.trailing).offset(14)
             make.trailing.lessThanOrEqualTo(registerButton.snp.leading).offset(-14)
             make.centerY.equalToSuperview()
+            make.top.greaterThanOrEqualToSuperview().offset(10)
+            make.bottom.lessThanOrEqualToSuperview().inset(10)
         }
 
         registerButton.snp.makeConstraints { make in
@@ -865,8 +900,11 @@ private final class BookRowCell: UITableViewCell {
         let imageOptions = BookCoverImageOptions.make(displayScale: displayScale)
         currentBook      = book
         rankLabel.text   = book.bestRank.map { "\($0)" }
-        titleLabel.text  = book.title
-        authorLabel.text = book.author
+        titleLabel.text  = book.displayTitle
+        authorLabel.text = book.searchAuthorText
+        let publisher = book.publisher.trimmingCharacters(in: .whitespacesAndNewlines)
+        publisherLabel.text = publisher
+        publisherLabel.isHidden = publisher.isEmpty
 
         let description = book.description.trimmingCharacters(in: .whitespacesAndNewlines)
         let paragraphStyle = NSMutableParagraphStyle()

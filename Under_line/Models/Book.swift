@@ -47,9 +47,60 @@ struct BookDetailMetadata {
     let publishDate: String?
     let coverURL: URL?
     let description: String
+    var category: String? = nil
+}
+
+enum BookGenre {
+    static let unknown = "장르 미상"
+
+    static func known(_ value: String?) -> String? {
+        guard let value else { return nil }
+        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        let separators = CharacterSet(charactersIn: ">＞›»").union(.whitespacesAndNewlines)
+        let hasGenre = !trimmed.trimmingCharacters(in: separators).isEmpty
+        return !hasGenre || trimmed == "미정" || trimmed == unknown ? nil : trimmed
+    }
+
+    static func normalized(_ value: String?) -> String {
+        known(value) ?? unknown
+    }
+}
+
+enum LibraryAuthor {
+    static func normalized(_ value: String) -> String {
+        HTMLTextDecoder.decode(value)
+            .replacingOccurrences(of: #"^\s*(?:(?:지은이|저자)\s*[:：]\s*)+"#,
+                                  with: "", options: .regularExpression)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+    }
 }
 
 extension Book {
+    var searchAuthorText: String {
+        let name = author.trimmingCharacters(in: .whitespacesAndNewlines)
+        return "지은이 : \(name.isEmpty ? "알 수 없음" : name)"
+    }
+
+    var displayTitle: String {
+        guard let colon = title.firstIndex(where: { $0 == ":" || $0 == "：" }) else {
+            return title
+        }
+        let subtitle = String(title[title.index(after: colon)...])
+        let authorNames = author
+            .components(separatedBy: CharacterSet(charactersIn: ",; /·&\n"))
+            .map { name in
+                name.replacingOccurrences(
+                    of: #"^(?:지은이|저자)\s*[:：]?\s*|\s*(?:\(지은이\)|지음|저)$"#,
+                    with: "",
+                    options: .regularExpression
+                ).trimmingCharacters(in: .whitespacesAndNewlines)
+            }
+            .filter { !$0.isEmpty }
+        guard authorNames.contains(where: { subtitle.contains($0) }) else { return title }
+        let mainTitle = String(title[..<colon]).trimmingCharacters(in: .whitespacesAndNewlines)
+        return mainTitle.isEmpty ? title : mainTitle
+    }
+
     func mergingListMetadata(from metadata: BookListMetadata) -> Book {
         guard isbn13 == metadata.isbn13 else { return self }
         let normalizedDescription = metadata.description.trimmingCharacters(
@@ -79,7 +130,7 @@ extension Book {
             coverURL: coverURL ?? metadata.coverURL,
             publisher: publisher.value(or: metadata.publisher),
             publishDate: publishDate.value(or: metadata.publishDate),
-            category: category,
+            category: BookGenre.known(metadata.category) ?? BookGenre.known(category),
             bestRank: bestRank,
             description: metadata.description.value(or: description),
             itemPage: itemPage,

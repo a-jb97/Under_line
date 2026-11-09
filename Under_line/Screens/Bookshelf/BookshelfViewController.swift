@@ -596,7 +596,7 @@ final class BookshelfViewController: UIViewController {
         } else {
             imageView.backgroundColor = UIColor.appPrimary
             let label = UILabel()
-            label.text          = book.title
+            label.text          = book.displayTitle
             label.font          = UIFont(name: "GowunBatang-Bold", size: 10) ?? .boldSystemFont(ofSize: 10)
             label.textColor     = UIColor.background
             label.textAlignment = .center

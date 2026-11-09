@@ -100,7 +100,7 @@ final class ShelfRowView: UIView {
         } else {
             container.backgroundColor = UIColor.appPrimary
             let titleLabel = UILabel()
-            titleLabel.text          = book.title
+            titleLabel.text          = book.displayTitle
             titleLabel.font          = UIFont(name: "GowunBatang-Bold", size: 10) ?? .boldSystemFont(ofSize: 10)
             titleLabel.textColor     = UIColor.background
             titleLabel.textAlignment = .center
