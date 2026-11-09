@@ -7,7 +7,6 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
-		A1B2C3D4E5F6012345678901 /* HTMLTextDecoderTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F6012345678902 /* HTMLTextDecoderTests.swift */; };
 		0D87311C557F8D907DC3FEE2 /* BookCoverPrefetcherTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 65FBD37B0BE6FA4C8B01669E /* BookCoverPrefetcherTests.swift */; };
 		103804231276CB2FFC03ECF7 /* BookRepositoryTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C3A971A1D87B790412F10A06 /* BookRepositoryTests.swift */; };
 		47A704EB8014364B169AAF78 /* BookSearchTableDataSourceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 37BCEDA5B15210C106A15036 /* BookSearchTableDataSourceTests.swift */; };
@@ -28,6 +27,7 @@
 		9EBA91AD2F86545F000EE9D1 /* 고양일산 R.TTF in Resources */ = {isa = PBXBuildFile; fileRef = 9E562CDA2F71299500B65177 /* 고양일산 R.TTF */; };
 		9EBA91AE2F86545F000EE9D1 /* GowunBatang-Bold.ttf in Resources */ = {isa = PBXBuildFile; fileRef = 9E562CDD2F7129A400B65177 /* GowunBatang-Bold.ttf */; };
 		9EBA91AF2F86545F000EE9D1 /* GowunBatang-Regular.ttf in Resources */ = {isa = PBXBuildFile; fileRef = 9E562CDE2F7129A400B65177 /* GowunBatang-Regular.ttf */; };
+		A1B2C3D4E5F6012345678901 /* HTMLTextDecoderTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F6012345678902 /* HTMLTextDecoderTests.swift */; };
 		E4A4A9C1125B8B5455DBC82E /* BookSearchViewModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 87D5AC7E6A308B1AF12A36D6 /* BookSearchViewModelTests.swift */; };
 /* End PBXBuildFile section */
 
@@ -63,7 +63,6 @@
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
-		A1B2C3D4E5F6012345678902 /* HTMLTextDecoderTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = HTMLTextDecoderTests.swift; sourceTree = "<group>"; };
 		37BCEDA5B15210C106A15036 /* BookSearchTableDataSourceTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = BookSearchTableDataSourceTests.swift; sourceTree = "<group>"; };
 		65FBD37B0BE6FA4C8B01669E /* BookCoverPrefetcherTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = BookCoverPrefetcherTests.swift; sourceTree = "<group>"; };
 		87D5AC7E6A308B1AF12A36D6 /* BookSearchViewModelTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = BookSearchViewModelTests.swift; sourceTree = "<group>"; };
@@ -76,6 +75,7 @@
 		9EBA918E2F865000000EE9D1 /* WidgetKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = WidgetKit.framework; path = System/Library/Frameworks/WidgetKit.framework; sourceTree = SDKROOT; };
 		9EBA91902F865000000EE9D1 /* SwiftUI.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = SwiftUI.framework; path = System/Library/Frameworks/SwiftUI.framework; sourceTree = SDKROOT; };
 		9EBA91A82F86501B000EE9D1 /* UnderLineWidgetExtension.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = UnderLineWidgetExtension.entitlements; sourceTree = "<group>"; };
+		A1B2C3D4E5F6012345678902 /* HTMLTextDecoderTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = HTMLTextDecoderTests.swift; sourceTree = "<group>"; };
 		C3A971A1D87B790412F10A06 /* BookRepositoryTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = BookRepositoryTests.swift; sourceTree = "<group>"; };
 		D51A8FC1C3ABAB9BE21F71DD /* Under_lineTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = Under_lineTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
@@ -175,7 +175,6 @@
 				87D5AC7E6A308B1AF12A36D6 /* BookSearchViewModelTests.swift */,
 				37BCEDA5B15210C106A15036 /* BookSearchTableDataSourceTests.swift */,
 			);
-			name = Under_lineTests;
 			path = Under_lineTests;
 			sourceTree = "<group>";
 		};
@@ -424,6 +423,7 @@
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.books";
 				INFOPLIST_KEY_NSCameraUsageDescription = "책의 밑줄 부분을 촬영하여 문장을 수집합니다.";
 				INFOPLIST_KEY_NSPhotoLibraryAddUsageDescription = "생성한 카드를 사진 앱에 저장하기 위해 접근 권한이 필요합니다.";
+				INFOPLIST_KEY_NSSupportsLiveActivities = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchStoryboardName = LaunchScreen;
 				INFOPLIST_KEY_UIStatusBarHidden = YES;
@@ -468,6 +468,7 @@
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.books";
 				INFOPLIST_KEY_NSCameraUsageDescription = "책의 밑줄 부분을 촬영하여 문장을 수집합니다.";
 				INFOPLIST_KEY_NSPhotoLibraryAddUsageDescription = "생성한 카드를 사진 앱에 저장하기 위해 접근 권한이 필요합니다.";
+				INFOPLIST_KEY_NSSupportsLiveActivities = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchStoryboardName = LaunchScreen;
 				INFOPLIST_KEY_UIStatusBarHidden = YES;
