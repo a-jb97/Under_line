@@ -47,9 +47,38 @@ struct BookDetailMetadata {
     let publishDate: String?
     let coverURL: URL?
     let description: String
+    var category: String? = nil
+}
+
+enum BookGenre {
+    static let unknown = "장르 미상"
+
+    static func known(_ value: String?) -> String? {
+        guard let value else { return nil }
+        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty || trimmed == "미정" || trimmed == unknown ? nil : trimmed
+    }
+
+    static func normalized(_ value: String?) -> String {
+        known(value) ?? unknown
+    }
+}
+
+enum LibraryAuthor {
+    static func normalized(_ value: String) -> String {
+        HTMLTextDecoder.decode(value)
+            .replacingOccurrences(of: #"^\s*(?:(?:지은이|저자)\s*[:：]\s*)+"#,
+                                  with: "", options: .regularExpression)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+    }
 }
 
 extension Book {
+    var searchAuthorText: String {
+        let name = author.trimmingCharacters(in: .whitespacesAndNewlines)
+        return "지은이 : \(name.isEmpty ? "알 수 없음" : name)"
+    }
+
     var displayTitle: String {
         guard let colon = title.firstIndex(where: { $0 == ":" || $0 == "：" }) else {
             return title
@@ -99,7 +128,7 @@ extension Book {
             coverURL: coverURL ?? metadata.coverURL,
             publisher: publisher.value(or: metadata.publisher),
             publishDate: publishDate.value(or: metadata.publishDate),
-            category: category,
+            category: BookGenre.known(metadata.category) ?? BookGenre.known(category),
             bestRank: bestRank,
             description: metadata.description.value(or: description),
             itemPage: itemPage,

@@ -333,6 +333,7 @@ final class BookRepositoryTests: XCTestCase {
 
         let record = try XCTUnwrap(fixture.savedRecords.first)
         XCTAssertEqual(record.title, searchedBook.title)
+        XCTAssertEqual(record.category, "장르 미상")
         XCTAssertEqual(record.bookDescription, searchedBook.description)
     }
 

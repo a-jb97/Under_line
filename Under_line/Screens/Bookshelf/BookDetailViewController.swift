@@ -464,12 +464,8 @@ final class BookDetailViewController: UIViewController {
         }
         publisherLabel.text = publisherStr
 
-        if let category = book.category, !category.isEmpty {
-            genreTagLabel.text    = category
-            genreTagView.isHidden = false
-        } else {
-            genreTagView.isHidden = true
-        }
+        genreTagLabel.text = BookGenre.normalized(book.category)
+        genreTagView.isHidden = false
 
         if let coverURL = book.coverURL {
             bookCoverView.kf.setImage(with: coverURL) { [weak self] result in

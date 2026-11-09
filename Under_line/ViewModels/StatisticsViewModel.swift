@@ -190,13 +190,13 @@ final class StatisticsViewModel {
         var counts: [String: Int] = [:]
         for sentence in sentences {
             let raw = bookMap[sentence.bookISBN]?.category?.trimmingCharacters(in: .whitespaces) ?? ""
-            let key = raw.isEmpty ? "기타" : raw
+            let key = BookGenre.normalized(raw)
             counts[key, default: 0] += 1
         }
         return buildDonutData(from: counts, total: sentences.count)
     }
 
-    private static func computeAuthorData(sentences: [Sentence], books: [Book]) -> SentenceDonutData {
+    static func computeAuthorData(sentences: [Sentence], books: [Book]) -> SentenceDonutData {
         var bookMap: [String: Book] = [:]
         for book in books { bookMap[book.isbn13] = book }
 

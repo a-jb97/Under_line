@@ -878,7 +878,7 @@ private final class BookRowCell: UITableViewCell {
         currentBook      = book
         rankLabel.text   = book.bestRank.map { "\($0)" }
         titleLabel.text  = book.displayTitle
-        authorLabel.text = book.author
+        authorLabel.text = book.searchAuthorText
         let publisher = book.publisher.trimmingCharacters(in: .whitespacesAndNewlines)
         publisherLabel.text = publisher
         publisherLabel.isHidden = publisher.isEmpty

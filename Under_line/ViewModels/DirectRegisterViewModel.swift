@@ -86,9 +86,7 @@ final class DirectRegisterViewModel {
                 let (bookData, itemPageText) = args
                 let (title, author, publisher, isbn, publishDate, coverURLStr, categoryRaw, desc) = bookData
 
-                let category = categoryRaw.trimmingCharacters(in: .whitespaces).isEmpty
-                    ? "미정"
-                    : categoryRaw.trimmingCharacters(in: .whitespaces)
+                let category = BookGenre.normalized(categoryRaw)
 
                 let coverURL: URL? = {
                     let s = coverURLStr.trimmingCharacters(in: .whitespaces)

@@ -119,6 +119,7 @@ final class Data4LibraryServiceTests: XCTestCase {
         XCTAssertEqual(detail.isbn13, "9788937460586")
         XCTAssertEqual(detail.title, "어린 왕자 & 여우")
         XCTAssertEqual(detail.author, "생텍쥐페리")
+        XCTAssertEqual(detail.category, "문학 & 소설")
         XCTAssertEqual(detail.publisher, "테스트 출판사")
         XCTAssertEqual(detail.publishDate, "2026-10-01")
         XCTAssertEqual(detail.coverURL?.absoluteString, "https://example.com/detail-cover.jpg")
@@ -269,7 +270,7 @@ final class Data4LibraryServiceTests: XCTestCase {
             "no": 1,
             "ranking": "1",
             "bookname": "어린 왕자 &amp; 여우",
-            "authors": "생텍쥐페리",
+            "authors": "지은이 : 생텍쥐페리",
             "publisher": "테스트 출판사",
             "publication_year": 2026,
             "isbn13": "9788937460586",
@@ -311,10 +312,11 @@ final class Data4LibraryServiceTests: XCTestCase {
         }, {
           "book": {
             "bookname": "어린 왕자 &amp; 여우",
-            "authors": "생텍쥐페리",
+            "authors": "지은이 : 생텍쥐페리",
             "publisher": "테스트 출판사",
             "publication_date": "2026-10-01",
             "isbn13": "9788937460586",
+            "class_nm": " 문학 &amp; 소설 ",
             "bookImageURL": "https://example.com/detail-cover.jpg",
             "description": "완전한 &quot;책소개&quot; &amp; 설명"
           }

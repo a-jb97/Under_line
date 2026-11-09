@@ -30,7 +30,7 @@ final class BookRecord {
         self.coverURLString  = book.coverURL?.absoluteString
         self.publisher       = book.publisher
         self.publishDate     = book.publishDate
-        self.category        = book.category
+        self.category        = BookGenre.normalized(book.category)
         self.bookDescription = book.description
         self.itemPage        = book.itemPage
         self.currentPage     = book.currentPage
