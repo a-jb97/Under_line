@@ -6,6 +6,89 @@ import RxCocoa
 
 @MainActor
 final class BookRepositoryTests: XCTestCase {
+    func test_authorStatistics_mergesLegacyPrefixesIntoAuthorName() {
+        let names = ["지은이: 한강", "한강", " 지은이 ： 한강\n", "저자 : 김애란", "유현준", "지은이 : "]
+        let books = names.enumerated().map { index, name in
+            Book(title: "책", author: name, isbn13: "book-\(index)", coverURL: nil,
+                 publisher: "", publishDate: nil, category: nil, bestRank: nil,
+                 description: "", itemPage: nil, currentPage: nil)
+        }
+        let sentences = books.map {
+            Sentence(id: UUID(), bookISBN: $0.isbn13, sentence: "밑줄", page: 1,
+                     emotion: .calm, memo: nil, date: Date())
+        }
+        let result = StatisticsViewModel.computeAuthorData(sentences: sentences, books: books)
+        XCTAssertEqual(result.total, 6)
+        XCTAssertEqual(Dictionary(uniqueKeysWithValues: result.items.map { ($0.label, $0.count) }),
+                       ["한강": 3, "김애란": 1, "유현준": 1, "알 수 없음": 1])
+        XCTAssertEqual(books[0].author, "지은이: 한강")
+    }
+
+    func test_genreAndAuthorNormalization_handlesMissingValuesAndPrefixes() {
+        for raw in [nil, "", " \n", "미정", "장르 미상"] as [String?] {
+            XCTAssertEqual(BookGenre.normalized(raw), "장르 미상")
+        }
+        XCTAssertEqual(BookGenre.normalized(" 문학\n"), "문학")
+        for raw in ["지은이 : 한강", "지은이:한강", " 지은이： 한강\n", "저자 : 한강", "지은이 : 지은이 : 한강"] {
+            let name = LibraryAuthor.normalized(raw)
+            XCTAssertEqual(name, "한강")
+            XCTAssertEqual(LibraryAuthor.normalized(name), name)
+        }
+        XCTAssertEqual(LibraryAuthor.normalized("지은이 : 한강, 김영하"), "한강, 김영하")
+        XCTAssertEqual(LibraryAuthor.normalized("지은이 없는 이름"), "지은이 없는 이름")
+        XCTAssertEqual(LibraryAuthor.normalized("김지은이 : 한강"), "김지은이 : 한강")
+    }
+
+    func test_searchAuthorText_unknownAuthorAndRepeatedFormatting() {
+        let book = Book(title: "책", author: " \n", isbn13: "9788937460586",
+                        coverURL: nil, publisher: "", publishDate: nil, category: nil,
+                        bestRank: nil, description: "", itemPage: nil, currentPage: nil)
+        XCTAssertEqual(book.searchAuthorText, "지은이 : 알 수 없음")
+        XCTAssertEqual(book.searchAuthorText, "지은이 : 알 수 없음")
+        XCTAssertEqual(book.author, " \n")
+    }
+
+    func test_reload_normalizesLegacyGenresWithoutChangingAuthors() throws {
+        let fixture = try Fixture()
+        let source = fixture.searchAPI.books[0]
+        let originals: [String?] = [nil, "", " \n", "미정", "문학"]
+        for (index, category) in originals.enumerated() {
+            let record = BookRecord(from: source)
+            record.isbn13 = "legacy-\(index)"
+            record.category = category
+            record.author = "지은이 : 한강"
+            fixture.container.mainContext.insert(record)
+        }
+        try fixture.container.mainContext.save()
+        fixture.repository.reloadRelay()
+        fixture.repository.reloadRelay()
+        let records = try fixture.savedRecords.sorted { $0.isbn13 < $1.isbn13 }
+        XCTAssertEqual(records.map(\.category), ["장르 미상", "장르 미상", "장르 미상", "장르 미상", "문학"])
+        XCTAssertTrue(records.allSatisfy { $0.author == "지은이 : 한강" })
+    }
+
+    func test_registerGenre_detailWinsAcrossSearchAndListAndFallsBack() async throws {
+        for detailGenre in [" 문학\n", nil, " "] as [String?] {
+            for listGenre in [nil, "소설"] as [String?] {
+                let fixture = try Fixture()
+                let book = Book(title: "책", author: "한강", isbn13: "9788937460586",
+                                coverURL: nil, publisher: "출판사", publishDate: nil,
+                                category: listGenre, bestRank: nil, description: "",
+                                itemPage: nil, currentPage: nil)
+                fixture.listAPI.detail = BookDetailMetadata(
+                    isbn13: book.isbn13, title: "책", author: "한강", publisher: "출판사",
+                    publishDate: nil, coverURL: nil, description: "", category: detailGenre
+                )
+                try await fixture.repository.registerSearchedBook(book)
+                let record = try XCTUnwrap(fixture.savedRecords.first)
+                XCTAssertEqual(record.category, BookGenre.known(detailGenre) ?? BookGenre.normalized(listGenre))
+                XCTAssertEqual(record.author, "한강")
+                XCTAssertEqual(book.searchAuthorText, "지은이 : 한강")
+                XCTAssertEqual(book.author, "한강")
+            }
+        }
+    }
+
     func test_pageRecordValidation_blankCurrentPageDefaultsToZero() throws {
         let progress = try PageRecordViewModel.validate(
             itemPage: " 320 ",
