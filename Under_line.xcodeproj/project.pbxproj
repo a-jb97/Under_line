@@ -10,7 +10,6 @@
 		0D87311C557F8D907DC3FEE2 /* BookCoverPrefetcherTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 65FBD37B0BE6FA4C8B01669E /* BookCoverPrefetcherTests.swift */; };
 		103804231276CB2FFC03ECF7 /* BookRepositoryTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C3A971A1D87B790412F10A06 /* BookRepositoryTests.swift */; };
 		47A704EB8014364B169AAF78 /* BookSearchTableDataSourceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 37BCEDA5B15210C106A15036 /* BookSearchTableDataSourceTests.swift */; };
-		B7A4C1D8E2F3456789ABC001 /* KakaoBookSearchServiceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B7A4C1D8E2F3456789ABC002 /* KakaoBookSearchServiceTests.swift */; };
 		9E562CC22F71119200B65177 /* SnapKit in Frameworks */ = {isa = PBXBuildFile; productRef = 9E562CC12F71119200B65177 /* SnapKit */; };
 		9E562CC52F71120100B65177 /* Kingfisher in Frameworks */ = {isa = PBXBuildFile; productRef = 9E562CC42F71120100B65177 /* Kingfisher */; };
 		9E562CC82F71125600B65177 /* Toast in Frameworks */ = {isa = PBXBuildFile; productRef = 9E562CC72F71125600B65177 /* Toast */; };
@@ -29,6 +28,7 @@
 		9EBA91AE2F86545F000EE9D1 /* GowunBatang-Bold.ttf in Resources */ = {isa = PBXBuildFile; fileRef = 9E562CDD2F7129A400B65177 /* GowunBatang-Bold.ttf */; };
 		9EBA91AF2F86545F000EE9D1 /* GowunBatang-Regular.ttf in Resources */ = {isa = PBXBuildFile; fileRef = 9E562CDE2F7129A400B65177 /* GowunBatang-Regular.ttf */; };
 		A1B2C3D4E5F6012345678901 /* HTMLTextDecoderTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F6012345678902 /* HTMLTextDecoderTests.swift */; };
+		B7A4C1D8E2F3456789ABC001 /* KakaoBookSearchServiceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B7A4C1D8E2F3456789ABC002 /* KakaoBookSearchServiceTests.swift */; };
 		D4A4B0010000000000000001 /* Data4LibraryServiceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D4A4B0010000000000000002 /* Data4LibraryServiceTests.swift */; };
 		E4A4A9C1125B8B5455DBC82E /* BookSearchViewModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 87D5AC7E6A308B1AF12A36D6 /* BookSearchViewModelTests.swift */; };
 /* End PBXBuildFile section */
@@ -300,7 +300,7 @@
 			attributes = {
 				BuildIndependentTargetsInParallel = 1;
 				LastSwiftUpdateCheck = 2630;
-				LastUpgradeCheck = 2630;
+				LastUpgradeCheck = 2720;
 				TargetAttributes = {
 					9E562C082F710D0500B65177 = {
 						CreatedOnToolsVersion = 26.3;
@@ -565,6 +565,7 @@
 				MTL_FAST_MATH = YES;
 				ONLY_ACTIVE_ARCH = YES;
 				SDKROOT = iphoneos;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
 				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "DEBUG $(inherited)";
 				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
 			};
@@ -622,6 +623,7 @@
 				MTL_ENABLE_DEBUG_INFO = NO;
 				MTL_FAST_MATH = YES;
 				SDKROOT = iphoneos;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
 				SWIFT_COMPILATION_MODE = wholemodule;
 				VALIDATE_PRODUCT = YES;
 			};
