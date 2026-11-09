@@ -104,7 +104,8 @@ xcuserdata
 /*.gcno
 **/xcshareddata/WorkspaceSettings.xcsettings
 
-AladinAPIKey.swift
+KakaoAPIKey.swift
+Data4LibraryAPIKey.swift
 CLAUDE.md
 AGENTS.md
 

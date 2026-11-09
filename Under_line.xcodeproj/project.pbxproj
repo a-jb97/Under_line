@@ -28,6 +28,8 @@
 		9EBA91AE2F86545F000EE9D1 /* GowunBatang-Bold.ttf in Resources */ = {isa = PBXBuildFile; fileRef = 9E562CDD2F7129A400B65177 /* GowunBatang-Bold.ttf */; };
 		9EBA91AF2F86545F000EE9D1 /* GowunBatang-Regular.ttf in Resources */ = {isa = PBXBuildFile; fileRef = 9E562CDE2F7129A400B65177 /* GowunBatang-Regular.ttf */; };
 		A1B2C3D4E5F6012345678901 /* HTMLTextDecoderTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F6012345678902 /* HTMLTextDecoderTests.swift */; };
+		B7A4C1D8E2F3456789ABC001 /* KakaoBookSearchServiceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B7A4C1D8E2F3456789ABC002 /* KakaoBookSearchServiceTests.swift */; };
+		D4A4B0010000000000000001 /* Data4LibraryServiceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D4A4B0010000000000000002 /* Data4LibraryServiceTests.swift */; };
 		E4A4A9C1125B8B5455DBC82E /* BookSearchViewModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 87D5AC7E6A308B1AF12A36D6 /* BookSearchViewModelTests.swift */; };
 /* End PBXBuildFile section */
 
@@ -76,7 +78,9 @@
 		9EBA91902F865000000EE9D1 /* SwiftUI.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = SwiftUI.framework; path = System/Library/Frameworks/SwiftUI.framework; sourceTree = SDKROOT; };
 		9EBA91A82F86501B000EE9D1 /* UnderLineWidgetExtension.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = UnderLineWidgetExtension.entitlements; sourceTree = "<group>"; };
 		A1B2C3D4E5F6012345678902 /* HTMLTextDecoderTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = HTMLTextDecoderTests.swift; sourceTree = "<group>"; };
+		B7A4C1D8E2F3456789ABC002 /* KakaoBookSearchServiceTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = KakaoBookSearchServiceTests.swift; sourceTree = "<group>"; };
 		C3A971A1D87B790412F10A06 /* BookRepositoryTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = BookRepositoryTests.swift; sourceTree = "<group>"; };
+		D4A4B0010000000000000002 /* Data4LibraryServiceTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = Data4LibraryServiceTests.swift; sourceTree = "<group>"; };
 		D51A8FC1C3ABAB9BE21F71DD /* Under_lineTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = Under_lineTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
@@ -169,7 +173,9 @@
 		465328A1622EA2F6BE211606 /* Under_lineTests */ = {
 			isa = PBXGroup;
 			children = (
+				D4A4B0010000000000000002 /* Data4LibraryServiceTests.swift */,
 				A1B2C3D4E5F6012345678902 /* HTMLTextDecoderTests.swift */,
+				B7A4C1D8E2F3456789ABC002 /* KakaoBookSearchServiceTests.swift */,
 				C3A971A1D87B790412F10A06 /* BookRepositoryTests.swift */,
 				65FBD37B0BE6FA4C8B01669E /* BookCoverPrefetcherTests.swift */,
 				87D5AC7E6A308B1AF12A36D6 /* BookSearchViewModelTests.swift */,
@@ -294,7 +300,7 @@
 			attributes = {
 				BuildIndependentTargetsInParallel = 1;
 				LastSwiftUpdateCheck = 2630;
-				LastUpgradeCheck = 2630;
+				LastUpgradeCheck = 2720;
 				TargetAttributes = {
 					9E562C082F710D0500B65177 = {
 						CreatedOnToolsVersion = 26.3;
@@ -383,7 +389,9 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				D4A4B0010000000000000001 /* Data4LibraryServiceTests.swift in Sources */,
 				A1B2C3D4E5F6012345678901 /* HTMLTextDecoderTests.swift in Sources */,
+				B7A4C1D8E2F3456789ABC001 /* KakaoBookSearchServiceTests.swift in Sources */,
 				103804231276CB2FFC03ECF7 /* BookRepositoryTests.swift in Sources */,
 				0D87311C557F8D907DC3FEE2 /* BookCoverPrefetcherTests.swift in Sources */,
 				E4A4A9C1125B8B5455DBC82E /* BookSearchViewModelTests.swift in Sources */,
@@ -557,6 +565,7 @@
 				MTL_FAST_MATH = YES;
 				ONLY_ACTIVE_ARCH = YES;
 				SDKROOT = iphoneos;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
 				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "DEBUG $(inherited)";
 				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
 			};
@@ -614,6 +623,7 @@
 				MTL_ENABLE_DEBUG_INFO = NO;
 				MTL_FAST_MATH = YES;
 				SDKROOT = iphoneos;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
 				SWIFT_COMPILATION_MODE = wholemodule;
 				VALIDATE_PRODUCT = YES;
 			};
@@ -639,7 +649,7 @@
 					"@executable_path/Frameworks",
 					"@executable_path/../../Frameworks",
 				);
-				MARKETING_VERSION = 1.2.3;
+				MARKETING_VERSION = 1.2.4;
 				PRODUCT_BUNDLE_IDENTIFIER = com.jade.UnderLine.UnderLineWidget;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SKIP_INSTALL = YES;
@@ -674,7 +684,7 @@
 					"@executable_path/Frameworks",
 					"@executable_path/../../Frameworks",
 				);
-				MARKETING_VERSION = 1.2.3;
+				MARKETING_VERSION = 1.2.4;
 				PRODUCT_BUNDLE_IDENTIFIER = com.jade.UnderLine.UnderLineWidget;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SKIP_INSTALL = YES;

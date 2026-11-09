@@ -21,6 +21,16 @@ final class BookSearchTableDataSource: NSObject, UITableViewDataSource {
                 tableView.endUpdates()
                 tableView.setContentOffset(offset, animated: false)
             }
+        case .reload(let rows):
+            let indexPaths = rows
+                .filter { books.indices.contains($0) }
+                .map { IndexPath(row: $0, section: 0) }
+            guard !indexPaths.isEmpty else { return }
+            let offset = tableView.contentOffset
+            UIView.performWithoutAnimation {
+                tableView.reloadRows(at: indexPaths, with: .none)
+                tableView.setContentOffset(offset, animated: false)
+            }
         default:
             // 초기/검색 교체 또는 재구독으로 append 이전 snapshot이 없는 경우.
             tableView.reloadData()

@@ -9,14 +9,15 @@ import Foundation
 
 final class BookSearchViewModel {
     enum BookListType: Equatable {
-        case bestseller
-        case newSpecial
+        case popular
+        case trending
     }
 
     struct ListUpdate {
         enum Change {
             case replace
             case append(from: Int)
+            case reload(rows: [Int])
         }
 
         // 전체 snapshot도 제공해 구독 재연결 시 안전하게 복원할 수 있다.
@@ -29,7 +30,6 @@ final class BookSearchViewModel {
         case search(String)
 
         var pageSize: Int {
-            if case .list(.newSpecial) = self { return 10 }
             return 50
         }
 
@@ -45,6 +45,7 @@ final class BookSearchViewModel {
         let searchQuery: Observable<String>
         let searchTrigger: Observable<Void>
         let loadNextPage: Observable<Void>
+        let descriptionBook: Observable<Book>
         let registerBook: Observable<Book>
     }
 
@@ -54,16 +55,19 @@ final class BookSearchViewModel {
         let isLoading: Driver<Bool>
         let isLoadingMore: Driver<Bool>
         let errorMessage: Signal<String>
+        let descriptionReady: Signal<String>
         let registerCompleted: Signal<Void>
     }
 
     private let repository: BookRepositoryProtocol
     private let disposeBag = DisposeBag()
     private let pageRequest = SerialDisposable()
+    private let maximumConcurrentEnrichments = 4
     private let updates = BehaviorRelay<ListUpdate>(value: .init(books: [], change: .replace))
     private let isLoading = BehaviorRelay<Bool>(value: false)
     private let isLoadingMore = BehaviorRelay<Bool>(value: false)
     private let errorMessage = PublishRelay<String>()
+    private let descriptionReady = PublishRelay<String>()
     private let registerCompleted = PublishRelay<Void>()
     private var latestQuery = ""
     private var mode: DisplayMode?
@@ -71,6 +75,9 @@ final class BookSearchViewModel {
     private var currentPage = 0
     private var totalCount = 0
     private var hasMorePages = false
+    private var pendingEnrichmentISBNs: [String] = []
+    private var enrichmentTasks: [String: Task<Void, Never>] = [:]
+    private var descriptionTask: Task<Void, Never>?
 
     init(repository: BookRepositoryProtocol) {
         self.repository = repository
@@ -84,7 +91,7 @@ final class BookSearchViewModel {
             .disposed(by: disposeBag)
 
         Observable.merge(
-            input.viewDidLoad.map { DisplayMode.list(.bestseller) },
+            input.viewDidLoad.map { DisplayMode.list(.popular) },
             input.listSelection.map { DisplayMode.list($0) },
             input.searchTrigger.compactMap { [weak self] _ -> DisplayMode? in
                 guard let self, !self.latestQuery.isEmpty else { return nil }
@@ -98,10 +105,17 @@ final class BookSearchViewModel {
             .subscribe(onNext: { [weak self] in self?.loadNextPage() })
             .disposed(by: disposeBag)
 
+        input.descriptionBook
+            .subscribe(onNext: { [weak self] in self?.enrichDescription(for: $0) })
+            .disposed(by: disposeBag)
+
         input.registerBook
-            .flatMapLatest { [weak self] book -> Observable<Void> in
+            .flatMapFirst { [weak self] book -> Observable<Void> in
                 guard let self else { return .empty() }
-                return rxAsync { [repository = self.repository] in try await repository.saveBook(book) }
+                return rxAsync {
+                    [repository = self.repository] in
+                    try await repository.registerSearchedBook(book)
+                }
                     .catch { [weak self] error in
                         self?.errorMessage.accept(error.localizedDescription)
                         return .empty()
@@ -116,6 +130,7 @@ final class BookSearchViewModel {
             isLoading: isLoading.asDriver(),
             isLoadingMore: isLoadingMore.asDriver(),
             errorMessage: errorMessage.asSignal(),
+            descriptionReady: descriptionReady.asSignal(),
             registerCompleted: registerCompleted.asSignal()
         )
     }
@@ -123,6 +138,9 @@ final class BookSearchViewModel {
     private func start(_ mode: DisplayMode) {
         // 같은 검색어·같은 탭으로 돌아와도 이전 응답과 구분한다.
         generation = UUID()
+        cancelEnrichment()
+        descriptionTask?.cancel()
+        descriptionTask = nil
         pageRequest.disposable = Disposables.create()
         self.mode = mode
         currentPage = 0
@@ -142,13 +160,14 @@ final class BookSearchViewModel {
     }
 
     private func request(mode: DisplayMode, page: Int, generation: UUID) {
-        let request: Observable<(books: [Book], totalResults: Int)> = rxAsync { [repository] in
+        let request: Observable<BookSearchPage> = rxAsync { [repository] in
             switch mode {
-            case .list(.bestseller):
-                let books = try await repository.fetchBestsellers()
-                return (books, books.count)
-            case .list(.newSpecial):
-                return (try await repository.fetchNewSpecialBooks(page: page), 50)
+            case .list(.popular):
+                let books = try await repository.fetchPopularBooks()
+                return BookSearchPage(books: books, totalResults: books.count, isEnd: true)
+            case .list(.trending):
+                let books = try await repository.fetchTrendingBooks()
+                return BookSearchPage(books: books, totalResults: books.count, isEnd: true)
             case .search(let query):
                 return try await repository.searchBooks(query: query, page: page)
             }
@@ -173,7 +192,7 @@ final class BookSearchViewModel {
         )
     }
 
-    private func receive(_ result: (books: [Book], totalResults: Int), mode: DisplayMode, page: Int) {
+    private func receive(_ result: BookSearchPage, mode: DisplayMode, page: Int) {
         if page == 1 { totalCount = min(max(result.totalResults, 0), mode.maximumCount) }
         let previous = page == 1 ? [] : updates.value.books
         let combined = Array((previous + result.books).prefix(totalCount))
@@ -182,13 +201,13 @@ final class BookSearchViewModel {
             && combined.count < totalCount
             && page * mode.pageSize < totalCount
         switch mode {
-        case .list(.bestseller):
+        case .list(.popular):
             hasMorePages = false
-        case .list(.newSpecial):
-            hasMorePages = hasMorePages && result.books.count >= mode.pageSize
+        case .list(.trending):
+            hasMorePages = false
         case .search:
-            // 첫 검색은 totalResults를 따른다. 후속 페이지가 짧으면 종료한다.
-            hasMorePages = hasMorePages && (page == 1 || result.books.count >= mode.pageSize)
+            // ISBN13이 없는 문서가 제외되어 페이지가 짧아져도 카카오의 종료값을 따른다.
+            hasMorePages = hasMorePages && !result.isEnd
         }
         // 상태 계산과 snapshot 반영 중 발생하는 UI 요청은 로딩 상태로 차단한다.
         if page == 1 {
@@ -198,5 +217,100 @@ final class BookSearchViewModel {
         }
         isLoading.accept(false)
         isLoadingMore.accept(false)
+
+        if page == 1, case .list = mode {
+            startEnrichment(for: combined, generation: generation)
+        }
+    }
+
+    private func startEnrichment(for books: [Book], generation: UUID) {
+        var seenISBNs = Set<String>()
+        pendingEnrichmentISBNs = books
+            .map(\.isbn13)
+            .filter { seenISBNs.insert($0).inserted }
+        scheduleEnrichment(generation: generation)
+    }
+
+    private func scheduleEnrichment(generation: UUID) {
+        guard self.generation == generation else { return }
+        while enrichmentTasks.count < maximumConcurrentEnrichments,
+              !pendingEnrichmentISBNs.isEmpty {
+            let isbn13 = pendingEnrichmentISBNs.removeFirst()
+            let task = Task { [weak self, repository] in
+                let metadata = try? await repository.fetchListBookMetadata(isbn13: isbn13)
+                guard let self else { return }
+                self.finishEnrichment(
+                    isbn13: isbn13,
+                    metadata: Task.isCancelled ? nil : metadata,
+                    generation: generation
+                )
+            }
+            enrichmentTasks[isbn13] = task
+        }
+    }
+
+    private func finishEnrichment(
+        isbn13: String,
+        metadata: BookListMetadata?,
+        generation: UUID
+    ) {
+        guard self.generation == generation else { return }
+        enrichmentTasks.removeValue(forKey: isbn13)
+
+        if let metadata {
+            var books = updates.value.books
+            var changedRows: [Int] = []
+            for index in books.indices where books[index].isbn13 == isbn13 {
+                let original = books[index]
+                let enriched = original.mergingListMetadata(from: metadata)
+                guard original.coverURL != enriched.coverURL
+                        || original.description != enriched.description else { continue }
+                books[index] = enriched
+                changedRows.append(index)
+            }
+            if !changedRows.isEmpty {
+                updates.accept(.init(books: books, change: .reload(rows: changedRows)))
+            }
+        }
+
+        scheduleEnrichment(generation: generation)
+    }
+
+    private func enrichDescription(for book: Book) {
+        let requestGeneration = generation
+        descriptionTask?.cancel()
+        descriptionTask = Task { [weak self, repository] in
+            let metadata: BookDetailMetadata?
+            do {
+                metadata = try await repository.fetchBookSupplement(isbn13: book.isbn13)
+            } catch {
+                metadata = nil
+            }
+            guard !Task.isCancelled,
+                  let self,
+                  self.generation == requestGeneration else { return }
+
+            if let metadata,
+               !metadata.description.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                var books = self.updates.value.books
+                var changedRows: [Int] = []
+                for index in books.indices where books[index].isbn13 == book.isbn13 {
+                    let enriched = books[index].mergingDetailMetadata(from: metadata)
+                    guard books[index].description != enriched.description else { continue }
+                    books[index] = enriched
+                    changedRows.append(index)
+                }
+                if !changedRows.isEmpty {
+                    self.updates.accept(.init(books: books, change: .reload(rows: changedRows)))
+                }
+            }
+            self.descriptionReady.accept(book.isbn13)
+        }
+    }
+
+    private func cancelEnrichment() {
+        pendingEnrichmentISBNs.removeAll()
+        enrichmentTasks.values.forEach { $0.cancel() }
+        enrichmentTasks.removeAll()
     }
 }

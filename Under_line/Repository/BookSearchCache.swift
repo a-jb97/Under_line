@@ -4,12 +4,13 @@ import Foundation
 @MainActor
 final class BookSearchCache {
     enum Key: Hashable {
-        case bestseller
-        case newSpecial(page: Int)
+        case popular
+        case trending
         case search(query: String, page: Int)
+        case metadata(isbn13: String)
     }
 
-    typealias Result = (books: [Book], totalResults: Int)
+    typealias Result = BookSearchPage
 
     private struct Entry {
         let result: Result
@@ -17,13 +18,19 @@ final class BookSearchCache {
     }
 
     private let now: () -> TimeInterval
-    private let lifetime: TimeInterval = 5 * 60
-    private let capacity = 30
+    private let lifetime: TimeInterval
+    private let capacity: Int
     private var entries: [Key: Entry] = [:]
-    // 앞쪽이 가장 오래 사용하지 않은 키. 최대 30개이므로 선형 갱신한다.
+    // 앞쪽이 가장 오래 사용하지 않은 키. 작은 메모리 캐시이므로 선형 갱신한다.
     private var accessOrder: [Key] = []
 
-    init(now: @escaping () -> TimeInterval = { ProcessInfo.processInfo.systemUptime }) {
+    init(
+        lifetime: TimeInterval = 5 * 60,
+        capacity: Int = 30,
+        now: @escaping () -> TimeInterval = { ProcessInfo.processInfo.systemUptime }
+    ) {
+        self.lifetime = lifetime
+        self.capacity = capacity
         self.now = now
     }
 

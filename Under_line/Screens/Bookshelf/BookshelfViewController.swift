@@ -896,10 +896,10 @@ extension BookshelfViewController {
     private func showTutorialIfNeeded() {
         guard !UserDefaults.standard.bool(forKey: "tutorial.bookshelf") else { return }
 
-        // 베스트셀러 표지로 책장 미리채우기
+        // 인기 대출 도서 표지로 책장 미리채우기
         Task { [weak self] in
             guard let self else { return }
-            guard let books = try? await AppContainer.shared.bookRepository.fetchBestsellers() else { return }
+            guard let books = try? await AppContainer.shared.bookRepository.fetchPopularBooks() else { return }
             self.tutorialBooks = books
             if self.layoutReady { self.rebuildShelfPages() }
         }

@@ -146,38 +146,53 @@ final class ProgressSectionView: UIView {
 
     // MARK: - Public
 
-    func configure(currentPage: Int, itemPage: Int) {
-        let ratio   = CGFloat(currentPage) / CGFloat(itemPage)
-        let percent = Int(ratio * 100)
+    func configure(itemPage: Int?, currentPage: Int?) {
+        guard let itemPage, itemPage > 0 else {
+            progressDetailLabel.text = "전체 페이지를 입력해주세요"
+            editButton.setTitle(" 입력", for: .normal)
+            updateHeader(percentText: "-")
+            updateProgressBar(ratio: 0, animated: false)
+            return
+        }
 
-        progressDetailLabel.text = "\(currentPage) / \(itemPage) 페이지"
+        let normalizedCurrentPage = min(max(currentPage ?? 0, 0), itemPage)
+        let ratio = CGFloat(normalizedCurrentPage) / CGFloat(itemPage)
+        progressDetailLabel.text = "\(normalizedCurrentPage) / \(itemPage) 페이지"
+        editButton.setTitle(" 편집", for: .normal)
+        updateHeader(percentText: "\(Int(ratio * 100))%")
+        updateProgressBar(ratio: ratio, animated: true)
+    }
 
-        let attrStr = NSMutableAttributedString(
+    private func updateHeader(percentText: String) {
+        let attributedText = NSMutableAttributedString(
             string: "독서 진행률 : ",
             attributes: [
-                .font:            UIFont(name: "GoyangIlsan R", size: 13) ?? .systemFont(ofSize: 13),
+                .font: UIFont(name: "GoyangIlsan R", size: 13) ?? .systemFont(ofSize: 13),
                 .foregroundColor: UIColor.accent,
             ]
         )
-        attrStr.append(NSAttributedString(
-            string: "\(percent)%",
+        attributedText.append(NSAttributedString(
+            string: percentText,
             attributes: [
-                .font:            UIFont(name: "GoyangIlsan R", size: 13) ?? .systemFont(ofSize: 13),
+                .font: UIFont(name: "GoyangIlsan R", size: 13) ?? .systemFont(ofSize: 13),
                 .foregroundColor: UIColor.appPrimary,
             ]
         ))
-        progressHeaderLabel.attributedText = attrStr
+        progressHeaderLabel.attributedText = attributedText
+    }
 
+    private func updateProgressBar(ratio: CGFloat, animated: Bool) {
+        let normalizedRatio = min(max(ratio, 0), 1)
         progressBarFill.snp.remakeConstraints { make in
             make.leading.top.bottom.equalToSuperview()
-            make.width.equalToSuperview().multipliedBy(ratio)
+            make.width.equalToSuperview().multipliedBy(normalizedRatio)
+        }
+        guard animated else {
+            progressBarBg.layoutIfNeeded()
+            return
         }
         UIView.animate(withDuration: 0.4) {
             self.progressBarBg.layoutIfNeeded()
         }
-    }
-
-    func showNoProgress(itemPage: Int) {
-        progressDetailLabel.text = "0 / \(itemPage) 페이지"
     }
 }

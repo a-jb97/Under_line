@@ -20,6 +20,7 @@ final class BookSearchViewController: UIViewController {
     private let viewModel  = BookSearchViewModel(repository: AppContainer.shared.bookRepository)
     private let loadNextPageRelay  = PublishRelay<Void>()
     private let registerBookRelay  = PublishRelay<Book>()
+    private let descriptionBookRelay = PublishRelay<Book>()
     private let listSelectionRelay = PublishRelay<BookSearchViewModel.BookListType>()
 
     private let coverPrefetcher = BookCoverPrefetcher()
@@ -30,6 +31,7 @@ final class BookSearchViewController: UIViewController {
     private var paginationGate = BookSearchPaginationGate()
     private var isLoadingNextPage = false
     private var expandedRow: Int?
+    private var descriptionLoadingISBN: String?
     private lazy var bookDataSource = BookSearchTableDataSource { [weak self] tableView, indexPath, book in
         let cell = tableView.dequeueReusableCell(withIdentifier: BookRowCell.reuseID, for: indexPath) as! BookRowCell
         #if DEBUG
@@ -38,7 +40,9 @@ final class BookSearchViewController: UIViewController {
         cell.configure(
             book: book,
             displayScale: self?.view.traitCollection.displayScale ?? 1,
-            isExpanded: self?.expandedRow == indexPath.row
+            descriptionWidth: max(tableView.bounds.width - 48, 1),
+            isExpanded: self?.expandedRow == indexPath.row,
+            isDescriptionLoading: self?.descriptionLoadingISBN == book.isbn13
         )
         cell.onRegister = { [weak self] in self?.registerBookRelay.accept($0) }
         return cell
@@ -142,8 +146,8 @@ final class BookSearchViewController: UIViewController {
         return v
     }()
 
-    private lazy var bestsellerButton = makeListTabButton(title: "베스트셀러 50", selected: true)
-    private lazy var newSpecialButton = makeListTabButton(title: "추천 신간", selected: false)
+    private lazy var popularButton = makeListTabButton(title: "인기 대출 도서", selected: true)
+    private lazy var trendingButton = makeListTabButton(title: "요즘 뜨는 책", selected: false)
 
     private lazy var listSegmentContainerView: UIView = {
         let v = UIView()
@@ -222,8 +226,8 @@ final class BookSearchViewController: UIViewController {
     private func setupTableHeader() {
         let container = UIView()
         container.backgroundColor = .clear
-        listSegmentContainerView.addSubview(bestsellerButton)
-        listSegmentContainerView.addSubview(newSpecialButton)
+        listSegmentContainerView.addSubview(popularButton)
+        listSegmentContainerView.addSubview(trendingButton)
         container.addSubview(listSegmentContainerView)
         listSegmentContainerView.snp.makeConstraints { make in
             make.leading.equalToSuperview().offset(8)
@@ -231,14 +235,14 @@ final class BookSearchViewController: UIViewController {
             make.bottom.equalToSuperview().inset(6)
             make.height.equalTo(34)
         }
-        bestsellerButton.snp.makeConstraints { make in
+        popularButton.snp.makeConstraints { make in
             make.leading.top.bottom.equalToSuperview().inset(3)
             make.width.equalTo(94)
         }
-        newSpecialButton.snp.makeConstraints { make in
-            make.leading.equalTo(bestsellerButton.snp.trailing)
+        trendingButton.snp.makeConstraints { make in
+            make.leading.equalTo(popularButton.snp.trailing)
             make.trailing.top.bottom.equalToSuperview().inset(3)
-            make.width.equalTo(bestsellerButton)
+            make.width.equalTo(popularButton)
         }
         container.frame = CGRect(x: 0, y: 0, width: 0, height: 50)
         tableView.tableHeaderView = container
@@ -310,6 +314,7 @@ final class BookSearchViewController: UIViewController {
             searchQuery:   searchTextField.rx.text.orEmpty.asObservable(),
             searchTrigger: searchTextField.rx.controlEvent(.editingDidEndOnExit).asObservable(),
             loadNextPage:  loadNextPageRelay.asObservable(),
+            descriptionBook: descriptionBookRelay.asObservable(),
             registerBook:  registerBookRelay.asObservable()
         )
 
@@ -332,23 +337,37 @@ final class BookSearchViewController: UIViewController {
             .drive(onNext: { [weak self] update in
                 guard let self else { return }
                 #if DEBUG
-                self.firstCellDisplaySpan?.finish(.superseded)
-                let batchID = UUID()
-                self.performanceBatchID = batchID
                 switch update.change {
-                case .replace: self.firstMeasuredRow = 0
+                case .replace:
+                    self.firstCellDisplaySpan?.finish(.superseded)
+                    let batchID = UUID()
+                    self.performanceBatchID = batchID
+                    self.firstMeasuredRow = 0
+                    self.firstCellDisplaySpan = update.books.isEmpty ? nil : BookSearchPerformance.Span(
+                        .firstCellWillDisplay, source: .table, id: batchID
+                    )
                 case .append(let start):
+                    self.firstCellDisplaySpan?.finish(.superseded)
+                    let batchID = UUID()
+                    self.performanceBatchID = batchID
                     self.firstMeasuredRow = start == self.bookDataSource.books.count && start < update.books.count ? start : 0
+                    self.firstCellDisplaySpan = update.books.isEmpty ? nil : BookSearchPerformance.Span(
+                        .firstCellWillDisplay, source: .table, id: batchID
+                    )
+                case .reload:
+                    break
                 }
-                self.firstCellDisplaySpan = update.books.isEmpty ? nil : BookSearchPerformance.Span(
-                    .firstCellWillDisplay, source: .table, id: batchID
-                )
                 #endif
                 if case .replace = update.change {
                     self.expandedRow = nil
+                    self.descriptionLoadingISBN = nil
                     self.coverPrefetcher.stop()
                 }
-                self.paginationGate.listDidUpdate()
+                if case .reload = update.change {
+                    // ISBN 보완은 페이지 상태를 변경하지 않는다.
+                } else {
+                    self.paginationGate.listDidUpdate()
+                }
                 self.bookDataSource.apply(update, to: self.tableView)
                 self.scheduleCoverPrefetch()
                 self.scheduleNextPageIfNeeded()
@@ -387,23 +406,37 @@ final class BookSearchViewController: UIViewController {
             })
             .disposed(by: disposeBag)
 
+        output.descriptionReady
+            .emit(onNext: { [weak self] isbn13 in
+                guard let self,
+                      let row = self.expandedRow,
+                      self.bookDataSource.books.indices.contains(row),
+                      self.bookDataSource.books[row].isbn13 == isbn13 else { return }
+                self.descriptionLoadingISBN = nil
+                let indexPath = IndexPath(row: row, section: 0)
+                (self.tableView.cellForRow(at: indexPath) as? BookRowCell)?
+                    .setDescriptionLoading(false)
+                self.tableView.performBatchUpdates(nil)
+            })
+            .disposed(by: disposeBag)
+
         output.registerCompleted
             .emit(onNext: { [weak self] in
                 self?.dismiss(animated: true)
             })
             .disposed(by: disposeBag)
 
-        bestsellerButton.rx.tap
+        popularButton.rx.tap
             .subscribe(onNext: { [weak self] in
-                self?.selectListTab(.bestseller)
-                self?.listSelectionRelay.accept(.bestseller)
+                self?.selectListTab(.popular)
+                self?.listSelectionRelay.accept(.popular)
             })
             .disposed(by: disposeBag)
 
-        newSpecialButton.rx.tap
+        trendingButton.rx.tap
             .subscribe(onNext: { [weak self] in
-                self?.selectListTab(.newSpecial)
-                self?.listSelectionRelay.accept(.newSpecial)
+                self?.selectListTab(.trending)
+                self?.listSelectionRelay.accept(.trending)
             })
             .disposed(by: disposeBag)
 
@@ -471,6 +504,9 @@ final class BookSearchViewController: UIViewController {
 
         let previousRow = expandedRow
         expandedRow = previousRow == indexPath.row ? nil : indexPath.row
+        descriptionLoadingISBN = expandedRow == nil
+            ? nil
+            : bookDataSource.books[indexPath.row].isbn13
 
         // reloadRows는 높이 애니메이션 중 셀을 교체하므로 그림자가 임시 행 경계에
         // 잘려 보인다. 기존 셀의 콘텐츠만 바꾸고 테이블에는 높이 재계산만 요청한다.
@@ -478,7 +514,12 @@ final class BookSearchViewController: UIViewController {
             let previousIndexPath = IndexPath(row: previousRow, section: indexPath.section)
             (tableView.cellForRow(at: previousIndexPath) as? BookRowCell)?.setExpanded(false)
         }
-        selectedCell.setExpanded(expandedRow == indexPath.row)
+        if expandedRow == indexPath.row {
+            selectedCell.setDescriptionLoading(true)
+            descriptionBookRelay.accept(bookDataSource.books[indexPath.row])
+        } else {
+            selectedCell.setExpanded(false)
+        }
         tableView.performBatchUpdates(nil)
     }
 
@@ -524,8 +565,8 @@ final class BookSearchViewController: UIViewController {
     // MARK: - List Segment
 
     private func selectListTab(_ listType: BookSearchViewModel.BookListType) {
-        applyListTabStyle(to: bestsellerButton, selected: listType == .bestseller)
-        applyListTabStyle(to: newSpecialButton, selected: listType == .newSpecial)
+        applyListTabStyle(to: popularButton, selected: listType == .popular)
+        applyListTabStyle(to: trendingButton, selected: listType == .trending)
     }
 
     private func makeListTabButton(title: String, selected: Bool) -> UIButton {
@@ -629,12 +670,27 @@ private final class BookRowCell: UITableViewCell {
 
     private let descriptionContainer = UIView()
 
-    private let descriptionLabel: UILabel = {
-        let l = UILabel()
-        l.font = UIFont(name: "GoyangIlsan R", size: 12) ?? .systemFont(ofSize: 12)
-        l.textColor = UIColor.appPrimary.withAlphaComponent(0.75)
-        l.numberOfLines = 0
-        return l
+    private let descriptionTextView: UITextView = {
+        let textView = UITextView()
+        textView.backgroundColor = .clear
+        textView.font = UIFont(name: "GoyangIlsan R", size: 12) ?? .systemFont(ofSize: 12)
+        textView.textColor = UIColor.appPrimary.withAlphaComponent(0.75)
+        textView.isEditable = false
+        textView.isSelectable = false
+        textView.isScrollEnabled = true
+        textView.alwaysBounceVertical = false
+        textView.showsVerticalScrollIndicator = true
+        textView.scrollsToTop = false
+        textView.textContainerInset = .zero
+        textView.textContainer.lineFragmentPadding = 0
+        return textView
+    }()
+
+    private let descriptionLoadingIndicator: UIActivityIndicatorView = {
+        let indicator = UIActivityIndicatorView(style: .medium)
+        indicator.color = UIColor.walnut
+        indicator.hidesWhenStopped = true
+        return indicator
     }()
 
     #if DEBUG
@@ -648,7 +704,17 @@ private final class BookRowCell: UITableViewCell {
     private var rankVisible = true
     private var rankedLeading: Constraint?
     private var unrankedLeading: Constraint?
+    private var descriptionHeightConstraint: Constraint?
+    private var descriptionMeasurementWidth: CGFloat = 0
+    private var descriptionIsLoading = false
+    private var lastDescriptionHeight: CGFloat = 0
     private var lastShadowBounds: CGRect = .null
+
+    private var maximumDescriptionHeight: CGFloat {
+        ceil((descriptionTextView.font?.lineHeight ?? 14) * 1.5 * 7)
+    }
+
+    private var loadingDescriptionHeight: CGFloat { 44 }
 
     // MARK: - Init
 
@@ -675,8 +741,16 @@ private final class BookRowCell: UITableViewCell {
         rankLabel.text = nil
         titleLabel.text = nil
         authorLabel.text = nil
-        descriptionLabel.attributedText = nil
+        descriptionTextView.attributedText = nil
+        descriptionTextView.setContentOffset(.zero, animated: false)
+        descriptionLoadingIndicator.stopAnimating()
+        descriptionTextView.isHidden = false
+        descriptionTextView.isScrollEnabled = false
+        descriptionTextView.showsVerticalScrollIndicator = false
         descriptionContainer.isHidden = true
+        descriptionMeasurementWidth = 0
+        descriptionIsLoading = false
+        lastDescriptionHeight = 0
         #if DEBUG
         performanceBatchID = nil
         #endif
@@ -684,6 +758,12 @@ private final class BookRowCell: UITableViewCell {
 
     override func layoutSubviews() {
         super.layoutSubviews()
+        let measuredWidth = descriptionTextView.bounds.width
+        if measuredWidth > 0,
+           abs(measuredWidth - descriptionMeasurementWidth) > 0.5 {
+            descriptionMeasurementWidth = measuredWidth
+            updateDescriptionViewportHeight()
+        }
         let bounds = cardView.bounds
         guard bounds != lastShadowBounds else { return }
         lastShadowBounds = bounds
@@ -713,7 +793,8 @@ private final class BookRowCell: UITableViewCell {
         [rankLabel, thumbnailImageView, textStack, registerButton].forEach {
             summaryView.addSubview($0)
         }
-        descriptionContainer.addSubview(descriptionLabel)
+        descriptionContainer.addSubview(descriptionTextView)
+        descriptionContainer.addSubview(descriptionLoadingIndicator)
 
         cardView.snp.makeConstraints { make in
             make.top.equalToSuperview().offset(6)
@@ -756,10 +837,16 @@ private final class BookRowCell: UITableViewCell {
             make.centerY.equalToSuperview()
         }
 
-        descriptionLabel.snp.makeConstraints { make in
+        descriptionTextView.snp.makeConstraints { make in
             make.top.equalToSuperview().offset(4)
             make.leading.trailing.equalToSuperview().inset(16)
             make.bottom.equalToSuperview().inset(16)
+            descriptionHeightConstraint = make.height
+                .equalTo(maximumDescriptionHeight)
+                .constraint
+        }
+        descriptionLoadingIndicator.snp.makeConstraints { make in
+            make.center.equalToSuperview()
         }
 
         descriptionContainer.isHidden = true
@@ -767,7 +854,13 @@ private final class BookRowCell: UITableViewCell {
 
     // MARK: - Configure
 
-    func configure(book: Book, displayScale: CGFloat, isExpanded: Bool) {
+    func configure(
+        book: Book,
+        displayScale: CGFloat,
+        descriptionWidth: CGFloat,
+        isExpanded: Bool,
+        isDescriptionLoading: Bool
+    ) {
         thumbnailImageView.kf.cancelDownloadTask()
         let imageOptions = BookCoverImageOptions.make(displayScale: displayScale)
         currentBook      = book
@@ -778,15 +871,19 @@ private final class BookRowCell: UITableViewCell {
         let description = book.description.trimmingCharacters(in: .whitespacesAndNewlines)
         let paragraphStyle = NSMutableParagraphStyle()
         paragraphStyle.lineHeightMultiple = 1.5
-        descriptionLabel.attributedText = NSAttributedString(
+        descriptionTextView.attributedText = NSAttributedString(
             string: description.isEmpty ? "책 소개가 없습니다" : description,
             attributes: [
-                .font: descriptionLabel.font as Any,
-                .foregroundColor: descriptionLabel.textColor as Any,
+                .font: descriptionTextView.font as Any,
+                .foregroundColor: descriptionTextView.textColor as Any,
                 .paragraphStyle: paragraphStyle,
             ]
         )
+        descriptionMeasurementWidth = descriptionWidth
+        lastDescriptionHeight = 0
+        descriptionTextView.setContentOffset(.zero, animated: false)
         setExpanded(isExpanded)
+        setDescriptionLoading(isExpanded && isDescriptionLoading)
         #if DEBUG
         let coverSpan = BookSearchPerformance.Span(.coverLoaded, source: .table, id: performanceBatchID ?? UUID())
         thumbnailImageView.kf.setImage(with: book.coverURL, options: imageOptions) { result in
@@ -823,8 +920,55 @@ private final class BookRowCell: UITableViewCell {
     }
 
     func setExpanded(_ isExpanded: Bool) {
+        if !isExpanded {
+            descriptionIsLoading = false
+            descriptionLoadingIndicator.stopAnimating()
+            descriptionTextView.isHidden = false
+            updateDescriptionViewportHeight()
+        }
         guard descriptionContainer.isHidden == isExpanded else { return }
         descriptionContainer.isHidden = !isExpanded
+    }
+
+    func setDescriptionLoading(_ isLoading: Bool) {
+        descriptionIsLoading = isLoading
+        descriptionTextView.isHidden = isLoading
+        if isLoading {
+            descriptionContainer.isHidden = false
+            descriptionLoadingIndicator.startAnimating()
+        } else {
+            descriptionLoadingIndicator.stopAnimating()
+        }
+        updateDescriptionViewportHeight()
+    }
+
+    private func updateDescriptionViewportHeight() {
+        let targetHeight: CGFloat
+        let shouldScroll: Bool
+
+        if descriptionIsLoading {
+            targetHeight = loadingDescriptionHeight
+            shouldScroll = false
+        } else if descriptionMeasurementWidth > 0,
+                  descriptionTextView.attributedText.length > 0 {
+            descriptionTextView.isScrollEnabled = false
+            let fittingSize = descriptionTextView.sizeThatFits(CGSize(
+                width: descriptionMeasurementWidth,
+                height: .greatestFiniteMagnitude
+            ))
+            let contentHeight = ceil(fittingSize.height)
+            targetHeight = min(contentHeight, maximumDescriptionHeight)
+            shouldScroll = contentHeight > maximumDescriptionHeight + 0.5
+        } else {
+            targetHeight = maximumDescriptionHeight
+            shouldScroll = false
+        }
+
+        descriptionTextView.isScrollEnabled = shouldScroll
+        descriptionTextView.showsVerticalScrollIndicator = shouldScroll
+        guard abs(targetHeight - lastDescriptionHeight) > 0.5 else { return }
+        lastDescriptionHeight = targetHeight
+        descriptionHeightConstraint?.update(offset: targetHeight)
     }
 
     private func updateThumbnailLeading(showRank: Bool) {

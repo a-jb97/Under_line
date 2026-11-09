@@ -55,6 +55,7 @@ final class DirectRegisterViewController: UIViewController {
     private let publisherField   = FormFieldView(label: "출판사 *")
     private let publishDateField = FormFieldView(label: "출판일", keyboardType: .numberPad, placeholder: "예 : 20260101")
     private let isbnField        = FormFieldView(label: "ISBN 번호 *", keyboardType: .numberPad)
+    private let itemPageField    = FormFieldView(label: "전체 페이지 수 (선택)", keyboardType: .numberPad, placeholder: "예 : 320")
 
     // Section Bottom
     private let coverURLField    = FormFieldView(label: "책 표지 이미지 URL", keyboardType: .URL, placeholder: "https://")
@@ -96,6 +97,7 @@ final class DirectRegisterViewController: UIViewController {
             publisherField,
             publishDateField,
             isbnField,
+            itemPageField,
         ])
         sectionTop.axis    = .vertical
         sectionTop.spacing = 16
@@ -164,6 +166,7 @@ final class DirectRegisterViewController: UIViewController {
             coverURLString: coverURLField.textField.rx.text.orEmpty.asObservable(),
             category:       categoryField.textField.rx.text.orEmpty.asObservable(),
             description:    descriptionField.textView.rx.text.orEmpty.asObservable(),
+            itemPage:       itemPageField.textField.rx.text.orEmpty.asObservable(),
             registerTap:    registerButton.rx.tap.asObservable()
         ))
 

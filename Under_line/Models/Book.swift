@@ -15,8 +15,90 @@ struct Book {
     let publisher: String
     let publishDate: String?    // 출판일
     let category: String?       // 도서 카테고리
-    let bestRank: Int?           // 베스트셀러 응답일 때만 값, 검색 결과는 nil
+    let bestRank: Int?           // 순위형 목록에서만 값, 검색 결과는 nil
     let description: String
-    let itemPage: Int?           // 책 전체 페이지 수 (알라딘 상품 조회 API)
+    let itemPage: Int?           // 사용자가 입력한 책 전체 페이지 수
     let currentPage: Int?        // 사용자가 기록한 현재 읽은 페이지 (로컬 DB)
+}
+
+struct BookListMetadata {
+    let isbn13: String
+    let coverURL: URL?
+    let description: String
+
+    init(isbn13: String, coverURL: URL?, description: String) {
+        self.isbn13 = isbn13
+        self.coverURL = coverURL
+        self.description = description
+    }
+
+    init(book: Book) {
+        isbn13 = book.isbn13
+        coverURL = book.coverURL
+        description = book.description
+    }
+}
+
+struct BookDetailMetadata {
+    let isbn13: String
+    let title: String
+    let author: String
+    let publisher: String
+    let publishDate: String?
+    let coverURL: URL?
+    let description: String
+}
+
+extension Book {
+    func mergingListMetadata(from metadata: BookListMetadata) -> Book {
+        guard isbn13 == metadata.isbn13 else { return self }
+        let normalizedDescription = metadata.description.trimmingCharacters(
+            in: .whitespacesAndNewlines
+        )
+        return Book(
+            title: title,
+            author: author,
+            isbn13: isbn13,
+            coverURL: metadata.coverURL ?? coverURL,
+            publisher: publisher,
+            publishDate: publishDate,
+            category: category,
+            bestRank: bestRank,
+            description: normalizedDescription.isEmpty ? description : metadata.description,
+            itemPage: itemPage,
+            currentPage: currentPage
+        )
+    }
+
+    func mergingDetailMetadata(from metadata: BookDetailMetadata) -> Book {
+        guard isbn13 == metadata.isbn13 else { return self }
+        return Book(
+            title: title.value(or: metadata.title),
+            author: author.value(or: metadata.author),
+            isbn13: isbn13,
+            coverURL: coverURL ?? metadata.coverURL,
+            publisher: publisher.value(or: metadata.publisher),
+            publishDate: publishDate.value(or: metadata.publishDate),
+            category: category,
+            bestRank: bestRank,
+            description: metadata.description.value(or: description),
+            itemPage: itemPage,
+            currentPage: currentPage
+        )
+    }
+}
+
+private extension String {
+    func value(or fallback: String) -> String {
+        trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? fallback : self
+    }
+}
+
+private extension Optional where Wrapped == String {
+    func value(or fallback: String?) -> String? {
+        guard let self, !self.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            return fallback
+        }
+        return self
+    }
 }
