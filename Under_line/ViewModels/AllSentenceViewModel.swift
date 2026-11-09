@@ -83,7 +83,7 @@ final class AllSentenceViewModel {
                             let book = bookMap[sentence.bookISBN]
                             return AllSentenceDisplayItem(
                                 sentence:   sentence,
-                                bookTitle:  book?.title  ?? "알 수 없음",
+                                bookTitle:  book?.displayTitle  ?? "알 수 없음",
                                 bookAuthor: book?.author ?? ""
                             )
                         }

@@ -865,7 +865,7 @@ private final class BookRowCell: UITableViewCell {
         let imageOptions = BookCoverImageOptions.make(displayScale: displayScale)
         currentBook      = book
         rankLabel.text   = book.bestRank.map { "\($0)" }
-        titleLabel.text  = book.title
+        titleLabel.text  = book.displayTitle
         authorLabel.text = book.author
 
         let description = book.description.trimmingCharacters(in: .whitespacesAndNewlines)

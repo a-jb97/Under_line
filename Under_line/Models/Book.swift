@@ -50,6 +50,26 @@ struct BookDetailMetadata {
 }
 
 extension Book {
+    var displayTitle: String {
+        guard let colon = title.firstIndex(where: { $0 == ":" || $0 == "：" }) else {
+            return title
+        }
+        let subtitle = String(title[title.index(after: colon)...])
+        let authorNames = author
+            .components(separatedBy: CharacterSet(charactersIn: ",; /·&\n"))
+            .map { name in
+                name.replacingOccurrences(
+                    of: #"^(?:지은이|저자)\s*[:：]?\s*|\s*(?:\(지은이\)|지음|저)$"#,
+                    with: "",
+                    options: .regularExpression
+                ).trimmingCharacters(in: .whitespacesAndNewlines)
+            }
+            .filter { !$0.isEmpty }
+        guard authorNames.contains(where: { subtitle.contains($0) }) else { return title }
+        let mainTitle = String(title[..<colon]).trimmingCharacters(in: .whitespacesAndNewlines)
+        return mainTitle.isEmpty ? title : mainTitle
+    }
+
     func mergingListMetadata(from metadata: BookListMetadata) -> Book {
         guard isbn13 == metadata.isbn13 else { return self }
         let normalizedDescription = metadata.description.trimmingCharacters(
