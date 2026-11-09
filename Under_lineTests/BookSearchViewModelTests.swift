@@ -5,6 +5,74 @@ import RxCocoa
 
 @MainActor
 final class BookSearchViewModelTests: XCTestCase {
+    func test_repeatedSearchWhileLoading_preservesOriginalRequest() async {
+        let h = Harness()
+        let first = await requested(h) { h.search("책") }
+        let updateCount = h.updates.count
+        h.search("책")
+        h.search(" \n책\n ")
+        await drain()
+
+        XCTAssertEqual(h.repository.requests.count, 1)
+        XCTAssertEqual(h.updates.count, updateCount)
+        XCTAssertTrue(h.loading)
+        XCTAssertFalse(h.loadingMore)
+        await finish(first, .success((makeBooks(0..<1), 1)))
+        XCTAssertFalse(first.wasCancelled)
+        XCTAssertEqual(h.books.map(\.isbn13), ["0"])
+        XCTAssertFalse(h.loading)
+    }
+
+    func test_repeatedSearchWhileLoadingMore_preservesPageAndAppendsResponse() async {
+        let h = Harness()
+        let first = await requested(h) { h.search("책") }
+        await finish(first, .success((makeBooks(0..<50), 150)))
+        let second = await requested(h) { h.next.onNext(()) }
+        let updateCount = h.updates.count
+        h.search(" 책 ")
+        await drain()
+
+        XCTAssertEqual(h.repository.requests.count, 2)
+        XCTAssertEqual(h.updates.count, updateCount)
+        XCTAssertEqual(h.books.count, 50)
+        XCTAssertFalse(h.loading)
+        XCTAssertTrue(h.loadingMore)
+        await finish(second, .success((makeBooks(50..<100), 150)))
+        XCTAssertFalse(second.wasCancelled)
+        XCTAssertEqual(h.books.map(\.isbn13), makeBooks(0..<100).map(\.isbn13))
+        guard case .append(let start) = h.updates.last?.change else { return XCTFail("append가 필요함") }
+        XCTAssertEqual(start, 50)
+        let third = await requested(h) { h.next.onNext(()) }
+        XCTAssertEqual(third.page, 3)
+        await finish(third, .success((makeBooks(100..<150), 150)))
+    }
+
+    func test_sameSearchAfterSuccessOrEmptyResult_requestsFirstPageAgain() async {
+        let h = Harness()
+        let first = await requested(h) { h.search("책") }
+        await finish(first, .success((makeBooks(0..<1), 1)))
+        let second = await requested(h) { h.search("책") }
+        XCTAssertEqual(second.page, 1)
+        await finish(second, .success(([], 0)))
+        let third = await requested(h) { h.search("책") }
+        XCTAssertEqual(third.page, 1)
+        await finish(third, .success((makeBooks(1..<2), 1)))
+        XCTAssertEqual(h.books.map(\.isbn13), ["1"])
+    }
+
+    func test_differentSearchWhileLoading_cancelsOldRequestAndIgnoresOldResponse() async {
+        let h = Harness()
+        let first = await requested(h) { h.search("첫 번째 책") }
+        let second = await requested(h) { h.search("다른 책") }
+        await finish(first, .success((makeBooks(0..<1), 1)))
+        XCTAssertTrue(first.wasCancelled)
+        XCTAssertTrue(h.books.isEmpty)
+        XCTAssertTrue(h.loading)
+        await finish(second, .success((makeBooks(1..<2), 1)))
+        XCTAssertEqual(h.books.map(\.isbn13), ["1"])
+        XCTAssertFalse(h.loading)
+    }
+
     func test_repeatedBottomEvents_requestOnePageAndEmitAppend() async {
         let h = Harness()
         let first = await requested(h) { h.search("책") }

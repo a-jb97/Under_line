@@ -136,6 +136,14 @@ final class BookSearchViewModel {
     }
 
     private func start(_ mode: DisplayMode) {
+        // 동일 검색의 첫 페이지·다음 페이지 요청이 진행 중이면 그대로 유지한다.
+        if case .search(let query) = mode,
+           case .search(let currentQuery) = self.mode,
+           query == currentQuery,
+           isLoading.value || isLoadingMore.value {
+            return
+        }
+
         // 같은 검색어·같은 탭으로 돌아와도 이전 응답과 구분한다.
         generation = UUID()
         cancelEnrichment()
