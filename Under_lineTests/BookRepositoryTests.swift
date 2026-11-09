@@ -479,6 +479,7 @@ final class BookRepositoryTests: XCTestCase {
         let output = viewModel.transform(input: .init(
             viewDidLoad: .never(), listSelection: .never(), searchQuery: query,
             searchTrigger: search, loadNextPage: nextPage,
+            visibleRows: .never(),
             descriptionBook: .never(), registerBook: .never()
         ))
         let subscription = output.books.drive(onNext: { books in

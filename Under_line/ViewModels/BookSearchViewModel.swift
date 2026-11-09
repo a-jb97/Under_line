@@ -45,6 +45,7 @@ final class BookSearchViewModel {
         let searchQuery: Observable<String>
         let searchTrigger: Observable<Void>
         let loadNextPage: Observable<Void>
+        let visibleRows: Observable<[Int]>
         let descriptionBook: Observable<Book>
         let registerBook: Observable<Book>
     }
@@ -76,6 +77,7 @@ final class BookSearchViewModel {
     private var totalCount = 0
     private var hasMorePages = false
     private var pendingEnrichmentISBNs: [String] = []
+    private var attemptedEnrichmentISBNs = Set<String>()
     private var enrichmentTasks: [String: Task<Void, Never>] = [:]
     private var descriptionTask: Task<Void, Never>?
 
@@ -103,6 +105,10 @@ final class BookSearchViewModel {
 
         input.loadNextPage
             .subscribe(onNext: { [weak self] in self?.loadNextPage() })
+            .disposed(by: disposeBag)
+
+        input.visibleRows
+            .subscribe(onNext: { [weak self] in self?.updateEnrichmentWindow(visibleRows: $0) })
             .disposed(by: disposeBag)
 
         input.descriptionBook
@@ -225,17 +231,23 @@ final class BookSearchViewModel {
         }
         isLoading.accept(false)
         isLoadingMore.accept(false)
-
-        if page == 1, case .list = mode {
-            startEnrichment(for: combined, generation: generation)
-        }
     }
 
-    private func startEnrichment(for books: [Book], generation: UUID) {
+    private func updateEnrichmentWindow(visibleRows: [Int]) {
+        guard case .list = mode, !isLoading.value, currentPage > 0 else { return }
+        let books = updates.value.books
+        let rows = Set(visibleRows.filter { books.indices.contains($0) }).sorted()
+        guard let lastRow = rows.last else {
+            pendingEnrichmentISBNs.removeAll()
+            return
+        }
+
+        let nextRows = (lastRow + 1)..<min(lastRow + 6, books.count)
         var seenISBNs = Set<String>()
-        pendingEnrichmentISBNs = books
-            .map(\.isbn13)
-            .filter { seenISBNs.insert($0).inserted }
+        // 표시 중인 행을 우선하고, 아직 시작하지 않은 요청은 최신 범위로 교체한다.
+        pendingEnrichmentISBNs = (rows + Array(nextRows))
+            .map { books[$0].isbn13 }
+            .filter { seenISBNs.insert($0).inserted && !attemptedEnrichmentISBNs.contains($0) }
         scheduleEnrichment(generation: generation)
     }
 
@@ -244,6 +256,7 @@ final class BookSearchViewModel {
         while enrichmentTasks.count < maximumConcurrentEnrichments,
               !pendingEnrichmentISBNs.isEmpty {
             let isbn13 = pendingEnrichmentISBNs.removeFirst()
+            attemptedEnrichmentISBNs.insert(isbn13)
             let task = Task { [weak self, repository] in
                 let metadata = try? await repository.fetchListBookMetadata(isbn13: isbn13)
                 guard let self else { return }
@@ -318,6 +331,7 @@ final class BookSearchViewModel {
 
     private func cancelEnrichment() {
         pendingEnrichmentISBNs.removeAll()
+        attemptedEnrichmentISBNs.removeAll()
         enrichmentTasks.values.forEach { $0.cancel() }
         enrichmentTasks.removeAll()
     }

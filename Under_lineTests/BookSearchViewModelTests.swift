@@ -169,10 +169,14 @@ final class BookSearchViewModelTests: XCTestCase {
         let h = Harness()
         h.repository.holdsMetadataRequests = true
         let listRequest = await requested(h) { h.list.onNext(.popular) }
-        await finish(listRequest, .success((makeBooks(0..<6), 6)))
+        await finish(listRequest, .success((makeBooks(0..<50), 50)))
 
-        XCTAssertEqual(h.books.count, 6)
+        XCTAssertEqual(h.books.count, 50)
         XCTAssertTrue(h.books.allSatisfy { $0.coverURL == nil && $0.description.isEmpty })
+        XCTAssertTrue(h.repository.metadataRequests.isEmpty)
+        h.visibleRows.onNext([2, 1, 2, 0, -1, 100])
+        await drain()
+        XCTAssertEqual(h.repository.metadataRequests.map(\.isbn13), ["0", "1", "2", "3"])
         XCTAssertEqual(h.repository.metadataRequests.count, 4)
 
         let first = h.repository.metadataRequests[0]
@@ -187,6 +191,11 @@ final class BookSearchViewModelTests: XCTestCase {
             return XCTFail("보완된 행만 갱신해야 함")
         }
         XCTAssertEqual(rows, [row])
+        await finishRemainingMetadata(h, from: 1)
+        XCTAssertEqual(h.repository.metadataRequests.map(\.isbn13), (0..<8).map { String($0) })
+        h.visibleRows.onNext([0, 1, 2])
+        await drain()
+        XCTAssertEqual(h.repository.metadataRequests.count, 8)
     }
 
     func test_listEnrichment_failureContinuesWithNextISBN() async {
@@ -194,6 +203,8 @@ final class BookSearchViewModelTests: XCTestCase {
         h.repository.holdsMetadataRequests = true
         let listRequest = await requested(h) { h.list.onNext(.trending) }
         await finish(listRequest, .success((makeBooks(0..<5), 5)))
+        h.visibleRows.onNext([0])
+        await drain()
         XCTAssertEqual(h.repository.metadataRequests.count, 4)
 
         await finishMetadata(h.repository.metadataRequests[0], .failure(StubError.failed))
@@ -201,6 +212,10 @@ final class BookSearchViewModelTests: XCTestCase {
         XCTAssertEqual(h.repository.metadataRequests.count, 5)
         XCTAssertTrue(h.errors.isEmpty)
         XCTAssertEqual(h.books.count, 5)
+        await finishRemainingMetadata(h, from: 1)
+        h.visibleRows.onNext([0, 1, 2, 3, 4])
+        await drain()
+        XCTAssertEqual(h.repository.metadataRequests.count, 5)
     }
 
     func test_listEnrichment_ignoresResultAfterModeChanges() async {
@@ -208,14 +223,94 @@ final class BookSearchViewModelTests: XCTestCase {
         h.repository.holdsMetadataRequests = true
         let listRequest = await requested(h) { h.list.onNext(.popular) }
         await finish(listRequest, .success((makeBooks(0..<1), 1)))
+        h.visibleRows.onNext([0])
+        await drain()
         let oldMetadata = h.repository.metadataRequests[0]
 
         let searchRequest = await requested(h) { h.search("다른 책") }
         await finish(searchRequest, .success((makeBooks(100..<101), 1)))
+        h.visibleRows.onNext([0])
+        await drain()
         await finishMetadata(oldMetadata, .success(metadataBook(isbn13: "0")))
 
         XCTAssertEqual(h.books.map(\.isbn13), ["100"])
         XCTAssertNil(h.books.first?.coverURL)
+        XCTAssertEqual(h.repository.metadataRequests.count, 1)
+    }
+
+    func test_listEnrichment_scrollReplacesPendingRowsAndPrioritizesVisibleRows() async {
+        let h = Harness()
+        h.repository.holdsMetadataRequests = true
+        let request = await requested(h) { h.list.onNext(.popular) }
+        await finish(request, .success((makeBooks(0..<50), 50)))
+        h.visibleRows.onNext([0])
+        await drain()
+        h.visibleRows.onNext([20, 21])
+        h.visibleRows.onNext([30, 31])
+        await drain()
+        XCTAssertEqual(h.repository.metadataRequests.count, 4)
+
+        await finishRemainingMetadata(h)
+        XCTAssertEqual(h.repository.metadataRequests.map(\.isbn13),
+                       ["0", "1", "2", "3"] + (30..<37).map { String($0) })
+    }
+
+    func test_listEnrichment_emptyWindowStopsQueueAndReappearanceResumesUnattemptedRows() async {
+        let h = Harness()
+        h.repository.holdsMetadataRequests = true
+        let request = await requested(h) { h.list.onNext(.trending) }
+        await finish(request, .success((makeBooks(0..<10), 10)))
+        h.visibleRows.onNext([0])
+        await drain()
+        h.visibleRows.onNext([])
+        await finishRemainingMetadata(h)
+        XCTAssertEqual(h.repository.metadataRequests.count, 4)
+
+        h.visibleRows.onNext([0])
+        await drain()
+        await finishRemainingMetadata(h, from: 4)
+        XCTAssertEqual(h.repository.metadataRequests.map(\.isbn13), (0..<6).map { String($0) })
+    }
+
+    func test_listEnrichment_duplicateISBNsAndMissingResults_areAttemptedOncePerList() async {
+        let h = Harness()
+        h.repository.holdsMetadataRequests = true
+        let request = await requested(h) { h.list.onNext(.popular) }
+        let books = makeBooks(0..<1) + makeBooks(0..<1) + makeBooks(1..<2)
+        await finish(request, .success((books, books.count)))
+        h.visibleRows.onNext([0, 1, 2])
+        await drain()
+        XCTAssertEqual(h.repository.metadataRequests.map(\.isbn13), ["0", "1"])
+        await finishRemainingMetadata(h)
+        h.visibleRows.onNext([0, 1, 2])
+        await drain()
+        XCTAssertEqual(h.repository.metadataRequests.count, 2)
+        XCTAssertTrue(h.errors.isEmpty)
+
+        let reload = await requested(h) { h.list.onNext(.popular) }
+        h.visibleRows.onNext([0])
+        await drain()
+        XCTAssertEqual(h.repository.metadataRequests.count, 2)
+        await finish(reload, .success((books, books.count)))
+        h.visibleRows.onNext([0])
+        await drain()
+        XCTAssertEqual(h.repository.metadataRequests.count, 4)
+        await finishRemainingMetadata(h, from: 2)
+    }
+
+    func test_listEnrichment_invalidRowsAndEmptyList_doNotRequestMetadata() async {
+        let h = Harness()
+        h.repository.holdsMetadataRequests = true
+        let request = await requested(h) { h.list.onNext(.popular) }
+        await finish(request, .success((makeBooks(0..<2), 2)))
+        h.visibleRows.onNext([-1, 2, Int.max])
+        await drain()
+        XCTAssertTrue(h.repository.metadataRequests.isEmpty)
+        let empty = await requested(h) { h.list.onNext(.trending) }
+        await finish(empty, .success(([], 0)))
+        h.visibleRows.onNext([0])
+        await drain()
+        XCTAssertTrue(h.repository.metadataRequests.isEmpty)
     }
 
     func test_emptyNextPage_finishesWithoutReloadingExistingRows() async {
@@ -390,6 +485,14 @@ final class BookSearchViewModelTests: XCTestCase {
         await drain()
     }
 
+    private func finishRemainingMetadata(_ h: Harness, from start: Int = 0) async {
+        var index = start
+        while index < h.repository.metadataRequests.count {
+            await finishMetadata(h.repository.metadataRequests[index], .success(nil))
+            index += 1
+        }
+    }
+
     private func metadataBook(isbn13: String) -> BookListMetadata {
         BookListMetadata(
             isbn13: isbn13,
@@ -416,6 +519,7 @@ private final class Harness {
     let trigger = PublishSubject<Void>()
     let list = PublishSubject<BookSearchViewModel.BookListType>()
     let next = PublishSubject<Void>()
+    let visibleRows = PublishSubject<[Int]>()
     let description = PublishSubject<Book>()
     let register = PublishSubject<Book>()
     let bag = DisposeBag()
@@ -433,6 +537,7 @@ private final class Harness {
         let output = viewModel.transform(input: .init(
             viewDidLoad: .never(), listSelection: list, searchQuery: query,
             searchTrigger: trigger, loadNextPage: next,
+            visibleRows: visibleRows,
             descriptionBook: description, registerBook: register
         ))
         output.listUpdates.drive(onNext: { [weak self] in self?.updates.append($0) }).disposed(by: bag)
