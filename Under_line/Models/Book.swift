@@ -56,7 +56,9 @@ enum BookGenre {
     static func known(_ value: String?) -> String? {
         guard let value else { return nil }
         let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
-        return trimmed.isEmpty || trimmed == "미정" || trimmed == unknown ? nil : trimmed
+        let separators = CharacterSet(charactersIn: ">＞›»").union(.whitespacesAndNewlines)
+        let hasGenre = !trimmed.trimmingCharacters(in: separators).isEmpty
+        return !hasGenre || trimmed == "미정" || trimmed == unknown ? nil : trimmed
     }
 
     static func normalized(_ value: String?) -> String {

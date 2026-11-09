@@ -25,10 +25,11 @@ final class BookRepositoryTests: XCTestCase {
     }
 
     func test_genreAndAuthorNormalization_handlesMissingValuesAndPrefixes() {
-        for raw in [nil, "", " \n", "미정", "장르 미상"] as [String?] {
+        for raw in [nil, "", " \n", "미정", "장르 미상", ">", " > > ", "\n> \t >", "＞", "› ›"] as [String?] {
             XCTAssertEqual(BookGenre.normalized(raw), "장르 미상")
         }
         XCTAssertEqual(BookGenre.normalized(" 문학\n"), "문학")
+        XCTAssertEqual(BookGenre.normalized("문학 > 소설"), "문학 > 소설")
         for raw in ["지은이 : 한강", "지은이:한강", " 지은이： 한강\n", "저자 : 한강", "지은이 : 지은이 : 한강"] {
             let name = LibraryAuthor.normalized(raw)
             XCTAssertEqual(name, "한강")
@@ -51,7 +52,7 @@ final class BookRepositoryTests: XCTestCase {
     func test_reload_normalizesLegacyGenresWithoutChangingAuthors() throws {
         let fixture = try Fixture()
         let source = fixture.searchAPI.books[0]
-        let originals: [String?] = [nil, "", " \n", "미정", "문학"]
+        let originals: [String?] = [nil, "", " \n", "미정", "문학", " > > "]
         for (index, category) in originals.enumerated() {
             let record = BookRecord(from: source)
             record.isbn13 = "legacy-\(index)"
@@ -63,7 +64,7 @@ final class BookRepositoryTests: XCTestCase {
         fixture.repository.reloadRelay()
         fixture.repository.reloadRelay()
         let records = try fixture.savedRecords.sorted { $0.isbn13 < $1.isbn13 }
-        XCTAssertEqual(records.map(\.category), ["장르 미상", "장르 미상", "장르 미상", "장르 미상", "문학"])
+        XCTAssertEqual(records.map(\.category), ["장르 미상", "장르 미상", "장르 미상", "장르 미상", "문학", "장르 미상"])
         XCTAssertTrue(records.allSatisfy { $0.author == "지은이 : 한강" })
     }
 
