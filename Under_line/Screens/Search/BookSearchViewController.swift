@@ -647,6 +647,14 @@ private final class BookRowCell: UITableViewCell {
         return l
     }()
 
+    private let publisherLabel: UILabel = {
+        let label = UILabel()
+        label.font = UIFont(name: "GowunBatang-Regular", size: 13)
+            ?? .systemFont(ofSize: 13)
+        label.textColor = UIColor.walnut
+        return label
+    }()
+
     private let registerButton: UIButton = {
         var config = UIButton.Configuration.plain()
         config.title = "등록"
@@ -741,6 +749,8 @@ private final class BookRowCell: UITableViewCell {
         rankLabel.text = nil
         titleLabel.text = nil
         authorLabel.text = nil
+        publisherLabel.text = nil
+        publisherLabel.isHidden = true
         descriptionTextView.attributedText = nil
         descriptionTextView.setContentOffset(.zero, animated: false)
         descriptionLoadingIndicator.stopAnimating()
@@ -786,7 +796,7 @@ private final class BookRowCell: UITableViewCell {
         contentStack.axis = .vertical
         cardView.addSubview(contentStack)
 
-        let textStack = UIStackView(arrangedSubviews: [titleLabel, authorLabel])
+        let textStack = UIStackView(arrangedSubviews: [titleLabel, authorLabel, publisherLabel])
         textStack.axis    = .vertical
         textStack.spacing = 3
 
@@ -830,6 +840,8 @@ private final class BookRowCell: UITableViewCell {
             make.leading.equalTo(thumbnailImageView.snp.trailing).offset(14)
             make.trailing.lessThanOrEqualTo(registerButton.snp.leading).offset(-14)
             make.centerY.equalToSuperview()
+            make.top.greaterThanOrEqualToSuperview().offset(10)
+            make.bottom.lessThanOrEqualToSuperview().inset(10)
         }
 
         registerButton.snp.makeConstraints { make in
@@ -867,6 +879,9 @@ private final class BookRowCell: UITableViewCell {
         rankLabel.text   = book.bestRank.map { "\($0)" }
         titleLabel.text  = book.displayTitle
         authorLabel.text = book.author
+        let publisher = book.publisher.trimmingCharacters(in: .whitespacesAndNewlines)
+        publisherLabel.text = publisher
+        publisherLabel.isHidden = publisher.isEmpty
 
         let description = book.description.trimmingCharacters(in: .whitespacesAndNewlines)
         let paragraphStyle = NSMutableParagraphStyle()
