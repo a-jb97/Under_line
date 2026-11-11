@@ -93,6 +93,17 @@ final class BookshelfViewController: UIViewController {
         return btn
     }()
 
+    private let wishlistButton: UIButton = {
+        let button = UIButton(type: .system)
+        button.setImage(UIImage(systemName: "heart", withConfiguration: UIImage.SymbolConfiguration(pointSize: 14)), for: .normal)
+        button.tintColor = UIColor.walnut
+        button.layer.cornerRadius = 20
+        button.clipsToBounds = true
+        button.accessibilityLabel = "도서 위시리스트"
+        button.accessibilityIdentifier = "openWishlistButton"
+        return button
+    }()
+
     // 책장 수평 페이징 스크롤뷰
     private let bookshelfScrollView: UIScrollView = {
         let sv = UIScrollView()
@@ -203,6 +214,7 @@ final class BookshelfViewController: UIViewController {
         view.addSubview(headerView)
         headerView.addSubview(appTitleLabel)
         headerView.addSubview(sortButton)
+        headerView.addSubview(wishlistButton)
 
         view.addSubview(bookshelfScrollView)
         view.addSubview(shelfOverlayView)   // 스크롤뷰 위에 고정 선반 오버레이
@@ -215,6 +227,7 @@ final class BookshelfViewController: UIViewController {
         deleteAllButtonContainer.addSubview(deleteAllButton)
 
         applyFabGlassStyle(to: sortButton,      cornerRadius: 20)
+        applyFabGlassStyle(to: wishlistButton,  cornerRadius: 20)
         applyFabGlassStyle(to: fabButton,       cornerRadius: 26)
         applyFabGlassStyle(to: editButton,      cornerRadius: 26)
         applyFabGlassStyle(to: deleteAllButton, cornerRadius: 26)
@@ -229,6 +242,13 @@ final class BookshelfViewController: UIViewController {
 
         appTitleLabel.snp.makeConstraints { make in
             make.leading.centerY.equalToSuperview()
+            make.trailing.lessThanOrEqualTo(wishlistButton.snp.leading).offset(-12)
+        }
+
+        wishlistButton.snp.makeConstraints { make in
+            make.trailing.equalTo(sortButton.snp.leading).offset(-8)
+            make.centerY.equalToSuperview()
+            make.size.equalTo(40)
         }
 
         sortButton.snp.makeConstraints { make in
@@ -867,6 +887,12 @@ final class BookshelfViewController: UIViewController {
                     self?.setEditMode(false)
                 })
                 self.present(alert, animated: true)
+            })
+            .disposed(by: disposeBag)
+
+        wishlistButton.rx.tap
+            .subscribe(onNext: { [weak self] in
+                self?.navigationController?.pushViewController(WishlistViewController(), animated: true)
             })
             .disposed(by: disposeBag)
 
