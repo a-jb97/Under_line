@@ -17,7 +17,14 @@ final class BookSearchViewController: UIViewController {
     // MARK: - Properties
 
     private let disposeBag = DisposeBag()
-    private let viewModel  = BookSearchViewModel(repository: AppContainer.shared.bookRepository)
+    private let viewModel = BookSearchViewModel(
+        repository: AppContainer.shared.bookRepository,
+        wishlistRepository: AppContainer.shared.wishlistRepository
+    )
+    private let screenAppearedRelay = PublishRelay<Void>()
+    private let toggleWishlistRelay = PublishRelay<Book>()
+    private var wishlistState = BookSearchViewModel.WishlistState()
+    private var registeredISBNs: Set<String> = []
     private let loadNextPageRelay  = PublishRelay<Void>()
     private let registerBookRelay  = PublishRelay<Book>()
     private let descriptionBookRelay = PublishRelay<Book>()
@@ -44,9 +51,12 @@ final class BookSearchViewController: UIViewController {
             displayScale: self?.view.traitCollection.displayScale ?? 1,
             descriptionWidth: max(tableView.bounds.width - 48, 1),
             isExpanded: self?.expandedRow == indexPath.row,
-            isDescriptionLoading: self?.descriptionLoadingISBN == book.isbn13
+            isDescriptionLoading: self?.descriptionLoadingISBN == book.isbn13,
+            wishlistState: self?.wishlistState ?? .init(),
+            registeredISBNs: self?.registeredISBNs ?? []
         )
         cell.onRegister = { [weak self] in self?.registerBookRelay.accept($0) }
+        cell.onToggleWishlist = { [weak self] in self?.toggleWishlistRelay.accept($0) }
         return cell
     }
 
@@ -181,6 +191,7 @@ final class BookSearchViewController: UIViewController {
 
     override func viewDidAppear(_ animated: Bool) {
         super.viewDidAppear(animated)
+        screenAppearedRelay.accept(())
         isScreenVisible = true
         scheduleCoverPrefetch()
         scheduleEnrichmentWindowUpdate()
@@ -321,7 +332,9 @@ final class BookSearchViewController: UIViewController {
             loadNextPage:  loadNextPageRelay.asObservable(),
             visibleRows: visibleRowsRelay.asObservable(),
             descriptionBook: descriptionBookRelay.asObservable(),
-            registerBook:  registerBookRelay.asObservable()
+            registerBook: registerBookRelay.asObservable(),
+            screenAppeared: screenAppearedRelay.asObservable(),
+            toggleWishlist: toggleWishlistRelay.asObservable()
         )
 
         let output = viewModel.transform(input: input)
@@ -405,7 +418,27 @@ final class BookSearchViewController: UIViewController {
             })
             .disposed(by: disposeBag)
 
-        output.errorMessage
+        output.registeredISBNs
+            .drive(onNext: { [weak self] isbn13s in
+                guard let self else { return }
+                self.registeredISBNs = isbn13s
+                for case let cell as BookRowCell in self.tableView.visibleCells {
+                    cell.setRegistrationState(isbn13s)
+                }
+            })
+            .disposed(by: disposeBag)
+
+        output.wishlistState
+            .drive(onNext: { [weak self] state in
+                guard let self else { return }
+                self.wishlistState = state
+                for case let cell as BookRowCell in self.tableView.visibleCells {
+                    cell.setWishlistState(state)
+                }
+            })
+            .disposed(by: disposeBag)
+
+        Signal.merge(output.errorMessage, output.wishlistMessage)
             .emit(onNext: { [weak self] message in
                 var style = ToastStyle()
                 style.backgroundColor = UIColor.appPrimary.withAlphaComponent(0.9)
@@ -617,7 +650,7 @@ final class BookSearchViewController: UIViewController {
 
 // MARK: - BookRowCell
 
-private final class BookRowCell: UITableViewCell {
+final class BookRowCell: UITableViewCell {
 
     static let reuseID = "BookRowCell"
 
@@ -679,22 +712,29 @@ private final class BookRowCell: UITableViewCell {
     }()
 
     private let registerButton: UIButton = {
-        var config = UIButton.Configuration.plain()
-        config.title = "등록"
-        config.baseForegroundColor = UIColor.walnut
-        config.contentInsets = NSDirectionalEdgeInsets(top: 7, leading: 14, bottom: 7, trailing: 14)
-        config.titleTextAttributesTransformer = UIConfigurationTextAttributesTransformer { incoming in
-            var outgoing = incoming
-            outgoing.font = UIFont(name: "GoyangIlsan R", size: 13) ?? .systemFont(ofSize: 13, weight: .medium)
-            return outgoing
-        }
-        let btn = UIButton(configuration: config)
-        btn.layer.cornerRadius = 7
-        btn.layer.borderWidth  = 1
-        btn.layer.borderColor  = UIColor.walnut.cgColor
+        let btn = UIButton(type: .custom)
+        btn.setImage(UIImage(systemName: "books.vertical"), for: .normal)
+        btn.setImage(UIImage(systemName: "books.vertical.fill"), for: .selected)
+        btn.setImage(UIImage(systemName: "books.vertical.fill"), for: [.selected, .disabled])
+        btn.setPreferredSymbolConfiguration(UIImage.SymbolConfiguration(pointSize: 20), forImageIn: .normal)
+        btn.tintColor = UIColor.walnut
+        btn.accessibilityIdentifier = "registerBookButton"
+        btn.accessibilityLabel = "독서 기록을 위한 도서 등록"
         btn.setContentHuggingPriority(.required, for: .horizontal)
         btn.setContentCompressionResistancePriority(.required, for: .horizontal)
         return btn
+    }()
+
+    private let wishlistButton: UIButton = {
+        let button = UIButton(type: .custom)
+        button.setImage(UIImage(systemName: "heart"), for: .normal)
+        button.setImage(UIImage(systemName: "heart.fill"), for: .selected)
+        button.setPreferredSymbolConfiguration(UIImage.SymbolConfiguration(pointSize: 20), forImageIn: .normal)
+        button.tintColor = UIColor.walnut
+        button.accessibilityIdentifier = "wishlistButton"
+        button.accessibilityLabel = "위시리스트에 추가"
+        button.isEnabled = false
+        return button
     }()
 
     private let summaryView = UIView()
@@ -729,6 +769,7 @@ private final class BookRowCell: UITableViewCell {
     #endif
 
     var onRegister: ((Book) -> Void)?
+    var onToggleWishlist: ((Book) -> Void)?
     private var currentBook: Book?
     private let disposeBag = DisposeBag()
 
@@ -754,8 +795,14 @@ private final class BookRowCell: UITableViewCell {
         setupCell()
         registerButton.rx.tap
             .subscribe(onNext: { [weak self] in
-                guard let self, let book = self.currentBook else { return }
+                guard let self, self.registerButton.isEnabled, let book = self.currentBook else { return }
                 self.onRegister?(book)
+            })
+            .disposed(by: disposeBag)
+        wishlistButton.rx.tap
+            .subscribe(onNext: { [weak self] in
+                guard let self, self.wishlistButton.isEnabled, let book = self.currentBook else { return }
+                self.onToggleWishlist?(book)
             })
             .disposed(by: disposeBag)
     }
@@ -768,7 +815,10 @@ private final class BookRowCell: UITableViewCell {
         // 취소할 DownloadTask가 없는 디스크 캐시 조회도 이전 요청으로 처리되도록 초기화한다.
         thumbnailImageView.kf.setImage(with: Optional<URL>.none)
         currentBook = nil
+        setRegistrationState([])
         onRegister = nil
+        onToggleWishlist = nil
+        setWishlistState(.init())
         rankLabel.text = nil
         titleLabel.text = nil
         authorLabel.text = nil
@@ -823,7 +873,12 @@ private final class BookRowCell: UITableViewCell {
         textStack.axis    = .vertical
         textStack.spacing = 3
 
-        [rankLabel, thumbnailImageView, textStack, registerButton].forEach {
+        let actionStack = UIStackView(arrangedSubviews: [registerButton, wishlistButton])
+        actionStack.axis = .vertical
+        actionStack.alignment = .center
+        actionStack.spacing = 4
+
+        [rankLabel, thumbnailImageView, textStack, actionStack].forEach {
             summaryView.addSubview($0)
         }
         descriptionContainer.addSubview(descriptionTextView)
@@ -861,15 +916,23 @@ private final class BookRowCell: UITableViewCell {
 
         textStack.snp.makeConstraints { make in
             make.leading.equalTo(thumbnailImageView.snp.trailing).offset(14)
-            make.trailing.lessThanOrEqualTo(registerButton.snp.leading).offset(-14)
+            make.trailing.lessThanOrEqualTo(actionStack.snp.leading).offset(-14)
             make.centerY.equalToSuperview()
             make.top.greaterThanOrEqualToSuperview().offset(10)
             make.bottom.lessThanOrEqualToSuperview().inset(10)
         }
 
-        registerButton.snp.makeConstraints { make in
+        actionStack.snp.makeConstraints { make in
             make.trailing.equalToSuperview().inset(16)
             make.centerY.equalToSuperview()
+            make.top.greaterThanOrEqualToSuperview().offset(10)
+            make.bottom.lessThanOrEqualToSuperview().inset(10)
+        }
+
+        for button in [registerButton, wishlistButton] {
+            button.snp.makeConstraints { make in
+                make.width.height.greaterThanOrEqualTo(44)
+            }
         }
 
         descriptionTextView.snp.makeConstraints { make in
@@ -889,16 +952,41 @@ private final class BookRowCell: UITableViewCell {
 
     // MARK: - Configure
 
+    func setRegistrationState(_ registeredISBNs: Set<String>) {
+        let isbn13 = currentBook?.isbn13.trimmingCharacters(in: .whitespacesAndNewlines)
+        let isRegistered = isbn13.map { registeredISBNs.contains($0) } ?? false
+        registerButton.isSelected = isRegistered
+        registerButton.isEnabled = isbn13 != nil && !isRegistered
+        registerButton.tintColor = isRegistered ? UIColor.accent : UIColor.walnut
+        registerButton.accessibilityLabel = isRegistered ? "이미 등록된 도서" : "독서 기록을 위한 도서 등록"
+        registerButton.accessibilityValue = isRegistered ? "등록됨" : "등록 안 됨"
+    }
+
+    func setWishlistState(_ state: BookSearchViewModel.WishlistState) {
+        let isbn13 = currentBook?.isbn13.trimmingCharacters(in: .whitespacesAndNewlines)
+        let isSaved = isbn13.map { state.savedISBNs.contains($0) } ?? false
+        let isPending = isbn13.map { state.pendingISBNs.contains($0) } ?? false
+        wishlistButton.isSelected = isSaved
+        wishlistButton.isEnabled = isbn13 != nil && state.isLoaded && !state.isRefreshing && !isPending
+        wishlistButton.accessibilityLabel = isSaved ? "위시리스트에서 삭제" : "위시리스트에 추가"
+        wishlistButton.accessibilityValue = isPending ? "처리 중" : isSaved ? "추가됨" : "추가 안 됨"
+        wishlistButton.tintColor = isSaved ? UIColor.accent : UIColor.walnut
+    }
+
     func configure(
         book: Book,
         displayScale: CGFloat,
         descriptionWidth: CGFloat,
         isExpanded: Bool,
-        isDescriptionLoading: Bool
+        isDescriptionLoading: Bool,
+        wishlistState: BookSearchViewModel.WishlistState,
+        registeredISBNs: Set<String> = []
     ) {
         thumbnailImageView.kf.cancelDownloadTask()
         let imageOptions = BookCoverImageOptions.make(displayScale: displayScale)
         currentBook      = book
+        setRegistrationState(registeredISBNs)
+        setWishlistState(wishlistState)
         rankLabel.text   = book.bestRank.map { "\($0)" }
         titleLabel.text  = book.displayTitle
         authorLabel.text = book.searchAuthorText
