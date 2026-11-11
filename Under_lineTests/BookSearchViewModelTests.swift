@@ -48,7 +48,7 @@ final class BookSearchViewModelTests: XCTestCase {
         XCTAssertTrue(heart.isEnabled)
         XCTAssertFalse(heart.isSelected)
         var registered: [String] = []
-        cell.onRegister = { registered.append($0.isbn13) }
+        cell.onPrimaryAction = { registered.append($0) }
         register.sendActions(for: .touchUpInside)
         XCTAssertTrue(registered.isEmpty)
 
@@ -285,7 +285,7 @@ final class BookSearchViewModelTests: XCTestCase {
         XCTAssertTrue(heart.isSelected)
         XCTAssertEqual(heart.accessibilityLabel, "위시리스트에서 삭제")
         var tapped: [String] = []
-        cell.onToggleWishlist = { tapped.append($0.isbn13) }
+        cell.onToggleWishlist = { tapped.append($0) }
         cell.prepareForReuse()
         XCTAssertFalse(heart.isSelected)
         XCTAssertFalse(heart.isEnabled)
@@ -293,7 +293,7 @@ final class BookSearchViewModelTests: XCTestCase {
 
         cell.configure(book: books[1], displayScale: 1, descriptionWidth: 272,
                        isExpanded: true, isDescriptionLoading: false, wishlistState: state)
-        cell.onToggleWishlist = { tapped.append($0.isbn13) }
+        cell.onToggleWishlist = { tapped.append($0) }
         heart.sendActions(for: .touchUpInside)
         XCTAssertEqual(tapped, ["1"])
         XCTAssertFalse(heart.isSelected)
@@ -752,9 +752,10 @@ final class BookSearchViewModelTests: XCTestCase {
         XCTAssertEqual(h.repository.registrations.map(\.book.isbn13), ["0"])
         XCTAssertEqual(h.registrationCompletedCount, 0)
 
+        let completed = expectation(description: "등록 완료 이벤트")
+        h.onRegistrationCompleted = { completed.fulfill() }
         h.repository.registrations[0].continuation.resume()
-        await drain()
-        await drain()
+        await fulfillment(of: [completed], timeout: 2)
         XCTAssertEqual(h.registrationCompletedCount, 1)
     }
 
@@ -946,6 +947,7 @@ private final class Harness {
     var loading = false
     var loadingMore = false
     var registrationCompletedCount = 0
+    var onRegistrationCompleted: (() -> Void)?
     var descriptionReadyISBNs: [String] = []
     var books: [Book] { updates.last?.books ?? [] }
 
@@ -971,6 +973,7 @@ private final class Harness {
         }).disposed(by: bag)
         output.registerCompleted.emit(onNext: { [weak self] in
             self?.registrationCompletedCount += 1
+            self?.onRegistrationCompleted?()
         }).disposed(by: bag)
     }
 
@@ -1076,4 +1079,32 @@ private final class ControlledRepository: BookRepositoryProtocol {
     func deleteAllBooks() async throws { }
     func updateReadingProgress(isbn13: String, itemPage: Int, currentPage: Int) async throws { }
     func reorderBooks(orderedISBNs: [String]) async throws { }
+}
+
+// Keep search-specific setup in the test harness, outside the shared cell.
+@MainActor
+private extension BookRowCell {
+    func configure(
+        book: Book, displayScale: CGFloat, descriptionWidth: CGFloat,
+        isExpanded: Bool, isDescriptionLoading: Bool,
+        wishlistState: BookSearchViewModel.WishlistState, registeredISBNs: Set<String> = []
+    ) {
+        let content = BookRowContent(book: book)
+        configure(content: content, displayScale: displayScale, descriptionWidth: descriptionWidth,
+                  isExpanded: isExpanded, isDescriptionLoading: isDescriptionLoading,
+                  primaryAction: .registration(isRegistered: registeredISBNs.contains(content.isbn13)),
+                  wishlistAction: .wishlist(isSaved: wishlistState.savedISBNs.contains(content.isbn13),
+                      isEnabled: wishlistState.isLoaded && !wishlistState.isRefreshing,
+                      isPending: wishlistState.pendingISBNs.contains(content.isbn13)))
+    }
+
+    func setRegistrationState(_ isbns: Set<String>) {
+        setPrimaryAction(.registration(isRegistered: isbn13.map { isbns.contains($0) } ?? false))
+    }
+
+    func setWishlistState(_ state: BookSearchViewModel.WishlistState) {
+        setWishlistAction(.wishlist(isSaved: isbn13.map { state.savedISBNs.contains($0) } ?? false,
+            isEnabled: state.isLoaded && !state.isRefreshing,
+            isPending: isbn13.map { state.pendingISBNs.contains($0) } ?? false))
+    }
 }
