@@ -15,6 +15,7 @@ final class AppContainer {
     let bookRepository: BookRepositoryProtocol
     let sentenceRepository: SentenceRepositoryProtocol
     let readingSessionRepository: ReadingSessionRepositoryProtocol
+    let wishlistRepository: WishlistRepositoryProtocol
 
     func reloadBookRelay() {
         (bookRepository as? BookRepository)?.reloadRelay()
@@ -22,7 +23,9 @@ final class AppContainer {
 
     private init() {
         do {
-            modelContainer = try ModelContainer(for: BookRecord.self, SentenceRecord.self, ReadingSessionRecord.self)
+            modelContainer = try ModelContainer(
+                for: BookRecord.self, SentenceRecord.self, ReadingSessionRecord.self, WishlistRecord.self
+            )
         } catch {
             fatalError("SwiftData ModelContainer 초기화 실패 — 스키마 변경 또는 디스크 문제를 확인하세요. 오류: \(error)")
         }
@@ -33,5 +36,6 @@ final class AppContainer {
         )
         sentenceRepository = SentenceRepository(modelContext: modelContainer.mainContext)
         readingSessionRepository = ReadingSessionRepository(modelContext: modelContainer.mainContext)
+        wishlistRepository = WishlistRepository(modelContainer: modelContainer)
     }
 }
