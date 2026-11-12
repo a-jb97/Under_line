@@ -7,6 +7,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+        AA1234000000000000000001 = {isa = PBXBuildFile; fileRef = AA1234000000000000000002; };
 		F1A51A570000000000000003 /* WishlistViewModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F1A51A570000000000000004 /* WishlistViewModelTests.swift */; };
 		0D87311C557F8D907DC3FEE2 /* BookCoverPrefetcherTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 65FBD37B0BE6FA4C8B01669E /* BookCoverPrefetcherTests.swift */; };
 		103804231276CB2FFC03ECF7 /* BookRepositoryTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C3A971A1D87B790412F10A06 /* BookRepositoryTests.swift */; };
@@ -67,6 +68,7 @@
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
+        AA1234000000000000000002 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BookPurchaseServiceTests.swift; sourceTree = "<group>"; };
 		F1A51A570000000000000004 /* WishlistViewModelTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = WishlistViewModelTests.swift; sourceTree = "<group>"; };
 		37BCEDA5B15210C106A15036 /* BookSearchTableDataSourceTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = BookSearchTableDataSourceTests.swift; sourceTree = "<group>"; };
 		65FBD37B0BE6FA4C8B01669E /* BookCoverPrefetcherTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = BookCoverPrefetcherTests.swift; sourceTree = "<group>"; };
@@ -177,7 +179,8 @@
 		465328A1622EA2F6BE211606 /* Under_lineTests */ = {
 			isa = PBXGroup;
 			children = (
-				F1A51A570000000000000004 /* WishlistViewModelTests.swift */,
+				AA1234000000000000000002,
+                F1A51A570000000000000004 /* WishlistViewModelTests.swift */,
 				F1A51A570000000000000002 /* WishlistRepositoryTests.swift */,
 				D4A4B0010000000000000002 /* Data4LibraryServiceTests.swift */,
 				A1B2C3D4E5F6012345678902 /* HTMLTextDecoderTests.swift */,
@@ -395,7 +398,8 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				F1A51A570000000000000003 /* WishlistViewModelTests.swift in Sources */,
+				AA1234000000000000000001,
+                F1A51A570000000000000003 /* WishlistViewModelTests.swift in Sources */,
 				F1A51A570000000000000001 /* WishlistRepositoryTests.swift in Sources */,
 				D4A4B0010000000000000001 /* Data4LibraryServiceTests.swift in Sources */,
 				A1B2C3D4E5F6012345678901 /* HTMLTextDecoderTests.swift in Sources */,

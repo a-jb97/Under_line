@@ -11,6 +11,7 @@ import SwiftData
 final class AppContainer {
     static let shared = AppContainer()
 
+    let bookPurchaseService: BookPurchaseServiceProtocol
     let modelContainer: ModelContainer
     let bookRepository: BookRepositoryProtocol
     let sentenceRepository: SentenceRepositoryProtocol
@@ -23,6 +24,7 @@ final class AppContainer {
 
     private init() {
         do {
+            bookPurchaseService = try BookPurchaseService()
             modelContainer = try ModelContainer(
                 for: BookRecord.self, SentenceRecord.self, ReadingSessionRecord.self, WishlistRecord.self
             )
