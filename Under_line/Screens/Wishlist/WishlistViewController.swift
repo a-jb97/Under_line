@@ -9,6 +9,7 @@ final class WishlistViewController: UIViewController, UITableViewDataSource {
     private let viewModel: WishlistViewModel
     private let disposeBag = DisposeBag()
     private let appeared = PublishRelay<Void>()
+    private let purchaseTap = PublishRelay<String>()
     private let purchase = PublishRelay<WishlistViewModel.PurchaseRequest>()
     private let disappeared = PublishRelay<Void>()
     private let deleteISBN = PublishRelay<String>()
@@ -149,9 +150,11 @@ final class WishlistViewController: UIViewController, UITableViewDataSource {
         let output = viewModel.transform(input: .init(
             screenAppeared: appeared.asObservable(), retry: retryButton.rx.tap.asObservable(),
             searchQuery: searchBar.textField.rx.text.orEmpty.asObservable(),
-            deleteISBN: deleteISBN.asObservable(), purchase: purchase.asObservable(),
+            deleteISBN: deleteISBN.asObservable(), purchaseTap: purchaseTap.asObservable(), purchase: purchase.asObservable(),
             screenDisappeared: disappeared.asObservable()
         ))
+        output.selectStore.emit(onNext: { [weak self] in self?.showPurchaseStores(isbn: $0) })
+            .disposed(by: disposeBag)
         output.destination.emit(onNext: { [weak self] destination in
             guard let self, let window = self.view.window, self.presentedViewController == nil else { return }
             // 가로 크기 클래스가 regular인 분할 화면도 창 너비로 구분한다.
@@ -232,20 +235,24 @@ final class WishlistViewController: UIViewController, UITableViewDataSource {
             primaryAction: .purchase, wishlistAction: wishlistAction(for: item.isbn13)
         )
         cell.onPrimaryAction = { [weak self] isbn in
-            guard let self, self.presentedViewController == nil else { return }
-            let menu = UIAlertController(title: "구매하기", message: nil, preferredStyle: .alert)
-            for store in [BookStore.kyobo, .aladin, .yes24] {
-                menu.addAction(UIAlertAction(title: store.displayName, style: .default) { [weak self, weak menu] _ in
-                    menu?.dismiss(animated: true) {
-                        self?.purchase.accept(.init(isbn13: isbn, store: store))
-                    }
-                })
-            }
-            menu.addAction(UIAlertAction(title: "취소", style: .cancel))
-            self.present(menu, animated: true)
+            self?.purchaseTap.accept(isbn)
         }
         cell.onToggleWishlist = { [weak self] in self?.deleteISBN.accept($0) }
         return cell
+    }
+
+    private func showPurchaseStores(isbn: String) {
+        guard self.presentedViewController == nil else { return }
+        let menu = UIAlertController(title: "구매하기", message: nil, preferredStyle: .alert)
+        for store in [BookStore.kyobo, .aladin, .yes24] {
+            menu.addAction(UIAlertAction(title: store.displayName, style: .default) { [weak self, weak menu] _ in
+                menu?.dismiss(animated: true) {
+                    self?.purchase.accept(.init(isbn13: isbn, store: store))
+                }
+            })
+        }
+        menu.addAction(UIAlertAction(title: "취소", style: .cancel))
+        self.present(menu, animated: true)
     }
 
     private func toggleDescription(at indexPath: IndexPath) {

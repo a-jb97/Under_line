@@ -273,6 +273,36 @@ final class WishlistViewModelTests: XCTestCase {
         XCTAssertEqual(messages, ["올바른 ISBN13이 아닙니다."])
     }
 
+    func test_purchaseTap_readsLatestPreferenceAndDoesNotPersistOneTimeSelection() async throws {
+        let name = "wishlist-preference-\(UUID())"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: name))
+        defer { defaults.removePersistentDomain(forName: name) }
+        let preferences = BookPurchasePreferenceStore(defaults: defaults)
+        let service = try BookPurchaseService(resolvers: [.yes24: YES24PurchaseResolver()])
+        let model = WishlistViewModel(repository: WishlistStubRepository(), purchaseService: service, preferences: preferences)
+        let tap = PublishRelay<String>()
+        let selected = PublishRelay<WishlistViewModel.PurchaseRequest>()
+        let output = model.transform(input: .init(screenAppeared: .empty(), retry: .empty(), searchQuery: .empty(), deleteISBN: .empty(), purchaseTap: tap.asObservable(), purchase: selected.asObservable()))
+        let bag = DisposeBag()
+        var menus: [String] = []
+        var destinations: [BookPurchaseDestination] = []
+        output.selectStore.emit(onNext: { menus.append($0) }).disposed(by: bag)
+        output.destination.emit(onNext: { destinations.append($0) }).disposed(by: bag)
+        tap.accept("9780132350884")
+        XCTAssertEqual(menus, ["9780132350884"])
+        selected.accept(.init(isbn13: "9780132350884", store: .yes24))
+        await drain()
+        XCTAssertEqual(preferences.current, .askEveryTime)
+        preferences.save(.store(.yes24))
+        tap.accept("9780132350884")
+        await drain()
+        XCTAssertEqual(menus.count, 1)
+        XCTAssertEqual(destinations.count, 2)
+        preferences.save(.askEveryTime)
+        tap.accept("9780132350884")
+        XCTAssertEqual(menus.count, 2)
+    }
+
     private func load(_ harness: WishlistHarness) async {
         harness.appeared.accept(())
         await drain()

@@ -1,8 +1,42 @@
 import XCTest
+import RxSwift
+import RxCocoa
 @testable import Under_line
 
 @MainActor
 final class BookPurchaseServiceTests: XCTestCase {
+    func test_preference_persistsAndDefaultsToAskEveryTime() throws {
+        let name = "purchase-preference-\(UUID())"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: name))
+        defer { defaults.removePersistentDomain(forName: name) }
+        let store = BookPurchasePreferenceStore(defaults: defaults)
+        XCTAssertEqual(store.current, .askEveryTime)
+        for bookStore in BookStore.allCases {
+            store.save(.store(bookStore))
+            XCTAssertEqual(BookPurchasePreferenceStore(defaults: defaults).current, .store(bookStore))
+        }
+        store.save(.askEveryTime)
+        XCTAssertEqual(store.current, .askEveryTime)
+        defaults.set("unknown", forKey: "bookPurchase.preference")
+        XCTAssertEqual(store.current, .askEveryTime)
+    }
+
+    func test_settingsPreference_selectionUpdatesOutputAndStorage() throws {
+        let name = "settings-preference-\(UUID())"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: name))
+        defer { defaults.removePersistentDomain(forName: name) }
+        let store = BookPurchasePreferenceStore(defaults: defaults)
+        let model = SettingsViewModel(preferences: store)
+        let selected = PublishRelay<BookPurchasePreference>()
+        let output = model.transform(input: .init(preferenceSelected: selected.asObservable(), backupTap: .empty(), restoreFilePicked: .empty()))
+        var values: [BookPurchasePreference] = []
+        let bag = DisposeBag()
+        output.purchasePreference.drive(onNext: { values.append($0) }).disposed(by: bag)
+        selected.accept(.store(.aladin))
+        XCTAssertEqual(values, [.askEveryTime, .store(.aladin)])
+        XCTAssertEqual(store.current, .store(.aladin))
+    }
+
     func test_registeredStores_returnSearchURLsForNormalizedISBN() async throws {
         let service = try BookPurchaseService(resolvers: [
             .kyobo: KyoboPurchaseResolver(), .aladin: AladinPurchaseResolver(),

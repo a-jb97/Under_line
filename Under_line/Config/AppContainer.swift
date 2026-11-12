@@ -11,6 +11,7 @@ import SwiftData
 final class AppContainer {
     static let shared = AppContainer()
 
+    let bookPurchasePreferenceStore: BookPurchasePreferenceStoreProtocol = BookPurchasePreferenceStore()
     let bookPurchaseService: BookPurchaseServiceProtocol
     let modelContainer: ModelContainer
     let bookRepository: BookRepositoryProtocol

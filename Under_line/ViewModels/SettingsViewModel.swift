@@ -14,24 +14,34 @@ import SwiftData
 final class SettingsViewModel {
 
     struct Input {
+        var preferenceSelected: Observable<BookPurchasePreference> = .empty()
         let backupTap: Observable<Void>
         let restoreFilePicked: Observable<URL>
     }
 
     struct Output {
+        let purchasePreference: Driver<BookPurchasePreference>
         let exportFileURL: Observable<URL>
         let toastMessage: Observable<String>
         let restoreSucceeded: Observable<Void>
     }
 
+    private let preferences: BookPurchasePreferenceStoreProtocol
+    private let preference: BehaviorRelay<BookPurchasePreference>
     private let backupService: BackupService
     private let disposeBag = DisposeBag()
 
-    init() {
+    init(preferences: BookPurchasePreferenceStoreProtocol = AppContainer.shared.bookPurchasePreferenceStore) {
+        self.preferences = preferences
+        self.preference = BehaviorRelay(value: preferences.current)
         self.backupService = BackupService(modelContext: AppContainer.shared.modelContainer.mainContext)
     }
 
     func transform(input: Input) -> Output {
+        input.preferenceSelected.subscribe(onNext: { [weak self] value in
+            self?.preferences.save(value)
+            self?.preference.accept(value)
+        }).disposed(by: disposeBag)
         let exportResult = input.backupTap
             .flatMapLatest { [weak self] _ -> Observable<Result<URL, Error>> in
                 guard let self else { return .empty() }
@@ -92,6 +102,7 @@ final class SettingsViewModel {
             }
 
         return Output(
+            purchasePreference: preference.asDriver(),
             exportFileURL:    exportFileURL,
             toastMessage:     toastMessage,
             restoreSucceeded: restoreSucceeded

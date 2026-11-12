@@ -13,6 +13,7 @@ final class WishlistViewModel {
         let retry: Observable<Void>
         let searchQuery: Observable<String>
         let deleteISBN: Observable<String>
+        var purchaseTap: Observable<String> = .empty()
         var purchase: Observable<PurchaseRequest> = .empty()
         var screenDisappeared: Observable<Void> = .empty()
     }
@@ -42,9 +43,12 @@ final class WishlistViewModel {
     struct Output {
         let state: Driver<State>
         let message: Signal<String>
+        let selectStore: Signal<String>
         let destination: Signal<BookPurchaseDestination>
     }
 
+    private let preferences: BookPurchasePreferenceStoreProtocol
+    private let selectStore = PublishRelay<String>()
     private let purchaseService: BookPurchaseServiceProtocol
     private let destination = PublishRelay<BookPurchaseDestination>()
     private let purchaseRequest = SerialDisposable()
@@ -57,7 +61,9 @@ final class WishlistViewModel {
     private var loadID = UUID()
     private var needsReload = false
 
-    init(repository: WishlistRepositoryProtocol, purchaseService: BookPurchaseServiceProtocol = AppContainer.shared.bookPurchaseService) {
+    init(repository: WishlistRepositoryProtocol, purchaseService: BookPurchaseServiceProtocol = AppContainer.shared.bookPurchaseService,
+         preferences: BookPurchasePreferenceStoreProtocol = AppContainer.shared.bookPurchasePreferenceStore) {
+        self.preferences = preferences
         self.purchaseService = purchaseService
         purchaseRequest.disposed(by: disposeBag)
         self.repository = repository
@@ -84,6 +90,13 @@ final class WishlistViewModel {
             .subscribe(onNext: { [weak self] in self?.deleteItem(isbn13: $0) })
             .disposed(by: disposeBag)
 
+        input.purchaseTap.subscribe(onNext: { [weak self] isbn in
+            guard let self else { return }
+            switch self.preferences.current {
+            case .askEveryTime: self.selectStore.accept(isbn)
+            case .store(let store): self.purchase(.init(isbn13: isbn, store: store))
+            }
+        }).disposed(by: disposeBag)
         input.purchase.subscribe(onNext: { [weak self] request in
             self?.purchase(request)
         }).disposed(by: disposeBag)
@@ -93,7 +106,7 @@ final class WishlistViewModel {
         }).disposed(by: disposeBag)
 
         return Output(state: state.distinctUntilChanged().asDriver(onErrorDriveWith: .empty()),
-                      message: message.asSignal(), destination: destination.asSignal())
+                      message: message.asSignal(), selectStore: selectStore.asSignal(), destination: destination.asSignal())
     }
 
     private func purchase(_ request: PurchaseRequest) {
