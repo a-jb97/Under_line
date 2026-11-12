@@ -59,9 +59,11 @@ struct BookPurchaseService: BookPurchaseServiceProtocol {
             throw BookPurchaseError.resolverStoreMismatch(store)
         }
         let url = destination.url
-        guard url.scheme?.lowercased() == "https", let host = url.host, !host.isEmpty,
-              url.user == nil, url.password == nil else {
-            throw BookPurchaseError.invalidProductURL(store)
+        for url in [url, destination.mobileURL].compactMap({ $0 }) {
+            guard url.scheme?.lowercased() == "https", let host = url.host, !host.isEmpty,
+                  url.user == nil, url.password == nil else {
+                throw BookPurchaseError.invalidProductURL(store)
+            }
         }
         return destination
     }
@@ -72,6 +74,7 @@ struct BookPurchaseDestination: Equatable {
     let store: BookStore
     let url: URL
     let kind: Kind
+    var mobileURL: URL? = nil
 }
 
 struct YES24PurchaseResolver: BookStorePurchaseResolver {
@@ -82,6 +85,12 @@ struct YES24PurchaseResolver: BookStorePurchaseResolver {
         components.queryItems = [URLQueryItem(name: "domain", value: "ALL"),
                                  URLQueryItem(name: "query", value: isbn13)]
         guard let url = components.url else { throw BookPurchaseError.invalidProductURL(store) }
-        return BookPurchaseDestination(store: store, url: url, kind: .searchResults)
+        var mobileComponents = components
+        mobileComponents.host = "m.yes24.com"
+        mobileComponents.path = "/Search"
+        guard let mobileURL = mobileComponents.url else {
+            throw BookPurchaseError.invalidProductURL(store)
+        }
+        return BookPurchaseDestination(store: store, url: url, kind: .searchResults, mobileURL: mobileURL)
     }
 }

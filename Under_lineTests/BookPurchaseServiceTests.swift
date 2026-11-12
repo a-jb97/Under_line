@@ -8,6 +8,11 @@ final class BookPurchaseServiceTests: XCTestCase {
         let result = try await service.purchaseDestination(isbn13: "9780132350884", store: .yes24)
         XCTAssertEqual(result.kind, .searchResults)
         XCTAssertEqual(result.store, .yes24)
+        let mobile = try XCTUnwrap(result.mobileURL)
+        let mobileComponents = try XCTUnwrap(URLComponents(url: mobile, resolvingAgainstBaseURL: false))
+        XCTAssertEqual(mobileComponents.host, "m.yes24.com")
+        XCTAssertEqual(mobileComponents.path, "/Search")
+        XCTAssertEqual(mobileComponents.queryItems?.first(where: { $0.name == "query" })?.value, "9780132350884")
         let components = URLComponents(url: result.url, resolvingAgainstBaseURL: false)!
         XCTAssertEqual(components.host, "www.yes24.com")
         XCTAssertEqual(components.path, "/Product/Search")

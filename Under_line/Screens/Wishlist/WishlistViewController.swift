@@ -153,8 +153,13 @@ final class WishlistViewController: UIViewController, UITableViewDataSource {
             screenDisappeared: disappeared.asObservable()
         ))
         output.destination.emit(onNext: { [weak self] destination in
-            guard let self, self.view.window != nil, self.presentedViewController == nil else { return }
-            self.present(SFSafariViewController(url: destination.url), animated: true)
+            guard let self, let window = self.view.window, self.presentedViewController == nil else { return }
+            // 가로 크기 클래스가 regular인 분할 화면도 창 너비로 구분한다.
+            let isNarrowWindow = window.bounds.width < window.screen.bounds.width - 1
+            let usesMobilePage = self.traitCollection.userInterfaceIdiom == .phone || isNarrowWindow
+            let url = usesMobilePage
+                ? destination.mobileURL ?? destination.url : destination.url
+            self.present(SFSafariViewController(url: url), animated: true)
         }).disposed(by: disposeBag)
         output.state.drive(onNext: { [weak self] in self?.apply($0) }).disposed(by: disposeBag)
         output.message.emit(onNext: { [weak self] message in
