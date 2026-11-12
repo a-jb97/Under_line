@@ -3,6 +3,43 @@ import XCTest
 
 @MainActor
 final class BookPurchaseServiceTests: XCTestCase {
+    func test_registeredStores_returnSearchURLsForNormalizedISBN() async throws {
+        let service = try BookPurchaseService(resolvers: [
+            .kyobo: KyoboPurchaseResolver(), .aladin: AladinPurchaseResolver(),
+            .yes24: YES24PurchaseResolver()
+        ])
+        for isbn in ["9780132350884", "9791191738315"] {
+            for store in BookStore.allCases {
+                let result = try await service.purchaseDestination(isbn13: " \(isbn)\n", store: store)
+                XCTAssertEqual(result.store, store)
+                XCTAssertEqual(result.kind, .searchResults)
+                let desktop = try XCTUnwrap(URLComponents(url: result.url, resolvingAgainstBaseURL: false))
+                let mobileURL = try XCTUnwrap(result.mobileURL)
+                let mobile = try XCTUnwrap(URLComponents(url: mobileURL, resolvingAgainstBaseURL: false))
+                let queryName = store == .kyobo ? "keyword" : store == .aladin ? "SearchWord" : "query"
+                for components in [desktop, mobile] {
+                    XCTAssertEqual(components.scheme, "https")
+                    XCTAssertEqual(components.queryItems?.first(where: { $0.name == queryName })?.value, isbn)
+                }
+                switch store {
+                case .kyobo:
+                    XCTAssertEqual(desktop.host, "search.kyobobook.co.kr")
+                    XCTAssertEqual(desktop.path, "/search")
+                    XCTAssertEqual(result.url, mobileURL)
+                case .aladin:
+                    XCTAssertEqual(desktop.host, "www.aladin.co.kr")
+                    XCTAssertEqual(mobile.host, "www.aladin.co.kr")
+                    XCTAssertEqual(desktop.path, "/search/wsearchresult.aspx")
+                    XCTAssertEqual(mobile.path, "/m/msearch.aspx")
+                    XCTAssertEqual(desktop.queryItems?.first(where: { $0.name == "SearchTarget" })?.value, "All")
+                case .yes24:
+                    XCTAssertEqual(desktop.host, "www.yes24.com")
+                    XCTAssertEqual(mobile.host, "m.yes24.com")
+                }
+            }
+        }
+    }
+
     func test_yes24_returnsISBNSearchDestination() async throws {
         let service = try BookPurchaseService(resolvers: [.yes24: YES24PurchaseResolver()])
         let result = try await service.purchaseDestination(isbn13: "9780132350884", store: .yes24)

@@ -233,12 +233,14 @@ final class WishlistViewController: UIViewController, UITableViewDataSource {
         )
         cell.onPrimaryAction = { [weak self] isbn in
             guard let self, self.presentedViewController == nil else { return }
-            let menu = UIAlertController(title: "구매할 서점", message: nil, preferredStyle: .alert)
-            menu.addAction(UIAlertAction(title: "YES24에서 검색", style: .default) { [weak self, weak menu] _ in
-                menu?.dismiss(animated: true) {
-                    self?.purchase.accept(.init(isbn13: isbn, store: .yes24))
-                }
-            })
+            let menu = UIAlertController(title: "구매하기", message: nil, preferredStyle: .alert)
+            for store in [BookStore.kyobo, .aladin, .yes24] {
+                menu.addAction(UIAlertAction(title: store.displayName, style: .default) { [weak self, weak menu] _ in
+                    menu?.dismiss(animated: true) {
+                        self?.purchase.accept(.init(isbn13: isbn, store: store))
+                    }
+                })
+            }
             menu.addAction(UIAlertAction(title: "취소", style: .cancel))
             self.present(menu, animated: true)
         }

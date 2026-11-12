@@ -94,3 +94,30 @@ struct YES24PurchaseResolver: BookStorePurchaseResolver {
         return BookPurchaseDestination(store: store, url: url, kind: .searchResults, mobileURL: mobileURL)
     }
 }
+
+struct KyoboPurchaseResolver: BookStorePurchaseResolver {
+    let store = BookStore.kyobo
+
+    func purchaseDestination(isbn13: String) async throws -> BookPurchaseDestination {
+        // 교보문고는 같은 검색 주소에서 기기에 맞는 페이지를 제공한다.
+        var components = URLComponents(string: "https://search.kyobobook.co.kr/search")!
+        components.queryItems = [URLQueryItem(name: "keyword", value: isbn13)]
+        guard let url = components.url else { throw BookPurchaseError.invalidProductURL(store) }
+        return BookPurchaseDestination(store: store, url: url, kind: .searchResults, mobileURL: url)
+    }
+}
+
+struct AladinPurchaseResolver: BookStorePurchaseResolver {
+    let store = BookStore.aladin
+
+    func purchaseDestination(isbn13: String) async throws -> BookPurchaseDestination {
+        var components = URLComponents(string: "https://www.aladin.co.kr/search/wsearchresult.aspx")!
+        components.queryItems = [URLQueryItem(name: "SearchTarget", value: "All"),
+                                 URLQueryItem(name: "SearchWord", value: isbn13)]
+        guard let url = components.url else { throw BookPurchaseError.invalidProductURL(store) }
+        components.path = "/m/msearch.aspx"
+        components.queryItems = [URLQueryItem(name: "SearchWord", value: isbn13)]
+        guard let mobileURL = components.url else { throw BookPurchaseError.invalidProductURL(store) }
+        return BookPurchaseDestination(store: store, url: url, kind: .searchResults, mobileURL: mobileURL)
+    }
+}
