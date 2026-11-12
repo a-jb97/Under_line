@@ -1,10 +1,371 @@
 import XCTest
 import RxSwift
 import RxCocoa
+import UIKit
 @testable import Under_line
 
 @MainActor
 final class BookSearchViewModelTests: XCTestCase {
+    func test_registeredISBNs_initialSnapshotAndChangesBlockOnlySavedBooks() async {
+        let books = makeBooks(0..<2)
+        let h = Harness(savedBooks: [books[0]])
+        h.repository.holdsRegistrations = true
+        XCTAssertEqual(h.registeredISBNs, ["0"])
+
+        h.register.onNext(books[0])
+        await drain()
+        XCTAssertTrue(h.repository.registrations.isEmpty)
+        h.register.onNext(books[1])
+        await drain()
+        XCTAssertEqual(h.repository.registrations.count, 1)
+        h.repository.registrations[0].continuation.resume()
+        await drain()
+        await drain()
+
+        h.repository.savedBooks.accept([])
+        XCTAssertTrue(h.registeredISBNs.isEmpty)
+        h.register.onNext(books[0])
+        await drain()
+        XCTAssertEqual(h.repository.registrations.count, 2)
+        h.repository.registrations[1].continuation.resume()
+        await drain()
+        await drain()
+    }
+
+    func test_registeredCell_filledIconBlocksRegistrationAndKeepsWishlistIndependent() throws {
+        let cell = BookRowCell(style: .default, reuseIdentifier: BookRowCell.reuseID)
+        let books = makeBooks(0..<2)
+        var wishlist = BookSearchViewModel.WishlistState()
+        wishlist.isLoaded = true
+        cell.configure(book: books[0], displayScale: 1, descriptionWidth: 272,
+                       isExpanded: false, isDescriptionLoading: false,
+                       wishlistState: wishlist, registeredISBNs: ["0"])
+        let register = try XCTUnwrap(findButton(in: cell, identifier: "registerBookButton"))
+        let heart = try XCTUnwrap(findButton(in: cell, identifier: "wishlistButton"))
+        XCTAssertTrue(register.isSelected)
+        XCTAssertFalse(register.isEnabled)
+        XCTAssertEqual(register.accessibilityLabel, "이미 등록된 도서")
+        XCTAssertTrue(heart.isEnabled)
+        XCTAssertFalse(heart.isSelected)
+        var registered: [String] = []
+        cell.onPrimaryAction = { registered.append($0) }
+        register.sendActions(for: .touchUpInside)
+        XCTAssertTrue(registered.isEmpty)
+
+        cell.setRegistrationState([])
+        XCTAssertFalse(register.isSelected)
+        XCTAssertTrue(register.isEnabled)
+        register.sendActions(for: .touchUpInside)
+        XCTAssertEqual(registered, ["0"])
+        cell.prepareForReuse()
+        XCTAssertFalse(register.isEnabled)
+        cell.configure(book: books[1], displayScale: 1, descriptionWidth: 272,
+                       isExpanded: false, isDescriptionLoading: false,
+                       wishlistState: wishlist, registeredISBNs: ["0"])
+        XCTAssertFalse(register.isSelected)
+        XCTAssertTrue(register.isEnabled)
+        XCTAssertEqual(register.accessibilityValue, "등록 안 됨")
+    }
+
+    func test_wishlistAppearance_loadsExistingISBNsAndRefreshesOnReentry() async {
+        let h = Harness()
+        h.wishlistRepository.savedISBNs = ["0"]
+        h.appeared.onNext(())
+        await drain()
+        await drain()
+        XCTAssertTrue(h.wishlistState.isLoaded)
+        XCTAssertEqual(h.wishlistState.savedISBNs, ["0"])
+        h.wishlistRepository.savedISBNs = ["1"]
+
+        h.appeared.onNext(())
+        await drain()
+        await drain()
+
+        XCTAssertEqual(h.wishlistState.savedISBNs, ["1"])
+        XCTAssertEqual(h.wishlistRepository.fetchCount, 2)
+    }
+
+    func test_wishlistTap_addsAndDeletesWithoutCompletingRegistration() async {
+        let h = Harness()
+        h.appeared.onNext(())
+        await drain()
+        await drain()
+        let book = makeBooks(0..<1)[0]
+
+        h.wishlistTap.onNext(book)
+        await drain()
+        await drain()
+        XCTAssertEqual(h.wishlistState.savedISBNs, [book.isbn13])
+        XCTAssertEqual(h.wishlistRepository.addedBooks.map(\.isbn13), [book.isbn13])
+        XCTAssertEqual(h.wishlistMessages, ["위시리스트에 추가했습니다."])
+        h.wishlistTap.onNext(book)
+        await drain()
+        await drain()
+        XCTAssertTrue(h.wishlistState.savedISBNs.isEmpty)
+        XCTAssertEqual(h.wishlistRepository.deletedISBNs, [book.isbn13])
+        XCTAssertEqual(h.wishlistMessages.last, "위시리스트에서 삭제했습니다.")
+        XCTAssertEqual(h.registrationCompletedCount, 0)
+        XCTAssertTrue(h.repository.registrations.isEmpty)
+    }
+
+    func test_wishlistTap_ignoresSameISBNWhileAllowingAnotherBook() async {
+        let h = Harness()
+        h.appeared.onNext(())
+        await drain()
+        await drain()
+        h.wishlistRepository.holdsMutations = true
+        let books = makeBooks(0..<2)
+
+        h.wishlistTap.onNext(books[0])
+        h.wishlistTap.onNext(books[0])
+        h.wishlistTap.onNext(books[1])
+        await drain()
+        await drain()
+        XCTAssertEqual(h.wishlistRepository.addedBooks.map(\.isbn13), ["0", "1"])
+        XCTAssertEqual(h.wishlistState.pendingISBNs, ["0", "1"])
+        for continuation in h.wishlistRepository.mutations { continuation.resume() }
+        await drain()
+        await drain()
+        XCTAssertEqual(h.wishlistState.savedISBNs, ["0", "1"])
+        XCTAssertTrue(h.wishlistState.pendingISBNs.isEmpty)
+    }
+
+    func test_wishlistFailure_preservesPriorStateAndAllowsRetry() async {
+        let h = Harness()
+        h.appeared.onNext(())
+        await drain()
+        await drain()
+        let book = makeBooks(0..<1)[0]
+        h.wishlistRepository.mutationError = StubError.failed
+        h.wishlistTap.onNext(book)
+        await drain()
+        await drain()
+        XCTAssertTrue(h.wishlistState.savedISBNs.isEmpty)
+        XCTAssertTrue(h.wishlistState.pendingISBNs.isEmpty)
+        XCTAssertEqual(h.errors.count, 1)
+        XCTAssertTrue(h.wishlistMessages.isEmpty)
+
+        h.wishlistRepository.mutationError = nil
+        h.wishlistTap.onNext(book)
+        await drain()
+        await drain()
+        h.wishlistRepository.mutationError = StubError.failed
+        h.wishlistTap.onNext(book)
+        await drain()
+        await drain()
+        XCTAssertEqual(h.wishlistState.savedISBNs, [book.isbn13])
+        XCTAssertTrue(h.wishlistState.pendingISBNs.isEmpty)
+        XCTAssertEqual(h.errors.count, 2)
+    }
+
+    func test_wishlistDuplicate_synchronizesSavedStateWithoutDeleting() async {
+        let h = Harness()
+        h.appeared.onNext(())
+        await drain()
+        await drain()
+        h.wishlistRepository.mutationError = WishlistRepositoryError.duplicateISBN13
+
+        h.wishlistTap.onNext(makeBooks(0..<1)[0])
+        await drain()
+        await drain()
+
+        XCTAssertEqual(h.wishlistState.savedISBNs, ["0"])
+        XCTAssertTrue(h.wishlistRepository.deletedISBNs.isEmpty)
+        XCTAssertTrue(h.errors.isEmpty)
+        XCTAssertEqual(h.wishlistMessages, ["이미 위시리스트에 추가된 도서입니다."])
+    }
+
+    func test_wishlistTap_normalizesISBNForStateAndDeletion() async {
+        let h = Harness()
+        h.wishlistRepository.savedISBNs = ["9788937460586"]
+        h.appeared.onNext(())
+        await drain()
+        await drain()
+        let book = Book(
+            title: "책", author: "저자", isbn13: " \n9788937460586\t", coverURL: nil,
+            publisher: "출판사", publishDate: nil, category: nil, bestRank: nil,
+            description: "소개", itemPage: nil, currentPage: nil
+        )
+
+        h.wishlistTap.onNext(book)
+        await drain()
+        await drain()
+
+        XCTAssertEqual(h.wishlistRepository.deletedISBNs, ["9788937460586"])
+        XCTAssertTrue(h.wishlistRepository.addedBooks.isEmpty)
+        XCTAssertTrue(h.wishlistState.savedISBNs.isEmpty)
+    }
+
+    func test_wishlistFetchFailure_blocksTapsUntilSuccessfulReentry() async {
+        let h = Harness()
+        let book = makeBooks(0..<1)[0]
+        h.wishlistTap.onNext(book)
+        h.wishlistRepository.fetchError = StubError.failed
+        h.appeared.onNext(())
+        await drain()
+        await drain()
+        h.wishlistTap.onNext(book)
+        await drain()
+        XCTAssertFalse(h.wishlistState.isLoaded)
+        XCTAssertFalse(h.wishlistState.isRefreshing)
+        XCTAssertTrue(h.wishlistRepository.addedBooks.isEmpty)
+        XCTAssertEqual(h.errors.count, 1)
+
+        h.wishlistRepository.fetchError = nil
+        h.appeared.onNext(())
+        await drain()
+        await drain()
+        XCTAssertTrue(h.wishlistState.isLoaded)
+    }
+
+    func test_wishlistRefresh_ignoresCancelledOlderSnapshot() async {
+        let h = Harness()
+        h.wishlistRepository.holdsFetches = true
+        h.appeared.onNext(())
+        await drain()
+        h.appeared.onNext(())
+        await drain()
+        XCTAssertEqual(h.wishlistRepository.fetches.count, 2)
+        h.wishlistRepository.fetches[1].resume(returning: [wishlistItem(isbn13: "1")])
+        await drain()
+        await drain()
+        h.wishlistRepository.fetches[0].resume(returning: [wishlistItem(isbn13: "0")])
+        await drain()
+        await drain()
+        XCTAssertEqual(h.wishlistState.savedISBNs, ["1"])
+    }
+
+    func test_wishlistReentry_duringMutationRefreshesAfterSaving() async {
+        let h = Harness()
+        h.appeared.onNext(())
+        await drain()
+        await drain()
+        h.wishlistRepository.holdsMutations = true
+        h.wishlistTap.onNext(makeBooks(0..<1)[0])
+        await drain()
+        h.appeared.onNext(())
+        XCTAssertEqual(h.wishlistRepository.fetchCount, 1)
+
+        h.wishlistRepository.mutations[0].resume()
+        await drain()
+        await drain()
+        await drain()
+
+        XCTAssertEqual(h.wishlistRepository.fetchCount, 2)
+        XCTAssertEqual(h.wishlistState.savedISBNs, ["0"])
+        XCTAssertFalse(h.wishlistState.isRefreshing)
+    }
+
+    func test_wishlistState_survivesSearchListSwitchAndPagination() async {
+        let h = Harness()
+        h.wishlistRepository.savedISBNs = ["0"]
+        h.appeared.onNext(())
+        await drain()
+        await drain()
+        let first = await requested(h) { h.search("책") }
+        await finish(first, .success((makeBooks(0..<50), 100)))
+        let next = await requested(h) { h.next.onNext(()) }
+        await finish(next, .success((makeBooks(50..<100), 100)))
+        let list = await requested(h) { h.list.onNext(.trending) }
+        await finish(list, .success((makeBooks(0..<1), 1)))
+
+        XCTAssertEqual(h.wishlistState.savedISBNs, ["0"])
+        XCTAssertEqual(h.wishlistRepository.fetchCount, 1)
+    }
+
+    func test_wishlistCell_reuseResetsStateAndTapUsesCurrentBook() throws {
+        let cell = BookRowCell(style: .default, reuseIdentifier: BookRowCell.reuseID)
+        let books = makeBooks(0..<2)
+        var state = BookSearchViewModel.WishlistState()
+        state.isLoaded = true
+        state.savedISBNs = ["0"]
+        cell.configure(book: books[0], displayScale: 1, descriptionWidth: 272,
+                       isExpanded: false, isDescriptionLoading: false, wishlistState: state)
+        let heart = try XCTUnwrap(findButton(in: cell, identifier: "wishlistButton"))
+        XCTAssertTrue(heart.isSelected)
+        XCTAssertEqual(heart.accessibilityLabel, "위시리스트에서 삭제")
+        var tapped: [String] = []
+        cell.onToggleWishlist = { tapped.append($0) }
+        cell.prepareForReuse()
+        XCTAssertFalse(heart.isSelected)
+        XCTAssertFalse(heart.isEnabled)
+        XCTAssertNil(cell.onToggleWishlist)
+
+        cell.configure(book: books[1], displayScale: 1, descriptionWidth: 272,
+                       isExpanded: true, isDescriptionLoading: false, wishlistState: state)
+        cell.onToggleWishlist = { tapped.append($0) }
+        heart.sendActions(for: .touchUpInside)
+        XCTAssertEqual(tapped, ["1"])
+        XCTAssertFalse(heart.isSelected)
+        XCTAssertEqual(heart.accessibilityLabel, "위시리스트에 추가")
+        state.pendingISBNs = ["1"]
+        cell.setWishlistState(state)
+        XCTAssertFalse(heart.isEnabled)
+        heart.sendActions(for: .touchUpInside)
+        XCTAssertEqual(tapped, ["1"])
+    }
+
+    func test_wishlistCell_narrowLayoutPositionsHeartBelowRegistrationWithTouchArea() throws {
+        let cell = BookRowCell(style: .default, reuseIdentifier: BookRowCell.reuseID)
+        var state = BookSearchViewModel.WishlistState()
+        state.isLoaded = true
+        let book = Book(
+            title: "긴 제목을 가진 도서의 검색 결과에서 두 줄 제목과 버튼 배치 확인", author: "테스트 저자",
+            isbn13: "9788937460586", coverURL: nil, publisher: "테스트 출판사", publishDate: nil,
+            category: nil, bestRank: 1, description: "책소개 펼침 영역입니다.\n하트 상태를 변경해도 펼침 상태는 유지됩니다.",
+            itemPage: nil, currentPage: nil
+        )
+        cell.configure(book: book, displayScale: 1, descriptionWidth: 272,
+                       isExpanded: false, isDescriptionLoading: false, wishlistState: state)
+        cell.frame = CGRect(x: 0, y: 0, width: 320, height: 140)
+        cell.setNeedsLayout()
+        cell.layoutIfNeeded()
+        let fitted = cell.contentView.systemLayoutSizeFitting(
+            CGSize(width: 320, height: 0),
+            withHorizontalFittingPriority: .required, verticalFittingPriority: .fittingSizeLevel
+        )
+        cell.frame.size.height = fitted.height
+        cell.setNeedsLayout()
+        cell.layoutIfNeeded()
+        let heart = try XCTUnwrap(findButton(in: cell, identifier: "wishlistButton"))
+        let register = try XCTUnwrap(findButton(in: cell, identifier: "registerBookButton"))
+        let heartFrame = heart.convert(heart.bounds, to: cell.contentView)
+        let registerFrame = register.convert(register.bounds, to: cell.contentView)
+        XCTAssertGreaterThanOrEqual(heartFrame.minY - registerFrame.maxY, 4 - 0.5)
+        XCTAssertGreaterThanOrEqual(heart.bounds.width, 44 - 0.01)
+        XCTAssertGreaterThanOrEqual(heart.bounds.height, 44 - 0.01)
+        XCTAssertLessThanOrEqual(heartFrame.maxX, 320 + 0.01)
+        XCTAssertLessThanOrEqual(heartFrame.maxY, cell.contentView.bounds.height + 0.01)
+        attachCell(cell, name: "검색 셀 - 기본 하트 - 320pt")
+
+        state.savedISBNs = [book.isbn13]
+        cell.configure(book: book, displayScale: 1, descriptionWidth: 272,
+                       isExpanded: true, isDescriptionLoading: false, wishlistState: state)
+        let expandedSize = cell.contentView.systemLayoutSizeFitting(
+            CGSize(width: 320, height: 0),
+            withHorizontalFittingPriority: .required, verticalFittingPriority: .fittingSizeLevel
+        )
+        cell.frame.size.height = expandedSize.height
+        cell.setNeedsLayout()
+        cell.layoutIfNeeded()
+        attachCell(cell, name: "검색 셀 - 저장된 하트와 펼친 책소개 - 320pt")
+    }
+
+    private func attachCell(_ cell: BookRowCell, name: String) {
+        let image = UIGraphicsImageRenderer(bounds: cell.bounds).image { context in
+            cell.layer.render(in: context.cgContext)
+        }
+        let attachment = XCTAttachment(image: image)
+        attachment.name = name
+        attachment.lifetime = .keepAlways
+        add(attachment)
+    }
+
+    private func findButton(in view: UIView, identifier: String) -> UIButton? {
+        if let button = view as? UIButton, button.accessibilityIdentifier == identifier { return button }
+        return view.subviews.compactMap { findButton(in: $0, identifier: identifier) }.first
+    }
+
     func test_repeatedSearchWhileLoading_preservesOriginalRequest() async {
         let h = Harness()
         let first = await requested(h) { h.search("책") }
@@ -391,9 +752,10 @@ final class BookSearchViewModelTests: XCTestCase {
         XCTAssertEqual(h.repository.registrations.map(\.book.isbn13), ["0"])
         XCTAssertEqual(h.registrationCompletedCount, 0)
 
+        let completed = expectation(description: "등록 완료 이벤트")
+        h.onRegistrationCompleted = { completed.fulfill() }
         h.repository.registrations[0].continuation.resume()
-        await drain()
-        await drain()
+        await fulfillment(of: [completed], timeout: 2)
         XCTAssertEqual(h.registrationCompletedCount, 1)
     }
 
@@ -513,8 +875,64 @@ final class BookSearchViewModelTests: XCTestCase {
 private enum StubError: Error { case failed }
 
 @MainActor
+private func wishlistItem(isbn13: String) -> WishlistItem {
+    WishlistItem(isbn13: isbn13, title: "책", author: "저자", publisher: "출판사",
+                 coverURL: nil, description: "책소개", addedAt: Date(timeIntervalSince1970: 100))
+}
+
+@MainActor
+private final class ControlledWishlistRepository: WishlistRepositoryProtocol {
+    var savedISBNs: Set<String> = []
+    var addedBooks: [Book] = []
+    var deletedISBNs: [String] = []
+    var fetchCount = 0
+    var fetchError: Error?
+    var mutationError: Error?
+    var holdsMutations = false
+    var holdsFetches = false
+    var fetches: [CheckedContinuation<[WishlistItem], Error>] = []
+    var mutations: [CheckedContinuation<Void, Error>] = []
+
+    func addBook(_ book: Book) async throws {
+        addedBooks.append(book)
+        try await mutate()
+        savedISBNs.insert(book.isbn13.trimmingCharacters(in: .whitespacesAndNewlines))
+    }
+
+    func deleteBook(isbn13: String) async throws {
+        deletedISBNs.append(isbn13)
+        try await mutate()
+        savedISBNs.remove(isbn13)
+    }
+
+    func containsBook(isbn13: String) async throws -> Bool { savedISBNs.contains(isbn13) }
+
+    func fetchAllItems() async throws -> [WishlistItem] {
+        fetchCount += 1
+        if let fetchError { throw fetchError }
+        if holdsFetches {
+            return try await withCheckedThrowingContinuation { fetches.append($0) }
+        }
+        return savedISBNs.map { wishlistItem(isbn13: $0) }
+    }
+
+    private func mutate() async throws {
+        if let mutationError { throw mutationError }
+        if holdsMutations {
+            try await withCheckedThrowingContinuation { mutations.append($0) }
+        }
+    }
+}
+
+@MainActor
 private final class Harness {
     let repository = ControlledRepository()
+    let wishlistRepository = ControlledWishlistRepository()
+    let appeared = PublishSubject<Void>()
+    let wishlistTap = PublishSubject<Book>()
+    var wishlistState = BookSearchViewModel.WishlistState()
+    var wishlistMessages: [String] = []
+    var registeredISBNs: Set<String> = []
     let query = PublishSubject<String>()
     let trigger = PublishSubject<Void>()
     let list = PublishSubject<BookSearchViewModel.BookListType>()
@@ -529,17 +947,23 @@ private final class Harness {
     var loading = false
     var loadingMore = false
     var registrationCompletedCount = 0
+    var onRegistrationCompleted: (() -> Void)?
     var descriptionReadyISBNs: [String] = []
     var books: [Book] { updates.last?.books ?? [] }
 
-    init() {
-        viewModel = BookSearchViewModel(repository: repository)
+    init(savedBooks: [Book] = []) {
+        repository.savedBooks.accept(savedBooks)
+        viewModel = BookSearchViewModel(repository: repository, wishlistRepository: wishlistRepository)
         let output = viewModel.transform(input: .init(
             viewDidLoad: .never(), listSelection: list, searchQuery: query,
             searchTrigger: trigger, loadNextPage: next,
             visibleRows: visibleRows,
-            descriptionBook: description, registerBook: register
+            descriptionBook: description, registerBook: register,
+            screenAppeared: appeared, toggleWishlist: wishlistTap
         ))
+        output.wishlistState.drive(onNext: { [weak self] in self?.wishlistState = $0 }).disposed(by: bag)
+        output.registeredISBNs.drive(onNext: { [weak self] in self?.registeredISBNs = $0 }).disposed(by: bag)
+        output.wishlistMessage.emit(onNext: { [weak self] in self?.wishlistMessages.append($0) }).disposed(by: bag)
         output.listUpdates.drive(onNext: { [weak self] in self?.updates.append($0) }).disposed(by: bag)
         output.isLoading.drive(onNext: { [weak self] in self?.loading = $0 }).disposed(by: bag)
         output.isLoadingMore.drive(onNext: { [weak self] in self?.loadingMore = $0 }).disposed(by: bag)
@@ -549,6 +973,7 @@ private final class Harness {
         }).disposed(by: bag)
         output.registerCompleted.emit(onNext: { [weak self] in
             self?.registrationCompletedCount += 1
+            self?.onRegistrationCompleted?()
         }).disposed(by: bag)
     }
 
@@ -596,6 +1021,7 @@ private final class PendingRegistration {
 /// 의도적으로 취소를 무시하고 응답해 ViewModel의 세대 교체를 검증한다.
 @MainActor
 private final class ControlledRepository: BookRepositoryProtocol {
+    let savedBooks = BehaviorRelay<[Book]>(value: [])
     var requests: [PendingRequest] = []
     var metadataRequests: [PendingMetadataRequest] = []
     var registrations: [PendingRegistration] = []
@@ -640,7 +1066,7 @@ private final class ControlledRepository: BookRepositoryProtocol {
         if let supplementError { throw supplementError }
         return supplement
     }
-    func fetchSavedBooks() -> Observable<[Book]> { .just([]) }
+    func fetchSavedBooks() -> Observable<[Book]> { savedBooks.asObservable() }
     func registerSearchedBook(_ book: Book) async throws {
         guard holdsRegistrations else { return }
         try await withCheckedThrowingContinuation { continuation in
@@ -653,4 +1079,32 @@ private final class ControlledRepository: BookRepositoryProtocol {
     func deleteAllBooks() async throws { }
     func updateReadingProgress(isbn13: String, itemPage: Int, currentPage: Int) async throws { }
     func reorderBooks(orderedISBNs: [String]) async throws { }
+}
+
+// Keep search-specific setup in the test harness, outside the shared cell.
+@MainActor
+private extension BookRowCell {
+    func configure(
+        book: Book, displayScale: CGFloat, descriptionWidth: CGFloat,
+        isExpanded: Bool, isDescriptionLoading: Bool,
+        wishlistState: BookSearchViewModel.WishlistState, registeredISBNs: Set<String> = []
+    ) {
+        let content = BookRowContent(book: book)
+        configure(content: content, displayScale: displayScale, descriptionWidth: descriptionWidth,
+                  isExpanded: isExpanded, isDescriptionLoading: isDescriptionLoading,
+                  primaryAction: .registration(isRegistered: registeredISBNs.contains(content.isbn13)),
+                  wishlistAction: .wishlist(isSaved: wishlistState.savedISBNs.contains(content.isbn13),
+                      isEnabled: wishlistState.isLoaded && !wishlistState.isRefreshing,
+                      isPending: wishlistState.pendingISBNs.contains(content.isbn13)))
+    }
+
+    func setRegistrationState(_ isbns: Set<String>) {
+        setPrimaryAction(.registration(isRegistered: isbn13.map { isbns.contains($0) } ?? false))
+    }
+
+    func setWishlistState(_ state: BookSearchViewModel.WishlistState) {
+        setWishlistAction(.wishlist(isSaved: isbn13.map { state.savedISBNs.contains($0) } ?? false,
+            isEnabled: state.isLoaded && !state.isRefreshing,
+            isPending: isbn13.map { state.pendingISBNs.contains($0) } ?? false))
+    }
 }

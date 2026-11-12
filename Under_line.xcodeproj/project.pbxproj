@@ -7,7 +7,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
-		F1A51A570000000000000001 /* WishlistRepositoryTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F1A51A570000000000000002 /* WishlistRepositoryTests.swift */; };
+		F1A51A570000000000000003 /* WishlistViewModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F1A51A570000000000000004 /* WishlistViewModelTests.swift */; };
 		0D87311C557F8D907DC3FEE2 /* BookCoverPrefetcherTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 65FBD37B0BE6FA4C8B01669E /* BookCoverPrefetcherTests.swift */; };
 		103804231276CB2FFC03ECF7 /* BookRepositoryTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C3A971A1D87B790412F10A06 /* BookRepositoryTests.swift */; };
 		47A704EB8014364B169AAF78 /* BookSearchTableDataSourceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 37BCEDA5B15210C106A15036 /* BookSearchTableDataSourceTests.swift */; };
@@ -32,6 +32,7 @@
 		B7A4C1D8E2F3456789ABC001 /* KakaoBookSearchServiceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B7A4C1D8E2F3456789ABC002 /* KakaoBookSearchServiceTests.swift */; };
 		D4A4B0010000000000000001 /* Data4LibraryServiceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D4A4B0010000000000000002 /* Data4LibraryServiceTests.swift */; };
 		E4A4A9C1125B8B5455DBC82E /* BookSearchViewModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 87D5AC7E6A308B1AF12A36D6 /* BookSearchViewModelTests.swift */; };
+		F1A51A570000000000000001 /* WishlistRepositoryTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F1A51A570000000000000002 /* WishlistRepositoryTests.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -66,7 +67,7 @@
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
-		F1A51A570000000000000002 /* WishlistRepositoryTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = WishlistRepositoryTests.swift; sourceTree = "<group>"; };
+		F1A51A570000000000000004 /* WishlistViewModelTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = WishlistViewModelTests.swift; sourceTree = "<group>"; };
 		37BCEDA5B15210C106A15036 /* BookSearchTableDataSourceTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = BookSearchTableDataSourceTests.swift; sourceTree = "<group>"; };
 		65FBD37B0BE6FA4C8B01669E /* BookCoverPrefetcherTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = BookCoverPrefetcherTests.swift; sourceTree = "<group>"; };
 		87D5AC7E6A308B1AF12A36D6 /* BookSearchViewModelTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = BookSearchViewModelTests.swift; sourceTree = "<group>"; };
@@ -84,6 +85,7 @@
 		C3A971A1D87B790412F10A06 /* BookRepositoryTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = BookRepositoryTests.swift; sourceTree = "<group>"; };
 		D4A4B0010000000000000002 /* Data4LibraryServiceTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = Data4LibraryServiceTests.swift; sourceTree = "<group>"; };
 		D51A8FC1C3ABAB9BE21F71DD /* Under_lineTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = Under_lineTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		F1A51A570000000000000002 /* WishlistRepositoryTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = WishlistRepositoryTests.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
@@ -175,6 +177,7 @@
 		465328A1622EA2F6BE211606 /* Under_lineTests */ = {
 			isa = PBXGroup;
 			children = (
+				F1A51A570000000000000004 /* WishlistViewModelTests.swift */,
 				F1A51A570000000000000002 /* WishlistRepositoryTests.swift */,
 				D4A4B0010000000000000002 /* Data4LibraryServiceTests.swift */,
 				A1B2C3D4E5F6012345678902 /* HTMLTextDecoderTests.swift */,
@@ -392,6 +395,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				F1A51A570000000000000003 /* WishlistViewModelTests.swift in Sources */,
 				F1A51A570000000000000001 /* WishlistRepositoryTests.swift in Sources */,
 				D4A4B0010000000000000001 /* Data4LibraryServiceTests.swift in Sources */,
 				A1B2C3D4E5F6012345678901 /* HTMLTextDecoderTests.swift in Sources */,

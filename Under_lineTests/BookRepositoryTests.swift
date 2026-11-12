@@ -470,7 +470,10 @@ final class BookRepositoryTests: XCTestCase {
 
     func test_viewModelPagination_usesSameNormalizedQuery() async throws {
         let fixture = try Fixture()
-        let viewModel = BookSearchViewModel(repository: fixture.repository)
+        let viewModel = BookSearchViewModel(
+            repository: fixture.repository,
+            wishlistRepository: WishlistRepository(modelContainer: fixture.container)
+        )
         let query = PublishSubject<String>()
         let search = PublishSubject<Void>()
         let nextPage = PublishSubject<Void>()
@@ -480,7 +483,8 @@ final class BookRepositoryTests: XCTestCase {
             viewDidLoad: .never(), listSelection: .never(), searchQuery: query,
             searchTrigger: search, loadNextPage: nextPage,
             visibleRows: .never(),
-            descriptionBook: .never(), registerBook: .never()
+            descriptionBook: .never(), registerBook: .never(),
+            screenAppeared: .never(), toggleWishlist: .never()
         ))
         let subscription = output.books.drive(onNext: { books in
             if books.count == 1 { firstPage.fulfill() }

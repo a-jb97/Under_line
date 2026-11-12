@@ -48,6 +48,15 @@ final class BookSearchViewModel {
         let visibleRows: Observable<[Int]>
         let descriptionBook: Observable<Book>
         let registerBook: Observable<Book>
+        let screenAppeared: Observable<Void>
+        let toggleWishlist: Observable<Book>
+    }
+
+    struct WishlistState: Equatable {
+        var savedISBNs: Set<String> = []
+        var pendingISBNs: Set<String> = []
+        var isLoaded = false
+        var isRefreshing = false
     }
 
     struct Output {
@@ -58,9 +67,19 @@ final class BookSearchViewModel {
         let errorMessage: Signal<String>
         let descriptionReady: Signal<String>
         let registerCompleted: Signal<Void>
+        let wishlistState: Driver<WishlistState>
+        let wishlistMessage: Signal<String>
+        let registeredISBNs: Driver<Set<String>>
     }
 
     private let repository: BookRepositoryProtocol
+    private let registeredISBNs = BehaviorRelay<Set<String>>(value: [])
+    private let wishlistRepository: WishlistRepositoryProtocol
+    private let wishlistState = BehaviorRelay<WishlistState>(value: WishlistState())
+    private let wishlistMessage = PublishRelay<String>()
+    private let wishlistRefresh = SerialDisposable()
+    private var wishlistRefreshID = UUID()
+    private var needsWishlistRefresh = false
     private let disposeBag = DisposeBag()
     private let pageRequest = SerialDisposable()
     private let maximumConcurrentEnrichments = 4
@@ -81,12 +100,28 @@ final class BookSearchViewModel {
     private var enrichmentTasks: [String: Task<Void, Never>] = [:]
     private var descriptionTask: Task<Void, Never>?
 
-    init(repository: BookRepositoryProtocol) {
+    init(repository: BookRepositoryProtocol, wishlistRepository: WishlistRepositoryProtocol) {
         self.repository = repository
+        self.wishlistRepository = wishlistRepository
         pageRequest.disposed(by: disposeBag)
+        wishlistRefresh.disposed(by: disposeBag)
     }
 
     func transform(input: Input) -> Output {
+        repository.fetchSavedBooks()
+            .map { Set($0.map { $0.isbn13.trimmingCharacters(in: .whitespacesAndNewlines) }) }
+            .distinctUntilChanged()
+            .bind(to: registeredISBNs)
+            .disposed(by: disposeBag)
+
+        input.screenAppeared
+            .subscribe(onNext: { [weak self] in self?.refreshWishlist() })
+            .disposed(by: disposeBag)
+
+        input.toggleWishlist
+            .subscribe(onNext: { [weak self] in self?.toggleWishlist($0) })
+            .disposed(by: disposeBag)
+
         input.searchQuery
             .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
             .subscribe(onNext: { [weak self] in self?.latestQuery = $0 })
@@ -116,6 +151,12 @@ final class BookSearchViewModel {
             .disposed(by: disposeBag)
 
         input.registerBook
+            .filter { [weak self] book in
+                guard let self else { return false }
+                return !self.registeredISBNs.value.contains(
+                    book.isbn13.trimmingCharacters(in: .whitespacesAndNewlines)
+                )
+            }
             .flatMapFirst { [weak self] book -> Observable<Void> in
                 guard let self else { return .empty() }
                 return rxAsync {
@@ -137,8 +178,92 @@ final class BookSearchViewModel {
             isLoadingMore: isLoadingMore.asDriver(),
             errorMessage: errorMessage.asSignal(),
             descriptionReady: descriptionReady.asSignal(),
-            registerCompleted: registerCompleted.asSignal()
+            registerCompleted: registerCompleted.asSignal(),
+            wishlistState: wishlistState.asDriver(),
+            wishlistMessage: wishlistMessage.asSignal(),
+            registeredISBNs: registeredISBNs.asDriver()
         )
+    }
+
+    private func refreshWishlist() {
+        // Re-entry during a mutation must not read a snapshot from before that mutation.
+        guard wishlistState.value.pendingISBNs.isEmpty else {
+            needsWishlistRefresh = true
+            return
+        }
+        needsWishlistRefresh = false
+        let requestID = UUID()
+        wishlistRefreshID = requestID
+        var state = wishlistState.value
+        state.isRefreshing = true
+        wishlistState.accept(state)
+        wishlistRefresh.disposable = rxAsync { [wishlistRepository] in
+            let items = try await wishlistRepository.fetchAllItems()
+            try Task.checkCancellation()
+            return items
+        }
+        .subscribe(onNext: { [weak self] items in
+            guard let self, self.wishlistRefreshID == requestID else { return }
+            var state = self.wishlistState.value
+            state.savedISBNs = Set(items.map { $0.isbn13.trimmingCharacters(in: .whitespacesAndNewlines) })
+            state.isLoaded = true
+            state.isRefreshing = false
+            self.wishlistState.accept(state)
+        }, onError: { [weak self] error in
+            guard let self, self.wishlistRefreshID == requestID else { return }
+            var state = self.wishlistState.value
+            state.isLoaded = false
+            state.isRefreshing = false
+            self.wishlistState.accept(state)
+            if !(error is CancellationError) {
+                self.errorMessage.accept(error.localizedDescription)
+            }
+        })
+    }
+
+    private func toggleWishlist(_ book: Book) {
+        let isbn13 = book.isbn13.trimmingCharacters(in: .whitespacesAndNewlines)
+        var state = wishlistState.value
+        guard state.isLoaded, !state.isRefreshing,
+              !state.pendingISBNs.contains(isbn13) else { return }
+        let shouldSave = !state.savedISBNs.contains(isbn13)
+        state.pendingISBNs.insert(isbn13)
+        wishlistState.accept(state)
+
+        rxAsync { [wishlistRepository] in
+            if shouldSave {
+                try await wishlistRepository.addBook(book)
+            } else {
+                try await wishlistRepository.deleteBook(isbn13: isbn13)
+            }
+        }
+        .subscribe(onNext: { [weak self] in
+            self?.finishWishlistChange(isbn13: isbn13, saved: shouldSave)
+        }, onError: { [weak self] error in
+            self?.finishWishlistChange(isbn13: isbn13, saved: shouldSave, error: error)
+        })
+        .disposed(by: disposeBag)
+    }
+
+    private func finishWishlistChange(isbn13: String, saved: Bool, error: Error? = nil) {
+        var state = wishlistState.value
+        state.pendingISBNs.remove(isbn13)
+        let isDuplicate = error as? WishlistRepositoryError == .duplicateISBN13
+        if error == nil || isDuplicate {
+            if saved || isDuplicate {
+                state.savedISBNs.insert(isbn13)
+            } else {
+                state.savedISBNs.remove(isbn13)
+            }
+        }
+        wishlistState.accept(state)
+        if let error, !isDuplicate {
+            if !(error is CancellationError) { errorMessage.accept(error.localizedDescription) }
+        } else {
+            wishlistMessage.accept(isDuplicate ? "이미 위시리스트에 추가된 도서입니다."
+                : saved ? "위시리스트에 추가했습니다." : "위시리스트에서 삭제했습니다.")
+        }
+        if needsWishlistRefresh, state.pendingISBNs.isEmpty { refreshWishlist() }
     }
 
     private func start(_ mode: DisplayMode) {
