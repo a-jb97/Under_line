@@ -226,17 +226,15 @@ final class WishlistViewController: UIViewController, UITableViewDataSource {
             isExpanded: expandedISBN == item.isbn13, isDescriptionLoading: false,
             primaryAction: .purchase, wishlistAction: wishlistAction(for: item.isbn13)
         )
-        cell.onPrimaryAction = { [weak self, weak cell] isbn in
-            guard let self, let cell, self.presentedViewController == nil else { return }
-            let menu = UIAlertController(title: "구매할 서점", message: nil, preferredStyle: .actionSheet)
+        cell.onPrimaryAction = { [weak self] isbn in
+            guard let self, self.presentedViewController == nil else { return }
+            let menu = UIAlertController(title: "구매할 서점", message: nil, preferredStyle: .alert)
             menu.addAction(UIAlertAction(title: "YES24에서 검색", style: .default) { [weak self, weak menu] _ in
                 menu?.dismiss(animated: true) {
                     self?.purchase.accept(.init(isbn13: isbn, store: .yes24))
                 }
             })
             menu.addAction(UIAlertAction(title: "취소", style: .cancel))
-            menu.popoverPresentationController?.sourceView = cell
-            menu.popoverPresentationController?.sourceRect = cell.bounds
             self.present(menu, animated: true)
         }
         cell.onToggleWishlist = { [weak self] in self?.deleteISBN.accept($0) }
