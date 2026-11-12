@@ -3,11 +3,18 @@ import RxSwift
 import RxCocoa
 
 final class WishlistViewModel {
+    struct PurchaseRequest {
+        let isbn13: String
+        let store: BookStore
+    }
+
     struct Input {
         let screenAppeared: Observable<Void>
         let retry: Observable<Void>
         let searchQuery: Observable<String>
         let deleteISBN: Observable<String>
+        var purchase: Observable<PurchaseRequest> = .empty()
+        var screenDisappeared: Observable<Void> = .empty()
     }
 
     struct State: Equatable {
@@ -35,8 +42,13 @@ final class WishlistViewModel {
     struct Output {
         let state: Driver<State>
         let message: Signal<String>
+        let destination: Signal<BookPurchaseDestination>
     }
 
+    private let purchaseService: BookPurchaseServiceProtocol
+    private let destination = PublishRelay<BookPurchaseDestination>()
+    private let purchaseRequest = SerialDisposable()
+    private var purchaseID: UUID?
     private let repository: WishlistRepositoryProtocol
     private let state = BehaviorRelay<State>(value: State())
     private let message = PublishRelay<String>()
@@ -45,7 +57,9 @@ final class WishlistViewModel {
     private var loadID = UUID()
     private var needsReload = false
 
-    init(repository: WishlistRepositoryProtocol) {
+    init(repository: WishlistRepositoryProtocol, purchaseService: BookPurchaseServiceProtocol = AppContainer.shared.bookPurchaseService) {
+        self.purchaseService = purchaseService
+        purchaseRequest.disposed(by: disposeBag)
         self.repository = repository
         loadRequest.disposed(by: disposeBag)
     }
@@ -70,8 +84,35 @@ final class WishlistViewModel {
             .subscribe(onNext: { [weak self] in self?.deleteItem(isbn13: $0) })
             .disposed(by: disposeBag)
 
+        input.purchase.subscribe(onNext: { [weak self] request in
+            self?.purchase(request)
+        }).disposed(by: disposeBag)
+        input.screenDisappeared.subscribe(onNext: { [weak self] in
+            self?.purchaseID = nil
+            self?.purchaseRequest.disposable = Disposables.create()
+        }).disposed(by: disposeBag)
+
         return Output(state: state.distinctUntilChanged().asDriver(onErrorDriveWith: .empty()),
-                      message: message.asSignal())
+                      message: message.asSignal(), destination: destination.asSignal())
+    }
+
+    private func purchase(_ request: PurchaseRequest) {
+        guard purchaseID == nil else { return }
+        let id = UUID()
+        purchaseID = id
+        purchaseRequest.disposable = rxAsync { [purchaseService] in
+            try await purchaseService.purchaseDestination(isbn13: request.isbn13, store: request.store)
+        }.subscribe(onNext: { [weak self] result in
+            guard let self, self.purchaseID == id else { return }
+            self.purchaseID = nil
+            self.destination.accept(result)
+        }, onError: { [weak self] error in
+            guard let self, self.purchaseID == id else { return }
+            self.purchaseID = nil
+            guard !(error is CancellationError) else { return }
+            self.message.accept(error as? BookPurchaseError == .invalidISBN
+                ? "올바른 ISBN13이 아닙니다." : "구매 페이지를 열 수 없습니다. 다시 시도해주세요.")
+        })
     }
 
     private func reload() {

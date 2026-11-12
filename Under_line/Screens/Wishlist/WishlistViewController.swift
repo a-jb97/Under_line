@@ -1,4 +1,5 @@
 import UIKit
+import SafariServices
 import SnapKit
 import RxSwift
 import RxCocoa
@@ -8,6 +9,8 @@ final class WishlistViewController: UIViewController, UITableViewDataSource {
     private let viewModel: WishlistViewModel
     private let disposeBag = DisposeBag()
     private let appeared = PublishRelay<Void>()
+    private let purchase = PublishRelay<WishlistViewModel.PurchaseRequest>()
+    private let disappeared = PublishRelay<Void>()
     private let deleteISBN = PublishRelay<String>()
     private var state = WishlistViewModel.State()
     private var items: [WishlistItem] = []
@@ -76,8 +79,9 @@ final class WishlistViewController: UIViewController, UITableViewDataSource {
         return stack
     }()
 
-    init(repository: WishlistRepositoryProtocol = AppContainer.shared.wishlistRepository) {
-        viewModel = WishlistViewModel(repository: repository)
+    init(repository: WishlistRepositoryProtocol = AppContainer.shared.wishlistRepository,
+         purchaseService: BookPurchaseServiceProtocol = AppContainer.shared.bookPurchaseService) {
+        viewModel = WishlistViewModel(repository: repository, purchaseService: purchaseService)
         super.init(nibName: nil, bundle: nil)
     }
 
@@ -92,6 +96,11 @@ final class WishlistViewController: UIViewController, UITableViewDataSource {
     override func viewWillAppear(_ animated: Bool) {
         super.viewWillAppear(animated)
         appeared.accept(())
+    }
+
+    override func viewWillDisappear(_ animated: Bool) {
+        super.viewWillDisappear(animated)
+        disappeared.accept(())
     }
 
     private func setupUI() {
@@ -140,8 +149,13 @@ final class WishlistViewController: UIViewController, UITableViewDataSource {
         let output = viewModel.transform(input: .init(
             screenAppeared: appeared.asObservable(), retry: retryButton.rx.tap.asObservable(),
             searchQuery: searchBar.textField.rx.text.orEmpty.asObservable(),
-            deleteISBN: deleteISBN.asObservable()
+            deleteISBN: deleteISBN.asObservable(), purchase: purchase.asObservable(),
+            screenDisappeared: disappeared.asObservable()
         ))
+        output.destination.emit(onNext: { [weak self] destination in
+            guard let self, self.view.window != nil, self.presentedViewController == nil else { return }
+            self.present(SFSafariViewController(url: destination.url), animated: true)
+        }).disposed(by: disposeBag)
         output.state.drive(onNext: { [weak self] in self?.apply($0) }).disposed(by: disposeBag)
         output.message.emit(onNext: { [weak self] message in
             var style = ToastStyle()
@@ -212,7 +226,19 @@ final class WishlistViewController: UIViewController, UITableViewDataSource {
             isExpanded: expandedISBN == item.isbn13, isDescriptionLoading: false,
             primaryAction: .purchase, wishlistAction: wishlistAction(for: item.isbn13)
         )
-        cell.onPrimaryAction = nil
+        cell.onPrimaryAction = { [weak self, weak cell] isbn in
+            guard let self, let cell, self.presentedViewController == nil else { return }
+            let menu = UIAlertController(title: "구매할 서점", message: nil, preferredStyle: .actionSheet)
+            menu.addAction(UIAlertAction(title: "YES24에서 검색", style: .default) { [weak self, weak menu] _ in
+                menu?.dismiss(animated: true) {
+                    self?.purchase.accept(.init(isbn13: isbn, store: .yes24))
+                }
+            })
+            menu.addAction(UIAlertAction(title: "취소", style: .cancel))
+            menu.popoverPresentationController?.sourceView = cell
+            menu.popoverPresentationController?.sourceRect = cell.bounds
+            self.present(menu, animated: true)
+        }
         cell.onToggleWishlist = { [weak self] in self?.deleteISBN.accept($0) }
         return cell
     }

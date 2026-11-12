@@ -57,7 +57,7 @@ struct BookRowAction {
     }
 
     static let purchase = BookRowAction(
-        symbolName: "cart", isSelected: false, isEnabled: false,
-        accessibilityLabel: "구매, 준비 중", accessibilityValue: "준비 중"
+        symbolName: "cart", isSelected: false, isEnabled: true,
+        accessibilityLabel: "도서 구매", accessibilityValue: ""
     )
 }

@@ -146,7 +146,7 @@ final class WishlistViewModelTests: XCTestCase {
         XCTAssertEqual(h.state.emptyMessage, "위시리스트에 담은 도서가 없습니다")
     }
 
-    func test_sharedCell_purchaseDisabledAndReuseRestoresRegistrationAction() throws {
+    func test_sharedCell_purchaseEnabledAndReuseRestoresRegistrationAction() throws {
         let item = wishlistFixtures()[0]
         let cell = BookRowCell(style: .default, reuseIdentifier: BookRowCell.reuseID)
         cell.configure(content: BookRowContent(item: item), displayScale: 1, descriptionWidth: 272,
@@ -154,8 +154,8 @@ final class WishlistViewModelTests: XCTestCase {
                        wishlistAction: .wishlist(isSaved: true, isEnabled: true))
         let purchase = try XCTUnwrap(findView(cell, id: "purchaseBookButton") as? UIButton)
         let heart = try XCTUnwrap(findView(cell, id: "wishlistButton") as? UIButton)
-        XCTAssertFalse(purchase.isEnabled)
-        XCTAssertEqual(purchase.accessibilityLabel, "구매, 준비 중")
+        XCTAssertTrue(purchase.isEnabled)
+        XCTAssertEqual(purchase.accessibilityLabel, "도서 구매")
         XCTAssertTrue(heart.isSelected)
         XCTAssertTrue(heart.isEnabled)
         var deleted: [String] = []
@@ -251,6 +251,26 @@ final class WishlistViewModelTests: XCTestCase {
         let back = try XCTUnwrap(findView(screen.view, id: "wishlistBackButton") as? UIButton)
         back.sendActions(for: .touchUpInside)
         XCTAssertTrue(navigation.topViewController === root)
+    }
+
+    func test_purchase_emitsDestinationAndInvalidISBNMessage() async {
+        let service = try! BookPurchaseService(resolvers: [.yes24: YES24PurchaseResolver()])
+        let model = WishlistViewModel(repository: WishlistStubRepository(), purchaseService: service)
+        let requests = PublishRelay<WishlistViewModel.PurchaseRequest>()
+        let bag = DisposeBag()
+        let output = model.transform(input: .init(screenAppeared: .empty(), retry: .empty(),
+            searchQuery: .empty(), deleteISBN: .empty(), purchase: requests.asObservable()))
+        var destinations: [BookPurchaseDestination] = []
+        var messages: [String] = []
+        output.destination.emit(onNext: { destinations.append($0) }).disposed(by: bag)
+        output.message.emit(onNext: { messages.append($0) }).disposed(by: bag)
+        requests.accept(.init(isbn13: "9780132350884", store: .yes24))
+        requests.accept(.init(isbn13: "9780132350884", store: .yes24))
+        await drain()
+        XCTAssertEqual(destinations.count, 1)
+        requests.accept(.init(isbn13: "invalid", store: .yes24))
+        await drain()
+        XCTAssertEqual(messages, ["올바른 ISBN13이 아닙니다."])
     }
 
     private func load(_ harness: WishlistHarness) async {

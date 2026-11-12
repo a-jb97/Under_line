@@ -24,7 +24,7 @@ final class AppContainer {
 
     private init() {
         do {
-            bookPurchaseService = try BookPurchaseService()
+            bookPurchaseService = try BookPurchaseService(resolvers: [.yes24: YES24PurchaseResolver()])
             modelContainer = try ModelContainer(
                 for: BookRecord.self, SentenceRecord.self, ReadingSessionRecord.self, WishlistRecord.self
             )
