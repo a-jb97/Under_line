@@ -625,7 +625,7 @@ extension QuoteCardEditorViewController {
             ),
             TutorialStep(
                 targetFrame: saveButton.convert(saveButton.bounds, to: nil),
-                message: "카드를 이미지로 저장해요\n저장되면 자동으로 닫혀요"
+                message: "공유 버튼으로 이미지를 저장하거나\n다른 앱에 공유할 수 있어요"
             ),
         ]
 

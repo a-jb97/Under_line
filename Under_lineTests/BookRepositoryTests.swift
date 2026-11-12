@@ -6,6 +6,31 @@ import RxCocoa
 
 @MainActor
 final class BookRepositoryTests: XCTestCase {
+    func test_tutorial_usesTopNineAndEnrichesCoversWithoutSaving() async throws {
+        let fixture = try Fixture()
+        let cover = URL(string: "https://example.com/cover.jpg")!
+        fixture.searchAPI.isbnBook = Book(title: "표지", author: "저자", isbn13: "test", coverURL: cover,
+            publisher: "", publishDate: nil, category: nil, bestRank: nil, description: "", itemPage: nil, currentPage: nil)
+        fixture.listAPI.books = (1...12).map { rank in
+            Book(title: "도서 \(rank)", author: "저자", isbn13: "test", coverURL: nil,
+                publisher: "", publishDate: nil, category: nil, bestRank: rank, description: "", itemPage: nil, currentPage: nil)
+        }
+        let model = BookshelfTutorialViewModel(repository: fixture.repository)
+        await model.prepare()
+        XCTAssertEqual(model.books.map(\.bestRank), (1...9).map(Optional.some))
+        XCTAssertTrue(model.books.allSatisfy { $0.coverURL == cover })
+        XCTAssertEqual(try fixture.container.mainContext.fetch(FetchDescriptor<BookRecord>()).count, 0)
+    }
+
+    func test_tutorial_keepsBooksWhenCoverLookupFails() async throws {
+        let fixture = try Fixture()
+        fixture.searchAPI.onISBNRequest = { throw URLError(.notConnectedToInternet) }
+        let model = BookshelfTutorialViewModel(repository: fixture.repository)
+        await model.prepare()
+        XCTAssertEqual(model.books.count, 1)
+        XCTAssertNil(model.books.first?.coverURL)
+    }
+
     func test_authorStatistics_mergesLegacyPrefixesIntoAuthorName() {
         let names = ["지은이: 한강", "한강", " 지은이 ： 한강\n", "저자 : 김애란", "유현준", "지은이 : "]
         let books = names.enumerated().map { index, name in

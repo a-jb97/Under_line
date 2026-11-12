@@ -27,6 +27,7 @@ struct TutorialStep {
     let targetFrame: CGRect
     let message: String
     var animation: TutorialAnimation? = nil
+    var targetFrameProvider: (() -> CGRect)? = nil
 }
 
 // MARK: - TutorialBlockingView
@@ -56,6 +57,7 @@ final class TutorialOverlayViewController: UIViewController {
     var onFinished: (() -> Void)?
 
     private var currentIndex = 0
+    private var lastLayoutSize = CGSize.zero
     private let disposeBag = DisposeBag()
     private var fingerHintView: UIImageView?
 
@@ -142,6 +144,18 @@ final class TutorialOverlayViewController: UIViewController {
         applyStep(at: 0, animated: false)
     }
 
+    override func viewDidLayoutSubviews() {
+        super.viewDidLayoutSubviews()
+        guard steps.indices.contains(currentIndex) else { return }
+        let step = steps[currentIndex]
+        let frame = step.targetFrameProvider?() ?? step.targetFrame
+        updateSpotlight(targetFrame: frame)
+        if lastLayoutSize != view.bounds.size {
+            lastLayoutSize = view.bounds.size
+            repositionCallout(relativeTo: frame)
+        }
+    }
+
     override var preferredStatusBarStyle: UIStatusBarStyle { .lightContent }
 
     // MARK: - Setup
@@ -225,11 +239,12 @@ final class TutorialOverlayViewController: UIViewController {
         guard index >= 0, index < steps.count else { return }
         currentIndex = index
         let step = steps[index]
+        let frame = step.targetFrameProvider?() ?? step.targetFrame
 
         removeFingerHint()
-        updateSpotlight(targetFrame: step.targetFrame)
+        updateSpotlight(targetFrame: frame)
         messageLabel.text = step.message
-        repositionCallout(relativeTo: step.targetFrame)
+        repositionCallout(relativeTo: frame)
         updateNavigation()
 
         if animated {
@@ -245,7 +260,7 @@ final class TutorialOverlayViewController: UIViewController {
         }
 
         if case .dialRotation = step.animation {
-            startDialRotationHint(in: step.targetFrame)
+            startDialRotationHint(in: frame)
         }
     }
 
