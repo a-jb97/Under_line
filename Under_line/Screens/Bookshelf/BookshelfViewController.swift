@@ -48,6 +48,10 @@ final class BookshelfViewController: UIViewController {
 
     private var allBooks: [Book] = []
     private var activeFilterQuery: String?
+    private let tutorialLoading = UIActivityIndicatorView(style: .medium)
+    private var tutorialDeadlineTask: Task<Void, Never>?
+    private var tutorialLoadTask: Task<Void, Never>?
+    private var tutorialSession: UUID?
     private var tutorialBooks: [Book] = []
 
     private var savedBooks: [Book] = [] {
@@ -197,6 +201,16 @@ final class BookshelfViewController: UIViewController {
     override func viewDidAppear(_ animated: Bool) {
         super.viewDidAppear(animated)
         showTutorialIfNeeded()
+    }
+
+    override func viewWillDisappear(_ animated: Bool) {
+        super.viewWillDisappear(animated)
+        guard !(presentedViewController is TutorialOverlayViewController) else { return }
+        tutorialSession = nil
+        tutorialLoadTask?.cancel()
+        tutorialDeadlineTask?.cancel()
+        tutorialLoading.removeFromSuperview()
+        tutorialBooks = []
     }
 
     override var preferredStatusBarStyle: UIStatusBarStyle { .darkContent }
@@ -920,17 +934,46 @@ final class BookshelfViewController: UIViewController {
 
 extension BookshelfViewController {
     private func showTutorialIfNeeded() {
-        guard !UserDefaults.standard.bool(forKey: "tutorial.bookshelf") else { return }
-
-        // 인기 대출 도서 표지로 책장 미리채우기
-        Task { [weak self] in
-            guard let self else { return }
-            guard let books = try? await AppContainer.shared.bookRepository.fetchPopularBooks() else { return }
-            self.tutorialBooks = books
-            if self.layoutReady { self.rebuildShelfPages() }
+        guard !UserDefaults.standard.bool(forKey: "tutorial.bookshelf") else {
+            TutorialSupport.show(on: self, key: "tutorial.bookshelfWishlist", steps: [
+                TutorialStep(targetFrame: wishlistButton.convert(wishlistButton.bounds, to: nil), message: "하트 버튼에서 위시리스트를 열고\n읽고 싶은 책을 관리해보세요")
+            ])
+            return
         }
+        guard presentedViewController == nil else { return }
 
+        guard tutorialSession == nil else { return }
+        let session = UUID()
+        tutorialSession = session
+        let model = BookshelfTutorialViewModel(repository: AppContainer.shared.bookRepository)
+        view.addSubview(tutorialLoading)
+        tutorialLoading.center = view.center
+        tutorialLoading.startAnimating()
+        tutorialLoadTask = Task { [weak self] in
+            await model.prepare()
+            guard !Task.isCancelled else { return }
+            self?.presentBookshelfTutorial(session: session, books: model.books)
+        }
+        tutorialDeadlineTask = Task { [weak self] in
+            try? await Task.sleep(for: .seconds(5))
+            guard !Task.isCancelled else { return }
+            self?.presentBookshelfTutorial(session: session, books: model.books)
+        }
+    }
+
+    private func presentBookshelfTutorial(session: UUID, books: [Book]) {
+        guard tutorialSession == session, view.window != nil, presentedViewController == nil else { return }
+        tutorialDeadlineTask?.cancel()
+        tutorialLoadTask?.cancel()
+        tutorialLoading.stopAnimating()
+        tutorialLoading.removeFromSuperview()
+        tutorialBooks = books
+        if layoutReady { rebuildShelfPages() }
         let steps: [TutorialStep] = [
+            TutorialStep(targetFrame: .zero, message: "하트 버튼에서 위시리스트를 열 수 있어요", targetFrameProvider: { [weak self] in
+                guard let button = self?.wishlistButton else { return .zero }
+                return button.convert(button.bounds, to: nil)
+            }),
             TutorialStep(
                 targetFrame: fabButton.convert(fabButton.bounds, to: nil),
                 message: "도서 검색으로 읽고 있는 책을\n책장에 추가해보세요!"
@@ -947,6 +990,9 @@ extension BookshelfViewController {
         tutorialVC.modalTransitionStyle = .crossDissolve
         tutorialVC.onFinished = { [weak self] in
             UserDefaults.standard.set(true, forKey: "tutorial.bookshelf")
+            UserDefaults.standard.set(true, forKey: "tutorial.bookshelfWishlist")
+            self?.tutorialSession = nil
+            self?.tutorialLoadTask?.cancel()
             self?.tutorialBooks = []
             if self?.layoutReady == true { self?.rebuildShelfPages() }
         }

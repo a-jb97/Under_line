@@ -173,6 +173,17 @@ final class BookSearchViewController: UIViewController {
         scheduleCoverPrefetch()
         scheduleEnrichmentWindowUpdate()
         scheduleNextPageIfNeeded()
+        showWishlistTutorial()
+    }
+
+    private func showWishlistTutorial() {
+        guard TutorialSupport.target(in: view, identifier: "wishlistButton") != nil else { return }
+        TutorialSupport.show(on: self, key: "tutorial.searchWishlist", steps: [
+            TutorialStep(targetFrame: .zero, message: "하트를 눌러 읽고 싶은 책을\n위시리스트에 담아보세요", targetFrameProvider: { [weak self] in
+                guard let self, let target = TutorialSupport.target(in: self.view, identifier: "wishlistButton") else { return .zero }
+                return target.convert(target.bounds, to: nil)
+            })
+        ])
     }
 
     override func viewWillDisappear(_ animated: Bool) {
@@ -183,6 +194,7 @@ final class BookSearchViewController: UIViewController {
     }
 
     override func viewDidLayoutSubviews() {
+        DispatchQueue.main.async { [weak self] in self?.showWishlistTutorial() }
         super.viewDidLayoutSubviews()
         scheduleCoverPrefetch()
         scheduleEnrichmentWindowUpdate()

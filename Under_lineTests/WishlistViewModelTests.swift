@@ -197,6 +197,12 @@ final class WishlistViewModelTests: XCTestCase {
     }
 
     func test_screen_liveSearchExpansionAndDeletionUseStableISBNs() async throws {
+        let previous = UserDefaults.standard.object(forKey: "tutorial.wishlist")
+        UserDefaults.standard.set(true, forKey: "tutorial.wishlist")
+        defer {
+            if let previous { UserDefaults.standard.set(previous, forKey: "tutorial.wishlist") }
+            else { UserDefaults.standard.removeObject(forKey: "tutorial.wishlist") }
+        }
         let repository = WishlistStubRepository()
         let screen = WishlistViewController(repository: repository)
         let root = UIViewController()

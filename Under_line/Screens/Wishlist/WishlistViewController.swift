@@ -14,6 +14,9 @@ final class WishlistViewController: UIViewController, UITableViewDataSource {
     private let disappeared = PublishRelay<Void>()
     private let deleteISBN = PublishRelay<String>()
     private var state = WishlistViewModel.State()
+    private var tutorialExampleTask: Task<Void, Never>?
+    private var tutorialActive = false
+    private var pendingTutorialState: WishlistViewModel.State?
     private var items: [WishlistItem] = []
     private var expandedISBN: String?
 
@@ -99,6 +102,55 @@ final class WishlistViewController: UIViewController, UITableViewDataSource {
         appeared.accept(())
     }
 
+    override func viewDidAppear(_ animated: Bool) {
+        super.viewDidAppear(animated)
+        showWishlistTutorial()
+    }
+
+    private func showWishlistTutorial() {
+        guard !tutorialActive, state.hasLoaded, view.window != nil, presentedViewController == nil,
+              !UserDefaults.standard.bool(forKey: "tutorial.wishlist") else { return }
+        tutorialActive = true
+        if items.isEmpty {
+            items = [WishlistItem(isbn13: "9780132350884", title: "튜토리얼 예시 도서", author: "예시", publisher: "", coverURL: nil,
+                                  description: "도서 행을 탭하면 책소개를 펼칠 수 있어요", addedAt: Date())]
+            tableView.reloadData()
+            tutorialExampleTask = Task { [weak self] in
+                let model = BookshelfTutorialViewModel(repository: AppContainer.shared.bookRepository)
+                await model.prepare()
+                guard !Task.isCancelled, let self, self.tutorialActive, let book = model.books.first else { return }
+                self.items = [WishlistItem(isbn13: book.isbn13, title: "튜토리얼 예시 · " + book.displayTitle,
+                    author: book.author, publisher: book.publisher, coverURL: book.coverURL,
+                    description: book.description, addedAt: Date())]
+                self.tableView.reloadData()
+            }
+        }
+        tableView.layoutIfNeeded()
+        let purchaseMessage: String
+        switch AppContainer.shared.bookPurchasePreferenceStore.current {
+        case .askEveryTime: purchaseMessage = "구매 버튼에서 서점을 선택해요"
+        case .store(let store): purchaseMessage = "구매 버튼을 누르면 \(store.displayName)로 바로 연결돼요"
+        }
+        let steps = [
+            TutorialStep(targetFrame: searchBar.convert(searchBar.bounds, to: nil), message: "제목이나 저자로 위시리스트를 검색해요"),
+            TutorialStep(targetFrame: tableView.convert(tableView.bounds, to: nil), message: "도서를 탭해 책소개를 펼치고\n하트를 다시 눌러 목록에서 삭제할 수 있어요"),
+            TutorialStep(targetFrame: .zero, message: purchaseMessage + "\n상품 선택과 구매는 서점 웹페이지에서 진행해요", targetFrameProvider: { [weak self] in
+                guard let self, let button = TutorialSupport.target(in: self.tableView, identifier: "purchaseBookButton") else { return .zero }
+                return button.convert(button.bounds, to: nil)
+            })
+        ]
+        TutorialSupport.show(on: self, key: "tutorial.wishlist", steps: steps) { [weak self] in
+            guard let self else { return }
+            self.tutorialExampleTask?.cancel()
+            self.tutorialActive = false
+            self.items = []
+            self.tableView.reloadData()
+            let latest = self.pendingTutorialState ?? self.state
+            self.pendingTutorialState = nil
+            self.apply(latest)
+        }
+    }
+
     override func viewWillDisappear(_ animated: Bool) {
         super.viewWillDisappear(animated)
         disappeared.accept(())
@@ -182,6 +234,8 @@ final class WishlistViewController: UIViewController, UITableViewDataSource {
     }
 
     private func apply(_ newState: WishlistViewModel.State) {
+        if tutorialActive { pendingTutorialState = newState; return }
+        defer { DispatchQueue.main.async { [weak self] in self?.showWishlistTutorial() } }
         let oldItems = items
         let queryChanged = state.query != newState.query
         let offset = tableView.contentOffset

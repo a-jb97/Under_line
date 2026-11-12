@@ -81,6 +81,18 @@ final class SettingsViewController: UIViewController {
         bindActions()
     }
 
+    override func viewDidAppear(_ animated: Bool) {
+        super.viewDidAppear(animated)
+        scrollView.scrollRectToVisible(purchaseRow.convert(purchaseRow.bounds, to: scrollView), animated: false)
+        view.layoutIfNeeded()
+        TutorialSupport.show(on: self, key: "tutorial.purchaseSettings", steps: [
+            TutorialStep(targetFrame: .zero, message: "기본 구매 서점을 지정하면 바로 연결돼요\n‘구매할 때마다 선택’으로 바꿀 수도 있어요", targetFrameProvider: { [weak self] in
+                guard let row = self?.purchaseRow else { return .zero }
+                return row.convert(row.bounds, to: nil)
+            })
+        ])
+    }
+
     override var preferredStatusBarStyle: UIStatusBarStyle { .darkContent }
 
     // MARK: - Setup
@@ -322,9 +334,7 @@ final class SettingsViewController: UIViewController {
 
         tutorialRow.rx.tap
             .subscribe(onNext: { [weak self] in
-                ["tutorial.bookshelf", "tutorial.bookDetail",
-                 "tutorial.readingRecord", "tutorial.statistics",
-                 "tutorial.cardEditor"]
+                TutorialSupport.keys
                     .forEach { UserDefaults.standard.removeObject(forKey: $0) }
                 guard let tabBar = self?.tabBarController else { return }
                 tabBar.selectedIndex = 0
