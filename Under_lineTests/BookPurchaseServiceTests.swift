@@ -139,6 +139,24 @@ final class BookPurchaseServiceTests: XCTestCase {
         }
     }
 
+    func test_oneStoreFailure_doesNotPreventUsingOtherStores() async throws {
+        for failedStore in BookStore.allCases {
+            let resolvers = Dictionary(uniqueKeysWithValues: BookStore.allCases.map { ($0, StubResolver(store: $0)) })
+            resolvers[failedStore]?.error = BookPurchaseError.productNotFound(failedStore)
+            let service = try BookPurchaseService(resolvers: resolvers)
+            do {
+                _ = try await service.purchaseDestination(isbn13: "9780132350884", store: failedStore)
+                XCTFail("해당 서점의 실패가 전달되어야 합니다.")
+            } catch {
+                XCTAssertEqual(error as? BookPurchaseError, .productNotFound(failedStore))
+            }
+            for store in BookStore.allCases where store != failedStore {
+                let result = try await service.purchaseDestination(isbn13: "9780132350884", store: store)
+                XCTAssertEqual(result.store, store)
+            }
+        }
+    }
+
     func test_failureAndCancellation_arePreservedWithoutFallback() async throws {
         let resolver = StubResolver(store: .kyobo)
         let fallback = StubResolver(store: .yes24)

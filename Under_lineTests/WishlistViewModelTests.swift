@@ -279,6 +279,26 @@ final class WishlistViewModelTests: XCTestCase {
         XCTAssertEqual(messages, ["올바른 ISBN13이 아닙니다."])
     }
 
+    func test_purchase_failedStoreAllowsSelectingAnotherStore() async throws {
+        let service = try BookPurchaseService(resolvers: [.yes24: YES24PurchaseResolver()])
+        let model = WishlistViewModel(repository: WishlistStubRepository(), purchaseService: service)
+        let requests = PublishRelay<WishlistViewModel.PurchaseRequest>()
+        let bag = DisposeBag()
+        let output = model.transform(input: .init(screenAppeared: .empty(), retry: .empty(),
+            searchQuery: .empty(), deleteISBN: .empty(), purchase: requests.asObservable()))
+        var destinations: [BookPurchaseDestination] = []
+        var messages: [String] = []
+        output.destination.emit(onNext: { destinations.append($0) }).disposed(by: bag)
+        output.message.emit(onNext: { messages.append($0) }).disposed(by: bag)
+        requests.accept(.init(isbn13: "9780132350884", store: .kyobo))
+        await drain()
+        XCTAssertEqual(messages.count, 1)
+        XCTAssertTrue(destinations.isEmpty)
+        requests.accept(.init(isbn13: "9780132350884", store: .yes24))
+        await drain()
+        XCTAssertEqual(destinations.map(\.store), [.yes24])
+    }
+
     func test_purchaseTap_readsLatestPreferenceAndDoesNotPersistOneTimeSelection() async throws {
         let name = "wishlist-preference-\(UUID())"
         let defaults = try XCTUnwrap(UserDefaults(suiteName: name))
