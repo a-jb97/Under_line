@@ -450,9 +450,15 @@ final class BookRepositoryTests: XCTestCase {
         let fixture = try Fixture()
         let searchedBook = fixture.searchAPI.books[0]
         try await fixture.repository.saveBook(searchedBook)
+        let conflictingBook = Book(
+            title: "신규 검색의 다른 제목", author: "다른 저자", isbn13: searchedBook.isbn13,
+            coverURL: nil, publisher: "다른 출판사", publishDate: nil,
+            category: nil, bestRank: nil, description: "덮어쓰면 안 되는 설명",
+            itemPage: nil, currentPage: nil
+        )
 
         do {
-            try await fixture.repository.registerSearchedBook(searchedBook)
+            try await fixture.repository.registerSearchedBook(conflictingBook)
             XCTFail("중복 도서는 등록되면 안 됨")
         } catch let error as NSError {
             XCTAssertEqual(error.code, 409)
@@ -461,6 +467,8 @@ final class BookRepositoryTests: XCTestCase {
         XCTAssertTrue(fixture.listAPI.detailCalls.isEmpty)
         let savedRecords = try fixture.savedRecords
         XCTAssertEqual(savedRecords.count, 1)
+        XCTAssertEqual(savedRecords.first?.title, searchedBook.title)
+        XCTAssertEqual(savedRecords.first?.bookDescription, searchedBook.description)
     }
 
     func test_updateReadingProgress_savesItemAndCurrentPageTogether() async throws {

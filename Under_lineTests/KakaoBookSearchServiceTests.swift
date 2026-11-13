@@ -107,6 +107,44 @@ final class KakaoBookSearchServiceTests: XCTestCase {
         XCTAssertNil(invalid.toDomain())
     }
 
+    func test_mapping_missingOrNullMetadataKeepsValidBook() throws {
+        for json in [
+            #"{"title":"책","isbn":"9788937460586"}"#,
+            #"{"title":"책","isbn":"9788937460586","contents":null,"authors":null,"publisher":null,"thumbnail":null,"datetime":null}"#
+        ] {
+            let document = try JSONDecoder().decode(KakaoBookDocument.self, from: Data(json.utf8))
+            let book = try XCTUnwrap(document.toDomain())
+            XCTAssertNil(book.coverURL)
+            XCTAssertNil(book.publishDate)
+            XCTAssertEqual(book.description, "")
+            XCTAssertEqual(book.author, "")
+            XCTAssertEqual(book.publisher, "")
+        }
+    }
+
+    func test_mapping_missingOrNullISBNExcludesOnlyThatDocument() throws {
+        let data = Data(#"{"meta":{"total_count":3,"pageable_count":3,"is_end":true},"documents":[{"title":"누락"},{"title":"null","isbn":null},{"title":"정상","isbn":"9788937460586"}]}"#.utf8)
+        let response = try JSONDecoder().decode(KakaoBookSearchResponse.self, from: data)
+        XCTAssertEqual(response.documents.compactMap { $0.toDomain() }.map(\.title), ["정상"])
+    }
+
+    func test_service_offlineFailureAllowsNextSearch() async throws {
+        let service = makeService()
+        StubURLProtocol.handler = { _ in throw URLError(.notConnectedToInternet) }
+        do {
+            _ = try await service.searchBooks(query: "책", page: 1)
+            XCTFail("오프라인 오류가 전달되어야 합니다.")
+        } catch {
+            XCTAssertFalse(error is CancellationError)
+        }
+        StubURLProtocol.handler = { request in
+            (Self.response(for: request), self.emptyResponseData)
+        }
+        let page = try await service.searchBooks(query: "책", page: 1)
+        XCTAssertTrue(page.books.isEmpty)
+        XCTAssertTrue(page.isEnd)
+    }
+
     func test_service_returnsMappedPageUsingPageableCount() async throws {
         StubURLProtocol.handler = { request in
             let response = HTTPURLResponse(

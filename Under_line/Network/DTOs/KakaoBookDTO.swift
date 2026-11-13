@@ -46,12 +46,12 @@ struct KakaoBookDocument: Decodable, Sendable {
     nonisolated init(from decoder: any Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         title = try container.decode(String.self, forKey: .title)
-        contents = try container.decode(String.self, forKey: .contents)
-        isbn = try container.decode(String.self, forKey: .isbn)
-        datetime = try container.decode(String.self, forKey: .datetime)
-        authors = try container.decode([String].self, forKey: .authors)
-        publisher = try container.decode(String.self, forKey: .publisher)
-        thumbnail = try container.decode(String.self, forKey: .thumbnail)
+        contents = try container.decodeIfPresent(String.self, forKey: .contents) ?? ""
+        isbn = try container.decodeIfPresent(String.self, forKey: .isbn) ?? ""
+        datetime = try container.decodeIfPresent(String.self, forKey: .datetime) ?? ""
+        authors = try container.decodeIfPresent([String].self, forKey: .authors) ?? []
+        publisher = try container.decodeIfPresent(String.self, forKey: .publisher) ?? ""
+        thumbnail = try container.decodeIfPresent(String.self, forKey: .thumbnail) ?? ""
     }
 
     private enum CodingKeys: String, CodingKey {

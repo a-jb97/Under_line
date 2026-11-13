@@ -5,7 +5,15 @@ import RxSwift
 import RxCocoa
 import Toast
 
-final class WishlistViewController: UIViewController, UITableViewDataSource {
+final class WishlistViewController: UIViewController, UITableViewDataSource, SFSafariViewControllerDelegate {
+    func safariViewController(_ controller: SFSafariViewController, didCompleteInitialLoad didLoadSuccessfully: Bool) {
+        guard !didLoadSuccessfully else { return }
+        controller.dismiss(animated: true) { [weak self] in
+            self?.view.makeToast("서점 웹페이지를 열 수 없습니다. 네트워크 연결을 확인하거나 다른 서점을 선택해주세요.",
+                                 duration: 3, position: .center)
+        }
+    }
+
     private let viewModel: WishlistViewModel
     private let disposeBag = DisposeBag()
     private let appeared = PublishRelay<Void>()
@@ -214,7 +222,9 @@ final class WishlistViewController: UIViewController, UITableViewDataSource {
             let usesMobilePage = self.traitCollection.userInterfaceIdiom == .phone || isNarrowWindow
             let url = usesMobilePage
                 ? destination.mobileURL ?? destination.url : destination.url
-            self.present(SFSafariViewController(url: url), animated: true)
+            let safari = SFSafariViewController(url: url)
+            safari.delegate = self
+            self.present(safari, animated: true)
         }).disposed(by: disposeBag)
         output.state.drive(onNext: { [weak self] in self?.apply($0) }).disposed(by: disposeBag)
         output.message.emit(onNext: { [weak self] message in
