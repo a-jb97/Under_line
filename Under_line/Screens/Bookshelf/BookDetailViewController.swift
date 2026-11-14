@@ -189,7 +189,7 @@ final class BookDetailViewController: UIViewController {
     private lazy var sentenceUpdateButton: UIButton = {
         var config = UIButton.Configuration.plain()
         config.title = "밑줄 수정"
-        config.baseForegroundColor = UIColor.walnut
+        config.baseForegroundColor = UIColor.appPrimary
         config.titleTextAttributesTransformer = UIConfigurationTextAttributesTransformer { attrs in
             var attrs = attrs
             attrs.font = .systemFont(ofSize: 14, weight: .semibold)
