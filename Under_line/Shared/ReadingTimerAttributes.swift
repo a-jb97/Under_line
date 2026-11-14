@@ -10,7 +10,7 @@
 import ActivityKit
 import Foundation
 
-struct ReadingTimerAttributes: ActivityAttributes {
+nonisolated struct ReadingTimerAttributes: ActivityAttributes {
 
     // MARK: - Static (Activity 시작 시 고정)
     let bookTitle: String
@@ -18,7 +18,7 @@ struct ReadingTimerAttributes: ActivityAttributes {
     let isbn13: String
 
     // MARK: - Dynamic (update 시 변경)
-    struct ContentState: Codable, Hashable {
+    nonisolated struct ContentState: Codable, Hashable {
         var remainingSeconds: Int
         var isRunning: Bool
         var timerEndDate: Date?   // 실행 중일 때만 non-nil — Text(timerInterval:) 카운트다운용

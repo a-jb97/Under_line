@@ -61,10 +61,10 @@ final class WishlistViewModel {
     private var loadID = UUID()
     private var needsReload = false
 
-    init(repository: WishlistRepositoryProtocol, purchaseService: BookPurchaseServiceProtocol = AppContainer.shared.bookPurchaseService,
-         preferences: BookPurchasePreferenceStoreProtocol = AppContainer.shared.bookPurchasePreferenceStore) {
-        self.preferences = preferences
-        self.purchaseService = purchaseService
+    init(repository: WishlistRepositoryProtocol, purchaseService: BookPurchaseServiceProtocol? = nil,
+         preferences: BookPurchasePreferenceStoreProtocol? = nil) {
+        self.preferences = preferences ?? AppContainer.shared.bookPurchasePreferenceStore
+        self.purchaseService = purchaseService ?? AppContainer.shared.bookPurchaseService
         purchaseRequest.disposed(by: disposeBag)
         self.repository = repository
         loadRequest.disposed(by: disposeBag)

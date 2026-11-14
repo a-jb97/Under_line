@@ -50,7 +50,7 @@ struct BookDetailMetadata {
     var category: String? = nil
 }
 
-enum BookGenre {
+nonisolated enum BookGenre {
     static let unknown = "장르 미상"
 
     static func known(_ value: String?) -> String? {

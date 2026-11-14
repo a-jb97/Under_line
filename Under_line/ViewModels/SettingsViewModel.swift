@@ -31,7 +31,8 @@ final class SettingsViewModel {
     private let backupService: BackupService
     private let disposeBag = DisposeBag()
 
-    init(preferences: BookPurchasePreferenceStoreProtocol = AppContainer.shared.bookPurchasePreferenceStore) {
+    init(preferences: BookPurchasePreferenceStoreProtocol? = nil) {
+        let preferences = preferences ?? AppContainer.shared.bookPurchasePreferenceStore
         self.preferences = preferences
         self.preference = BehaviorRelay(value: preferences.current)
         self.backupService = BackupService(modelContext: AppContainer.shared.modelContainer.mainContext)
