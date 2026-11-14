@@ -32,6 +32,51 @@ final class BookSearchViewModelTests: XCTestCase {
         await drain()
     }
 
+    func test_metadataUpdate_defersCollapsedDescriptionAndPreservesActions() throws {
+        let cell = BookRowCell(style: .default, reuseIdentifier: BookRowCell.reuseID)
+        let original = makeBooks(0..<1)[0]
+        var state = BookSearchViewModel.WishlistState()
+        state.isLoaded = true
+        state.savedISBNs = [original.isbn13]
+        cell.configure(book: original, displayScale: 1, descriptionWidth: 272,
+                       isExpanded: false, isDescriptionLoading: false, wishlistState: state)
+        let textView = try XCTUnwrap(descendants(of: cell).compactMap { $0 as? UITextView }.first)
+        XCTAssertTrue(textView.text.isEmpty)
+        let enriched = original.mergingListMetadata(from: BookListMetadata(
+            isbn13: original.isbn13, coverURL: nil, description: "보완된 소개"
+        ))
+        var tapped: [String] = []
+        cell.onToggleWishlist = { tapped.append($0) }
+        cell.updateMetadata(content: BookRowContent(book: enriched), displayScale: 1)
+        cell.layoutIfNeeded()
+        XCTAssertTrue(textView.text.isEmpty)
+        let heart = try XCTUnwrap(findButton(in: cell, identifier: "wishlistButton"))
+        XCTAssertTrue(heart.isSelected)
+        heart.sendActions(for: .touchUpInside)
+        XCTAssertEqual(tapped, [original.isbn13])
+        cell.setExpanded(true)
+        XCTAssertEqual(textView.text, "보완된 소개")
+        let container = try XCTUnwrap(textView.superview)
+        XCTAssertFalse(container.isHidden)
+        cell.updateMetadata(content: BookRowContent(book: original), displayScale: 1, updateDescription: false)
+        cell.layoutIfNeeded()
+        XCTAssertEqual(textView.text, "보완된 소개")
+        cell.updateMetadata(content: BookRowContent(book: original), displayScale: 1)
+        XCTAssertEqual(textView.text, "책 소개가 없습니다")
+        XCTAssertFalse(container.isHidden)
+        cell.updateMetadata(content: BookRowContent(book: makeBooks(1..<2)[0]), displayScale: 1)
+        XCTAssertEqual(cell.isbn13, original.isbn13)
+        cell.prepareForReuse()
+        cell.configure(book: makeBooks(1..<2)[0], displayScale: 1, descriptionWidth: 272,
+                       isExpanded: false, isDescriptionLoading: false, wishlistState: state)
+        XCTAssertTrue(textView.text.isEmpty)
+        XCTAssertEqual(cell.isbn13, "1")
+    }
+
+    private func descendants(of view: UIView) -> [UIView] {
+        view.subviews.flatMap { [$0] + descendants(of: $0) }
+    }
+
     func test_registeredCell_filledIconBlocksRegistrationAndKeepsWishlistIndependent() throws {
         let cell = BookRowCell(style: .default, reuseIdentifier: BookRowCell.reuseID)
         let books = makeBooks(0..<2)
@@ -548,7 +593,7 @@ final class BookSearchViewModelTests: XCTestCase {
         XCTAssertEqual(h.books[row].coverURL?.absoluteString, "https://example.com/\(first.isbn13).jpg")
         XCTAssertEqual(h.books[row].description, "보완 설명")
         XCTAssertEqual(h.books[row].title, "책")
-        guard case .reload(let rows) = h.updates.last?.change else {
+        guard case .update(let rows) = h.updates.last?.change else {
             return XCTFail("보완된 행만 갱신해야 함")
         }
         XCTAssertEqual(rows, [row])
@@ -777,7 +822,7 @@ final class BookSearchViewModelTests: XCTestCase {
 
         XCTAssertEqual(h.books[0].description, "정보나루 상세 책소개")
         XCTAssertEqual(h.descriptionReadyISBNs, ["0"])
-        guard case .reload(let rows) = h.updates.last?.change else {
+        guard case .update(let rows) = h.updates.last?.change else {
             return XCTFail("설명이 변경된 행을 갱신해야 함")
         }
         XCTAssertEqual(rows, [0])

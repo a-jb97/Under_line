@@ -41,7 +41,20 @@ final class BookSearchViewController: UIViewController {
     private var isLoadingNextPage = false
     private var expandedRow: Int?
     private var descriptionLoadingISBN: String?
-    private lazy var bookDataSource: BookSearchTableDataSource = BookSearchTableDataSource { [weak self] tableView, indexPath, book in
+    private var pendingDescriptionISBN: String?
+    private lazy var bookDataSource: BookSearchTableDataSource = BookSearchTableDataSource(updateCell: { [weak self] cell, indexPath, book in
+        guard let self, let cell = cell as? BookRowCell else { return }
+        let isExpanded = self.expandedRow == indexPath.row
+        cell.updateMetadata(
+            content: BookRowContent(book: book),
+            displayScale: self.view.traitCollection.displayScale,
+            updateDescription: !isExpanded
+        )
+        if isExpanded {
+            self.pendingDescriptionISBN = book.isbn13
+            self.flushPendingDescriptionUpdate()
+        }
+    }) { [weak self] tableView, indexPath, book in
         let cell = tableView.dequeueReusableCell(withIdentifier: BookRowCell.reuseID, for: indexPath) as! BookRowCell
         #if DEBUG
         cell.performanceBatchID = self?.performanceBatchID
@@ -348,16 +361,17 @@ final class BookSearchViewController: UIViewController {
                     self.firstCellDisplaySpan = update.books.isEmpty ? nil : BookSearchPerformance.Span(
                         .firstCellWillDisplay, source: .table, id: batchID
                     )
-                case .reload:
+                case .update:
                     break
                 }
                 #endif
                 if case .replace = update.change {
+                    self.pendingDescriptionISBN = nil
                     self.expandedRow = nil
                     self.descriptionLoadingISBN = nil
                     self.coverPrefetcher.stop()
                 }
-                if case .reload = update.change {
+                if case .update = update.change {
                     // ISBN 보완은 페이지 상태를 변경하지 않는다.
                 } else {
                     self.paginationGate.listDidUpdate()
@@ -429,10 +443,8 @@ final class BookSearchViewController: UIViewController {
                       self.bookDataSource.books.indices.contains(row),
                       self.bookDataSource.books[row].isbn13 == isbn13 else { return }
                 self.descriptionLoadingISBN = nil
-                let indexPath = IndexPath(row: row, section: 0)
-                (self.tableView.cellForRow(at: indexPath) as? BookRowCell)?
-                    .setDescriptionLoading(false)
-                self.tableView.performBatchUpdates(nil)
+                self.pendingDescriptionISBN = isbn13
+                self.flushPendingDescriptionUpdate()
             })
             .disposed(by: disposeBag)
 
@@ -462,6 +474,16 @@ final class BookSearchViewController: UIViewController {
                 self?.scheduleEnrichmentWindowUpdate()
                 self?.scheduleNextPageIfNeeded()
             })
+            .disposed(by: disposeBag)
+
+        tableView.rx.didEndDragging
+            .subscribe(onNext: { [weak self] decelerate in
+                if !decelerate { self?.flushPendingDescriptionUpdate() }
+            })
+            .disposed(by: disposeBag)
+
+        tableView.rx.didEndDecelerating
+            .subscribe(onNext: { [weak self] in self?.flushPendingDescriptionUpdate() })
             .disposed(by: disposeBag)
 
         tableView.rx.itemSelected
@@ -529,6 +551,7 @@ final class BookSearchViewController: UIViewController {
         guard indexPath.row < bookDataSource.books.count,
               let selectedCell = tableView.cellForRow(at: indexPath) as? BookRowCell else { return }
 
+        pendingDescriptionISBN = nil
         let previousRow = expandedRow
         expandedRow = previousRow == indexPath.row ? nil : indexPath.row
         descriptionLoadingISBN = expandedRow == nil
@@ -547,6 +570,23 @@ final class BookSearchViewController: UIViewController {
         } else {
             selectedCell.setExpanded(false)
         }
+        tableView.performBatchUpdates(nil)
+    }
+
+    private func flushPendingDescriptionUpdate() {
+        guard !tableView.isDragging, !tableView.isDecelerating,
+              let isbn13 = pendingDescriptionISBN else { return }
+        pendingDescriptionISBN = nil
+        guard let row = expandedRow,
+              bookDataSource.books.indices.contains(row),
+              bookDataSource.books[row].isbn13 == isbn13,
+              let cell = tableView.cellForRow(at: IndexPath(row: row, section: 0)) as? BookRowCell,
+              cell.isbn13 == isbn13.trimmingCharacters(in: .whitespacesAndNewlines) else { return }
+        cell.updateMetadata(
+            content: BookRowContent(book: bookDataSource.books[row]),
+            displayScale: view.traitCollection.displayScale
+        )
+        cell.setDescriptionLoading(descriptionLoadingISBN == isbn13)
         tableView.performBatchUpdates(nil)
     }
 

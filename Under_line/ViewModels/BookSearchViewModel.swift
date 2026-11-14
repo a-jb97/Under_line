@@ -17,7 +17,7 @@ final class BookSearchViewModel {
         enum Change {
             case replace
             case append(from: Int)
-            case reload(rows: [Int])
+            case update(rows: [Int])
         }
 
         // 전체 snapshot도 제공해 구독 재연결 시 안전하게 복원할 수 있다.
@@ -415,7 +415,7 @@ final class BookSearchViewModel {
                 changedRows.append(index)
             }
             if !changedRows.isEmpty {
-                updates.accept(.init(books: books, change: .reload(rows: changedRows)))
+                updates.accept(.init(books: books, change: .update(rows: changedRows)))
             }
         }
 
@@ -447,7 +447,7 @@ final class BookSearchViewModel {
                     changedRows.append(index)
                 }
                 if !changedRows.isEmpty {
-                    self.updates.accept(.init(books: books, change: .reload(rows: changedRows)))
+                    self.updates.accept(.init(books: books, change: .update(rows: changedRows)))
                 }
             }
             self.descriptionReady.accept(book.isbn13)
