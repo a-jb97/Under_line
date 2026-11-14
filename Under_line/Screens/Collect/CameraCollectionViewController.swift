@@ -87,15 +87,6 @@ final class CameraCollectionViewController: UIViewController {
         return v
     }()
 
-    private let scanGuideView: UIView = {
-        let v = UIView()
-        v.backgroundColor = UIColor(white: 1, alpha: 6.0 / 255)
-        v.layer.cornerRadius = 12
-        v.layer.borderWidth = 1.5
-        v.layer.borderColor = UIColor(white: 1, alpha: 64.0 / 255).cgColor
-        return v
-    }()
-
     private let scanInstructionLabel: UILabel = {
         let l = UILabel()
         l.text = "밑줄 칠 부분을 촬영해주세요"
@@ -166,7 +157,6 @@ final class CameraCollectionViewController: UIViewController {
         view.backgroundColor = UIColor(hex: "#1a1a1a")
         setupUI()
         setupConstraints()
-        addCornerMarkers()
         bindActions()
         requestCameraPermission()
     }
@@ -193,7 +183,6 @@ final class CameraCollectionViewController: UIViewController {
         bottomSectionView.addSubview(hintLabel)
 
         view.addSubview(cameraSectionView)
-        cameraSectionView.addSubview(scanGuideView)
         cameraSectionView.addSubview(scanInstructionLabel)
 
         SystemGlassButtonStyle.apply(to: flashButton, accessibilityLabel: "플래시")
@@ -238,17 +227,12 @@ final class CameraCollectionViewController: UIViewController {
             make.bottom.equalTo(bottomSectionView.snp.top)
         }
 
-        // Scan guide: cameraSectionView 기준 leading/trailing/top/bottom inset 40
-        let scanGuideInset: CGFloat = UIDevice.current.userInterfaceIdiom == .pad ? 100 : 48
-        scanGuideView.snp.makeConstraints { make in
-            make.leading.trailing.top.bottom.equalToSuperview().inset(scanGuideInset)
-        }
-
+        // 가이드 테두리 없이 기존 안내 문구 위치를 유지한다.
+        let instructionInset: CGFloat = UIDevice.current.userInterfaceIdiom == .pad ? 100 : 48
         scanInstructionLabel.snp.makeConstraints { make in
             make.centerX.equalToSuperview()
-            make.top.equalTo(scanGuideView.snp.bottom).offset(12)
+            make.top.equalTo(cameraSectionView.snp.bottom).offset(12 - instructionInset)
         }
-
 
         // Capture button: centered, 20pt from bottom section top
         captureButton.snp.makeConstraints { make in
@@ -277,44 +261,6 @@ final class CameraCollectionViewController: UIViewController {
             make.bottom.equalTo(view.safeAreaLayoutGuide).inset(40)
         }
     }
-
-    // MARK: - Corner Markers
-
-    private func addCornerMarkers() {
-        let len: CGFloat  = 28
-        let color = UIColor(white: 1, alpha: 0xAA / 255.0)
-        let width: CGFloat = 2.5
-
-        let configs: [(CornerMarkerView.Corner, (ConstraintMaker) -> Void)] = [
-            (.topLeft,     { [weak self] make in
-                guard let self else { return }
-                make.leading.top.equalTo(self.scanGuideView)
-            }),
-            (.topRight,    { [weak self] make in
-                guard let self else { return }
-                make.trailing.top.equalTo(self.scanGuideView)
-            }),
-            (.bottomLeft,  { [weak self] make in
-                guard let self else { return }
-                make.leading.bottom.equalTo(self.scanGuideView)
-            }),
-            (.bottomRight, { [weak self] make in
-                guard let self else { return }
-                make.trailing.bottom.equalTo(self.scanGuideView)
-            }),
-        ]
-
-        for (corner, constrain) in configs {
-            let marker = CornerMarkerView(corner: corner, length: len,
-                                          strokeColor: color, strokeWidth: width)
-            cameraSectionView.addSubview(marker)
-            marker.snp.makeConstraints { make in
-                make.size.equalTo(len)
-                constrain(make)
-            }
-        }
-    }
-
 
     // MARK: - Camera
 
@@ -535,58 +481,5 @@ extension CameraCollectionViewController: AVCapturePhotoCaptureDelegate {
             }
             self.present(markupVC, animated: true)
         }
-    }
-}
-
-// MARK: - CornerMarkerView
-
-private final class CornerMarkerView: UIView {
-
-    enum Corner { case topLeft, topRight, bottomLeft, bottomRight }
-
-    private let corner: Corner
-    private let markerLength: CGFloat
-    private let strokeColor: UIColor
-    private let strokeWidth: CGFloat
-
-    init(corner: Corner, length: CGFloat, strokeColor: UIColor, strokeWidth: CGFloat) {
-        self.corner       = corner
-        self.markerLength = length
-        self.strokeColor  = strokeColor
-        self.strokeWidth  = strokeWidth
-        super.init(frame: .zero)
-        backgroundColor = .clear
-    }
-
-    required init?(coder: NSCoder) { fatalError() }
-
-    override func draw(_ rect: CGRect) {
-        let l = markerLength
-        let path = UIBezierPath()
-
-        switch corner {
-        case .topLeft:
-            path.move(to: CGPoint(x: l, y: 0))
-            path.addLine(to: CGPoint(x: 0, y: 0))
-            path.addLine(to: CGPoint(x: 0, y: l))
-        case .topRight:
-            path.move(to: CGPoint(x: 0, y: 0))
-            path.addLine(to: CGPoint(x: l, y: 0))
-            path.addLine(to: CGPoint(x: l, y: l))
-        case .bottomLeft:
-            path.move(to: CGPoint(x: 0, y: 0))
-            path.addLine(to: CGPoint(x: 0, y: l))
-            path.addLine(to: CGPoint(x: l, y: l))
-        case .bottomRight:
-            path.move(to: CGPoint(x: l, y: 0))
-            path.addLine(to: CGPoint(x: l, y: l))
-            path.addLine(to: CGPoint(x: 0, y: l))
-        }
-
-        strokeColor.setStroke()
-        path.lineWidth      = strokeWidth
-        path.lineCapStyle   = .round
-        path.lineJoinStyle  = .round
-        path.stroke()
     }
 }
