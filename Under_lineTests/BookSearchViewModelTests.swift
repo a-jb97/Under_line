@@ -153,6 +153,75 @@ final class BookSearchViewModelTests: XCTestCase {
         XCTAssertTrue(h.repository.registrations.isEmpty)
     }
 
+    func test_wishlistTap_withoutExpansionSavesSupplementDescription() async throws {
+        let h = Harness()
+        h.appeared.onNext(())
+        await drain()
+        await drain()
+        let book = makeBooks(0..<1)[0]
+        h.repository.supplement = BookDetailMetadata(
+            isbn13: book.isbn13, title: "", author: "", publisher: "", publishDate: nil,
+            coverURL: nil, description: "정보나루 상세 책소개"
+        )
+
+        h.wishlistTap.onNext(book)
+        await drain()
+        await drain()
+
+        let saved = try XCTUnwrap(h.wishlistRepository.addedBooks.first)
+        XCTAssertEqual(h.repository.supplementISBNs, [book.isbn13])
+        XCTAssertEqual(saved.isbn13, book.isbn13)
+        XCTAssertEqual(saved.title, book.title)
+        XCTAssertEqual(saved.description, "정보나루 상세 책소개")
+        XCTAssertTrue(h.descriptionReadyISBNs.isEmpty)
+        XCTAssertEqual(h.wishlistState.savedISBNs, [book.isbn13])
+
+        h.wishlistTap.onNext(book)
+        await drain()
+        await drain()
+        XCTAssertEqual(h.repository.supplementISBNs, [book.isbn13])
+        XCTAssertEqual(h.wishlistRepository.deletedISBNs, [book.isbn13])
+    }
+
+    func test_wishlistTap_missingOrFailedSupplementSavesOriginalDescription() async {
+        for fails in [false, true] {
+            let h = Harness()
+            h.appeared.onNext(())
+            await drain()
+            await drain()
+            let book = makeBooks(0..<1)[0].mergingListMetadata(from: BookListMetadata(
+                isbn13: "0", coverURL: nil, description: "카카오 책소개"
+            ))
+            h.repository.supplementError = fails ? StubError.failed : nil
+
+            h.wishlistTap.onNext(book)
+            await drain()
+            await drain()
+
+            XCTAssertEqual(h.repository.supplementISBNs, [book.isbn13])
+            XCTAssertEqual(h.wishlistRepository.addedBooks.first?.description, "카카오 책소개")
+            XCTAssertEqual(h.wishlistState.savedISBNs, [book.isbn13])
+            XCTAssertTrue(h.errors.isEmpty)
+        }
+    }
+
+    func test_wishlistTap_cancelledSupplementDoesNotSave() async {
+        let h = Harness()
+        h.appeared.onNext(())
+        await drain()
+        await drain()
+        h.repository.supplementError = CancellationError()
+
+        h.wishlistTap.onNext(makeBooks(0..<1)[0])
+        await drain()
+        await drain()
+
+        XCTAssertTrue(h.wishlistRepository.addedBooks.isEmpty)
+        XCTAssertTrue(h.wishlistState.savedISBNs.isEmpty)
+        XCTAssertTrue(h.wishlistState.pendingISBNs.isEmpty)
+        XCTAssertTrue(h.wishlistMessages.isEmpty)
+    }
+
     func test_wishlistTap_ignoresSameISBNWhileAllowingAnotherBook() async {
         let h = Harness()
         h.appeared.onNext(())
@@ -1077,6 +1146,7 @@ private final class ControlledRepository: BookRepositoryProtocol {
     var holdsRegistrations = false
     var supplement: BookDetailMetadata?
     var supplementError: Error?
+    var supplementISBNs: [String] = []
 
     private func fetch(page: Int) async throws -> BookSearchPage {
         var pending: PendingRequest?
@@ -1107,6 +1177,7 @@ private final class ControlledRepository: BookRepositoryProtocol {
         }
     }
     func fetchBookSupplement(isbn13: String) async throws -> BookDetailMetadata? {
+        supplementISBNs.append(isbn13)
         onSupplementRequested?()
         if let supplementError { throw supplementError }
         return supplement

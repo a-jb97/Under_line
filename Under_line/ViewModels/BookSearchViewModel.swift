@@ -230,9 +230,19 @@ final class BookSearchViewModel {
         state.pendingISBNs.insert(isbn13)
         wishlistState.accept(state)
 
-        rxAsync { [wishlistRepository] in
+        rxAsync { [repository, wishlistRepository] in
             if shouldSave {
-                try await wishlistRepository.addBook(book)
+                let detail: BookDetailMetadata?
+                do {
+                    detail = try await repository.fetchBookSupplement(isbn13: isbn13)
+                } catch is CancellationError {
+                    throw CancellationError()
+                } catch {
+                    detail = nil
+                }
+                try Task.checkCancellation()
+                let enriched = detail.map { book.mergingDetailMetadata(from: $0) } ?? book
+                try await wishlistRepository.addBook(enriched)
             } else {
                 try await wishlistRepository.deleteBook(isbn13: isbn13)
             }
