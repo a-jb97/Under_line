@@ -91,6 +91,10 @@ enum KakaoBookSearchRequestBuilder {
 }
 
 final class KakaoBookSearchService: BookSearchServiceProtocol {
+    private enum RequestSource {
+        case search, isbnEnrichment
+    }
+
     private let apiKey: String
     private let session: Session
     private let decoder: JSONDecoder
@@ -147,13 +151,17 @@ final class KakaoBookSearchService: BookSearchServiceProtocol {
 
     private func execute(
         _ request: URLRequest,
-        source: BookSearchPerformance.Source,
+        source: RequestSource,
         performanceID: UUID = UUID()
     ) async throws -> KakaoBookSearchResponse {
         #if DEBUG
+        let performanceSource: BookSearchPerformance.Source = switch source {
+        case .search: .search
+        case .isbnEnrichment: .isbnEnrichment
+        }
         let responseSpan = BookSearchPerformance.Span(
             .responseDecoded,
-            source: source,
+            source: performanceSource,
             id: performanceID
         )
         defer { responseSpan.finish(Task.isCancelled ? .cancelled : .failed) }
