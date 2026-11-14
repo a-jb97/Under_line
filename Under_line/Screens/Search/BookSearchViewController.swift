@@ -9,7 +9,6 @@ import UIKit
 import SnapKit
 import RxSwift
 import RxCocoa
-import Kingfisher
 import Toast
 
 final class BookSearchViewController: UIViewController {

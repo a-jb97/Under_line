@@ -224,9 +224,6 @@ private final class FormFieldView: UIView {
         return tf
     }()
 
-    // 날짜 필드용
-    private var datePicker: UIDatePicker?
-
     init(label: String, keyboardType: UIKeyboardType = .default, placeholder: String = "") {
         super.init(frame: .zero)
         labelView.text = label

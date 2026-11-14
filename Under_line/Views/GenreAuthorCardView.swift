@@ -505,8 +505,4 @@ final class DonutChartView: UIView {
         combined.append(unitAttr)
         centerLabel.attributedText = combined
     }
-
-    private func pointOn(center: CGPoint, radius: CGFloat, angle: CGFloat) -> CGPoint {
-        CGPoint(x: center.x + radius * cos(angle), y: center.y + radius * sin(angle))
-    }
 }
