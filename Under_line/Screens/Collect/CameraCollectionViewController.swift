@@ -66,7 +66,7 @@ final class CameraCollectionViewController: UIViewController {
         config.attributedTitle = AttributedString(
             "직접 수집",
             attributes: AttributeContainer([
-                .font: UIFont(name: "GowunBatang-Bold", size: 12)
+                .font: UIFont(name: "Goyangilsan R", size: 12)
                     ?? UIFont.systemFont(ofSize: 12, weight: .semibold),
                 .foregroundColor: UIColor.appPrimary,
             ])
@@ -130,7 +130,7 @@ final class CameraCollectionViewController: UIViewController {
         config.attributedTitle = AttributedString(
             "수집하기",
             attributes: AttributeContainer([
-                .font: UIFont(name: "GowunBatang-Bold", size: 18)
+                .font: UIFont(name: "Goyangilsan R", size: 18)
                     ?? UIFont.systemFont(ofSize: 18, weight: .semibold),
             ])
         )

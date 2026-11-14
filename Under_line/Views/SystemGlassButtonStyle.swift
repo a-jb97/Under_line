@@ -14,7 +14,8 @@ enum SystemGlassButtonStyle {
         let attributedTitle = previous?.attributedTitle
         let foreground = previous?.baseForegroundColor
             ?? (image == nil ? button.titleColor(for: .normal) : button.tintColor)
-        let font = button.titleLabel?.font ?? .systemFont(ofSize: 14, weight: .semibold)
+        let font = button.titleLabel?.font ?? .systemFont(ofSize: 14)
+        let previousTransformer = previous?.titleTextAttributesTransformer
 
         var configuration: UIButton.Configuration
         if #available(iOS 26.0, *) {
@@ -33,14 +34,14 @@ enum SystemGlassButtonStyle {
         configuration.contentInsets = title == nil && attributedTitle == nil
             ? .zero
             : NSDirectionalEdgeInsets(top: 8, leading: 12, bottom: 8, trailing: 12)
-        if let transformer = previous?.titleTextAttributesTransformer {
-            configuration.titleTextAttributesTransformer = transformer
-        } else if attributedTitle == nil {
-            configuration.titleTextAttributesTransformer = UIConfigurationTextAttributesTransformer { attributes in
-                var attributes = attributes
-                attributes.font = font
-                return attributes
-            }
+        configuration.titleTextAttributesTransformer = UIConfigurationTextAttributesTransformer { attributes in
+            var attributes = previousTransformer?(attributes) ?? attributes
+            let pointSize = previousTransformer != nil || attributedTitle != nil
+                ? attributes.font?.pointSize ?? font.pointSize
+                : font.pointSize
+            attributes.font = UIFont(name: "GoyangIlsan R", size: pointSize)
+                ?? .systemFont(ofSize: pointSize)
+            return attributes
         }
 
         button.setImage(nil, for: .normal)
@@ -62,7 +63,7 @@ enum SystemGlassButtonStyle {
         configuration?.title = editing ? "완료" : nil
         configuration?.titleTextAttributesTransformer = UIConfigurationTextAttributesTransformer { attributes in
             var attributes = attributes
-            attributes.font = .systemFont(ofSize: 14, weight: .semibold)
+            attributes.font = UIFont(name: "GoyangIlsan R", size: 14) ?? .systemFont(ofSize: 14)
             return attributes
         }
         button.configuration = configuration
