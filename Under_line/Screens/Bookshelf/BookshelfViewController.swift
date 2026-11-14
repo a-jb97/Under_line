@@ -75,15 +75,23 @@ final class BookshelfViewController: UIViewController {
 
     // MARK: - UI Components
 
-    // 커스텀 제목을 시스템 내비게이션 바의 왼쪽에 배치한다.
-    private let appTitleLabel: UILabel = {
-        let label = UILabel()
-        label.text = "밑줄"
-        label.font = UIFont(name: "GowunBatang-Bold", size: 34)
+    // 기존 제목의 표시 영역과 내비게이션 바 왼쪽 위치를 유지한다.
+    private let appLogoView: UIImageView = {
+        let titleLabel = UILabel()
+        titleLabel.text = "밑줄"
+        titleLabel.font = UIFont(name: "GowunBatang-Bold", size: 34)
             ?? .systemFont(ofSize: 34, weight: .bold)
-        label.textColor = .accent
-        label.accessibilityTraits.insert(.header)
-        return label
+        let titleSize = titleLabel.intrinsicContentSize
+
+        let imageView = UIImageView(image: UIImage(named: "Under_line_Logo"))
+        imageView.contentMode = .scaleAspectFit
+        imageView.snp.makeConstraints { make in
+            make.size.equalTo(titleSize)
+        }
+        imageView.isAccessibilityElement = true
+        imageView.accessibilityLabel = "밑줄"
+        imageView.accessibilityTraits = [.image, .header]
+        return imageView
     }()
 
     private let sortButton = SystemNavigationStyle.item(
@@ -201,7 +209,7 @@ final class BookshelfViewController: UIViewController {
 
     private func setupUI() {
         SystemNavigationStyle.configure(self, title: "")
-        let titleItem = UIBarButtonItem(customView: appTitleLabel)
+        let titleItem = UIBarButtonItem(customView: appLogoView)
         if #available(iOS 26.0, *) {
             titleItem.hidesSharedBackground = true
         }
