@@ -100,8 +100,8 @@ final class BookSearchViewController: UIViewController {
     private let sheetTitleLabel: UILabel = {
         let l = UILabel()
         l.text = "도서 검색"
-        l.font = UIFont(name: "GowunBatang-Bold", size: 22)
-            ?? .systemFont(ofSize: 22, weight: .semibold)
+        l.font = UIFont(name: "GowunBatang-Bold", size: 20)
+            ?? .systemFont(ofSize: 20, weight: .semibold)
         l.textColor = UIColor(hex: "#190e0b")
         return l
     }()
