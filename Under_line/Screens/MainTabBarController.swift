@@ -40,7 +40,7 @@ final class MainTabBarController: UITabBarController {
             selectedImage: UIImage(systemName: "books.vertical.fill")
         )
         let booksNav = UINavigationController(rootViewController: booksVC)
-        booksNav.setNavigationBarHidden(true, animated: false)
+        SystemNavigationStyle.configure(booksNav)
         booksNav.tabBarItem = booksVC.tabBarItem
 
         let statsVC = StatisticsViewController()
@@ -50,7 +50,7 @@ final class MainTabBarController: UITabBarController {
             selectedImage: UIImage(systemName: "chart.pie.fill")
         )
         let statsNav = UINavigationController(rootViewController: statsVC)
-        statsNav.setNavigationBarHidden(true, animated: false)
+        SystemNavigationStyle.configure(statsNav)
         statsNav.tabBarItem = statsVC.tabBarItem
 
         let settingsVC = SettingsViewController()
@@ -60,7 +60,11 @@ final class MainTabBarController: UITabBarController {
             selectedImage: UIImage(systemName: "gearshape.fill")
         )
 
-        viewControllers = [booksNav, statsNav, settingsVC]
+        let settingsNav = UINavigationController(rootViewController: settingsVC)
+        SystemNavigationStyle.configure(settingsNav)
+        settingsNav.tabBarItem = settingsVC.tabBarItem
+
+        viewControllers = [booksNav, statsNav, settingsNav]
         statsVC.prefetchData()
     }
 

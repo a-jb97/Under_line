@@ -24,7 +24,6 @@ final class BookDetailViewController: UIViewController {
     private let deleteSentenceRelay    = PublishRelay<Sentence>()
 
     private var sentences: [Sentence] = []
-    private var highlightLayers: [(view: UIView, layer: CAGradientLayer)] = []
     private var isEditMode = false
     private var currentItemPage: Int?
     private var latestCurrentPage: Int?
@@ -51,32 +50,10 @@ final class BookDetailViewController: UIViewController {
     // MARK: - UI Components
 
     // Header
-    private lazy var backButton: UIButton = {
-        let btn = UIButton(type: .system)
-        let cfg = UIImage.SymbolConfiguration(pointSize: 17, weight: .regular)
-        btn.setImage(UIImage(systemName: "chevron.left", withConfiguration: cfg), for: .normal)
-        btn.tintColor = UIColor.accent
-        return btn
-    }()
 
-    private let titleLabel: UILabel = {
-        let l = UILabel()
-        l.text = "나의 밑줄"
-        l.font = UIFont(name: "GowunBatang-Bold", size: 34)
-            ?? .systemFont(ofSize: 34, weight: .bold)
-        l.textColor = UIColor.accent
-        return l
-    }()
-
-    private lazy var timerButton: UIButton = {
-        let btn = UIButton(type: .system)
-        let cfg = UIImage.SymbolConfiguration(pointSize: 16, weight: .regular)
-        btn.setImage(UIImage(systemName: "timer", withConfiguration: cfg), for: .normal)
-        btn.tintColor = UIColor.appPrimary
-        btn.layer.cornerRadius = 20
-        btn.clipsToBounds = true
-        return btn
-    }()
+    private let timerButton = SystemNavigationStyle.item(
+        image: "timer", label: "독서 타이머", identifier: "readingTimerButton", tint: .appPrimary
+    )
 
     // Quote Card
     private let quoteCard: UIView = {
@@ -199,9 +176,7 @@ final class BookDetailViewController: UIViewController {
         let btn = UIButton(type: .system)
         let cfg = UIImage.SymbolConfiguration(pointSize: 14, weight: .medium)
         btn.setImage(UIImage(systemName: "square.and.pencil", withConfiguration: cfg), for: .normal)
-        btn.tintColor = UIColor.walnut
-        btn.layer.cornerRadius = 26
-        btn.clipsToBounds = true
+        btn.tintColor = UIColor.appPrimary
         return btn
     }()
 
@@ -222,8 +197,6 @@ final class BookDetailViewController: UIViewController {
         }
         config.contentInsets = NSDirectionalEdgeInsets(top: 0, leading: 16, bottom: 0, trailing: 16)
         let btn = UIButton(configuration: config)
-        btn.layer.cornerRadius = 26
-        btn.clipsToBounds = true
         return btn
     }()
 
@@ -232,9 +205,7 @@ final class BookDetailViewController: UIViewController {
         let btn = UIButton(type: .system)
         let cfg = UIImage.SymbolConfiguration(pointSize: 14, weight: .medium)
         btn.setImage(UIImage(systemName: "plus", withConfiguration: cfg), for: .normal)
-        btn.tintColor = UIColor.walnut
-        btn.layer.cornerRadius = 26
-        btn.clipsToBounds = true
+        btn.tintColor = UIColor.appPrimary
         return btn
     }()
 
@@ -255,8 +226,6 @@ final class BookDetailViewController: UIViewController {
 
     override func viewWillAppear(_ animated: Bool) {
         super.viewWillAppear(animated)
-        navigationController?.interactivePopGestureRecognizer?.delegate = nil
-        navigationController?.interactivePopGestureRecognizer?.isEnabled = true
         viewWillAppearRelay.accept(())
     }
 
@@ -265,24 +234,14 @@ final class BookDetailViewController: UIViewController {
         showTutorialIfNeeded()
     }
 
-    override func viewDidLayoutSubviews() {
-        super.viewDidLayoutSubviews()
-        for (view, gradient) in highlightLayers {
-            gradient.frame = view.bounds
-        }
-    }
-
     override var preferredStatusBarStyle: UIStatusBarStyle { .darkContent }
 
     // MARK: - Setup
 
     private func setupUI() {
+        SystemNavigationStyle.configure(self, title: "나의 밑줄")
+        navigationItem.rightBarButtonItem = timerButton
         view.backgroundColor = UIColor.background
-
-        // Header
-        view.addSubview(backButton)
-        view.addSubview(titleLabel)
-        view.addSubview(timerButton)
 
         // Scroll container
         view.addSubview(scrollView)
@@ -313,34 +272,15 @@ final class BookDetailViewController: UIViewController {
         view.addSubview(sentenceUpdateContainer)
         sentenceUpdateContainer.addSubview(sentenceUpdateButton)
 
-        applyFabGlassStyle(to: timerButton,          cornerRadius: 20)
-        applyFabGlassStyle(to: fabButton,            cornerRadius: 26)
-        applyFabGlassStyle(to: sentenceEditButton,   cornerRadius: 26)
-        applyFabGlassStyle(to: sentenceUpdateButton, cornerRadius: 26)
+        SystemGlassButtonStyle.apply(to: fabButton, accessibilityLabel: "밑줄 추가")
+        SystemGlassButtonStyle.apply(to: sentenceEditButton, accessibilityLabel: "밑줄 편집")
+        SystemGlassButtonStyle.apply(to: sentenceUpdateButton, accessibilityLabel: "밑줄 수정")
     }
 
     private func setupConstraints() {
-        // Header (design: 헤더 높이 ≈ 62, top = safeArea)
-        backButton.snp.makeConstraints { make in
-            make.leading.equalToSuperview().inset(24)
-            make.top.equalTo(view.safeAreaLayoutGuide).offset(17)
-            make.size.equalTo(28)
-        }
-
-        titleLabel.snp.makeConstraints { make in
-            make.leading.equalTo(backButton.snp.trailing).offset(4)
-            make.centerY.equalTo(backButton)
-        }
-
-        timerButton.snp.makeConstraints { make in
-            make.trailing.equalToSuperview().inset(24)
-            make.centerY.equalTo(backButton)
-            make.size.equalTo(40)
-        }
-
         // Scroll container
         scrollView.snp.makeConstraints { make in
-            make.top.equalTo(titleLabel.snp.bottom).offset(8)
+            make.top.equalTo(view.safeAreaLayoutGuide)
             make.leading.trailing.equalToSuperview()
             make.bottom.equalTo(view.safeAreaLayoutGuide)
         }
@@ -430,19 +370,20 @@ final class BookDetailViewController: UIViewController {
 
         // FAB (52×52, trailing 24, bottom safeArea 16)
         fabButton.snp.makeConstraints { make in
-            make.trailing.equalToSuperview().inset(24)
+            make.trailing.equalTo(view.safeAreaLayoutGuide).inset(24)
             make.bottom.equalTo(view.safeAreaLayoutGuide).inset(16)
             make.size.equalTo(52)
         }
 
         sentenceEditButton.snp.makeConstraints { make in
-            make.leading.equalToSuperview().inset(24)
+            make.leading.equalTo(view.safeAreaLayoutGuide).offset(24)
             make.centerY.equalTo(fabButton)
             make.size.equalTo(52)
         }
 
         sentenceUpdateContainer.snp.makeConstraints { make in
             make.leading.equalTo(sentenceEditButton.snp.trailing).offset(12)
+            make.trailing.lessThanOrEqualTo(fabButton.snp.leading).offset(-12)
             make.centerY.equalTo(sentenceEditButton)
             make.height.equalTo(52)
         }
@@ -559,16 +500,7 @@ final class BookDetailViewController: UIViewController {
 
     private func setEditMode(_ editing: Bool) {
         isEditMode = editing
-        if editing {
-            sentenceEditButton.setImage(nil, for: .normal)
-            sentenceEditButton.setTitle("완료", for: .normal)
-            sentenceEditButton.setTitleColor(UIColor.walnut, for: .normal)
-            sentenceEditButton.titleLabel?.font = .systemFont(ofSize: 14, weight: .semibold)
-        } else {
-            let cfg = UIImage.SymbolConfiguration(pointSize: 14, weight: .medium)
-            sentenceEditButton.setImage(UIImage(systemName: "square.and.pencil", withConfiguration: cfg), for: .normal)
-            sentenceEditButton.setTitle(nil, for: .normal)
-        }
+        SystemGlassButtonStyle.setEditing(editing, on: sentenceEditButton, accessibilityLabel: "밑줄 편집")
         sentenceUpdateContainer.isHidden = !editing
         renderQuotePages()
     }
@@ -781,78 +713,6 @@ final class BookDetailViewController: UIViewController {
         return page
     }
 
-    // MARK: - FAB Glass Style (BookshelfViewController와 동일한 스펙)
-
-    private func applyFabGlassStyle(to button: UIButton, cornerRadius: CGFloat) {
-        guard let superview = button.superview else { return }
-
-        let shadowView = UIView()
-        shadowView.isUserInteractionEnabled = false
-        shadowView.layer.cornerRadius = cornerRadius
-        shadowView.backgroundColor = .white
-        shadowView.layer.shadowColor   = UIColor.black.cgColor
-        shadowView.layer.shadowOpacity = Float(CGFloat(0x18) / 255)
-        shadowView.layer.shadowRadius  = 8
-        shadowView.layer.shadowOffset  = CGSize(width: 0, height: 6)
-        superview.insertSubview(shadowView, belowSubview: button)
-        shadowView.snp.makeConstraints { $0.edges.equalTo(button) }
-
-        let glassContainer = UIView()
-        glassContainer.isUserInteractionEnabled = false
-        glassContainer.layer.cornerRadius = cornerRadius
-        glassContainer.clipsToBounds = true
-        glassContainer.layer.borderWidth = 1
-        glassContainer.layer.borderColor = UIColor(white: 1, alpha: CGFloat(0x70) / 255).cgColor
-        superview.insertSubview(glassContainer, belowSubview: button)
-        glassContainer.snp.makeConstraints { $0.edges.equalTo(button) }
-        superview.insertSubview(shadowView, belowSubview: glassContainer)
-
-        let blurView = UIVisualEffectView(effect: UIBlurEffect(style: .systemUltraThinMaterial))
-        blurView.isUserInteractionEnabled = false
-        glassContainer.addSubview(blurView)
-        blurView.snp.makeConstraints { $0.edges.equalToSuperview() }
-
-        let solidTint = UIView()
-        solidTint.isUserInteractionEnabled = false
-        solidTint.backgroundColor = UIColor(hex: "#832C11", alpha: CGFloat(0x24) / 255)
-        blurView.contentView.addSubview(solidTint)
-        solidTint.snp.makeConstraints { $0.edges.equalToSuperview() }
-
-        let topSpecular = UIView()
-        topSpecular.isUserInteractionEnabled = false
-        blurView.contentView.addSubview(topSpecular)
-        topSpecular.snp.makeConstraints { $0.edges.equalToSuperview() }
-        let topGrad = CAGradientLayer()
-        topGrad.colors = [
-            UIColor(white: 1, alpha: CGFloat(0x50) / 255).cgColor,
-            UIColor(white: 1, alpha: CGFloat(0x10) / 255).cgColor,
-            UIColor.clear.cgColor,
-        ]
-        topGrad.locations  = [0, 0.45, 1.0]
-        topGrad.startPoint = CGPoint(x: 0.5, y: 0)
-        topGrad.endPoint   = CGPoint(x: 0.5, y: 1)
-        topSpecular.layer.addSublayer(topGrad)
-        highlightLayers.append((topSpecular, topGrad))
-
-        let bottomWarm = UIView()
-        bottomWarm.isUserInteractionEnabled = false
-        blurView.contentView.addSubview(bottomWarm)
-        bottomWarm.snp.makeConstraints { $0.edges.equalToSuperview() }
-        let bottomGrad = CAGradientLayer()
-        bottomGrad.colors = [
-            UIColor(hex: "#832C11", alpha: CGFloat(0x20) / 255).cgColor,
-            UIColor(hex: "#832C11", alpha: CGFloat(0x0C) / 255).cgColor,
-            UIColor.clear.cgColor,
-        ]
-        bottomGrad.locations  = [0, 0.5, 1.0]
-        bottomGrad.startPoint = CGPoint(x: 0.5, y: 1)
-        bottomGrad.endPoint   = CGPoint(x: 0.5, y: 0)
-        bottomWarm.layer.addSublayer(bottomGrad)
-        highlightLayers.append((bottomWarm, bottomGrad))
-
-        button.backgroundColor = .clear
-    }
-    
     private func loadSentences() {
         viewWillAppearRelay.accept(())
     }
@@ -860,11 +720,6 @@ final class BookDetailViewController: UIViewController {
     // MARK: - Bindings
 
     private func bindActions() {
-        backButton.rx.tap
-            .subscribe(onNext: { [weak self] in
-                self?.navigationController?.popViewController(animated: true)
-            })
-            .disposed(by: disposeBag)
 
         fabButton.rx.tap
             .subscribe(onNext: { [weak self] in
@@ -1008,21 +863,30 @@ extension BookDetailViewController {
 
         let steps: [TutorialStep] = [
             TutorialStep(
-                targetFrame: fabButton.convert(fabButton.bounds, to: nil),
-                message: "카메라 OCR이나 직접 입력으로\n밑줄을 수집해보세요!"
+                targetFrame: .zero,
+                message: "카메라 OCR이나 직접 입력으로\n밑줄을 수집해보세요!",
+                targetFrameProvider: { [weak self] in
+                    guard let target = self?.fabButton else { return .zero }
+                    return target.convert(target.bounds, to: nil)
+                }
             ),
             TutorialStep(
-                targetFrame: quoteCard.convert(quoteCard.bounds, to: nil),
-                message: "카드를 탭하면 앞뒷면이 뒤집혀요\n앞면은 문장, 뒷면은 메모예요"
+                targetFrame: .zero,
+                message: "카드를 탭하면 앞뒷면이 뒤집혀요\n앞면은 문장, 뒷면은 메모예요",
+                targetFrameProvider: { [weak self] in
+                    guard let target = self?.quoteCard else { return .zero }
+                    return target.convert(target.bounds, to: nil)
+                }
             ),
             TutorialStep(
-                targetFrame: quoteCard.convert(quoteCard.bounds, to: nil),
-                message: "카드를 길게 탭하면\n이미지 카드로 만들어 저장할 수 있어요"
+                targetFrame: .zero,
+                message: "카드를 길게 탭하면\n이미지 카드로 만들어 저장할 수 있어요",
+                targetFrameProvider: { [weak self] in
+                    guard let target = self?.quoteCard else { return .zero }
+                    return target.convert(target.bounds, to: nil)
+                }
             ),
-            TutorialStep(
-                targetFrame: timerButton.convert(timerButton.bounds, to: nil),
-                message: "독서 시간을 기록하고\n통계를 확인하세요"
-            ),
+            TutorialSupport.navigationStep(on: self, message: "상단 타이머 아이콘에서 독서 시간을 기록하고\n통계를 확인하세요"),
         ]
 
         let tutorialVC = TutorialOverlayViewController()

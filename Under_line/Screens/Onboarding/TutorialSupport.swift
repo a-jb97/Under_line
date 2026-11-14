@@ -20,6 +20,14 @@ enum TutorialSupport {
         controller.present(overlay, animated: true)
     }
 
+    static func navigationStep(on controller: UIViewController, message: String) -> TutorialStep {
+        TutorialStep(targetFrame: .zero, message: message, targetFrameProvider: { [weak controller] in
+            guard let bar = controller?.navigationController?.navigationBar,
+                  bar.window != nil, !bar.isHidden else { return .zero }
+            return bar.convert(bar.bounds, to: nil)
+        })
+    }
+
     static func target(in view: UIView, identifier: String) -> UIView? {
         if view.accessibilityIdentifier == identifier { return view }
         return view.subviews.lazy.compactMap { target(in: $0, identifier: identifier) }.first
