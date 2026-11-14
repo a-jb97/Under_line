@@ -158,7 +158,7 @@ final class BookshelfViewController: UIViewController {
     private lazy var deleteAllButton: UIButton = {
         let btn = UIButton(type: .system)
         btn.setTitle("전부 꺼내기", for: .normal)
-        btn.setTitleColor(UIColor.walnut, for: .normal)
+        btn.setTitleColor(UIColor.systemRed, for: .normal)
         btn.titleLabel?.font = .systemFont(ofSize: 13, weight: .semibold)
         return btn
     }()

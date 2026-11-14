@@ -26,8 +26,11 @@ enum SystemGlassButtonStyle {
         configuration.cornerStyle = .capsule
         configuration.image = icon(image)
         configuration.imageColorTransformer = UIConfigurationColorTransformer { _ in .appPrimary }
-        configuration.title = title
-        configuration.attributedTitle = attributedTitle
+        if let attributedTitle {
+            configuration.attributedTitle = attributedTitle
+        } else {
+            configuration.title = title
+        }
         configuration.baseForegroundColor = foreground
         configuration.imagePlacement = previous?.imagePlacement ?? .leading
         configuration.imagePadding = previous?.imagePadding ?? 0
