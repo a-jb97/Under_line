@@ -73,9 +73,12 @@ final class WishlistViewController: UIViewController, UITableViewDataSource, SFS
         return stack
     }()
 
-    init(repository: WishlistRepositoryProtocol = AppContainer.shared.wishlistRepository,
-         purchaseService: BookPurchaseServiceProtocol = AppContainer.shared.bookPurchaseService) {
-        viewModel = WishlistViewModel(repository: repository, purchaseService: purchaseService)
+    init(repository: WishlistRepositoryProtocol? = nil,
+         purchaseService: BookPurchaseServiceProtocol? = nil) {
+        viewModel = WishlistViewModel(
+            repository: repository ?? AppContainer.shared.wishlistRepository,
+            purchaseService: purchaseService
+        )
         super.init(nibName: nil, bundle: nil)
     }
 
