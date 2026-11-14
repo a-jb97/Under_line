@@ -189,10 +189,25 @@ final class BookSearchViewController: UIViewController {
     }
 
     private func showWishlistTutorial() {
-        guard TutorialSupport.target(in: view, identifier: "wishlistButton") != nil else { return }
+        guard isScreenVisible, view.window != nil, presentedViewController == nil,
+              !UserDefaults.standard.bool(forKey: "tutorial.searchWishlist"),
+              tableView.numberOfSections > 0 else { return }
+        let rowCount = tableView.numberOfRows(inSection: 0)
+        guard rowCount > 0 else { return }
+
+        // 셀의 뷰 계층 순서 대신 세 번째 도서의 하트를 예시로 사용한다.
+        let indexPath = IndexPath(row: min(2, rowCount - 1), section: 0)
+        tableView.layoutIfNeeded()
+        if !tableView.bounds.contains(tableView.rectForRow(at: indexPath)) {
+            tableView.scrollToRow(at: indexPath, at: .middle, animated: false)
+            tableView.layoutIfNeeded()
+        }
+        guard let cell = tableView.cellForRow(at: indexPath),
+              TutorialSupport.target(in: cell, identifier: "wishlistButton") != nil else { return }
         TutorialSupport.show(on: self, key: "tutorial.searchWishlist", steps: [
             TutorialStep(targetFrame: .zero, message: "하트를 눌러 읽고 싶은 책을\n위시리스트에 담아보세요", targetFrameProvider: { [weak self] in
-                guard let self, let target = TutorialSupport.target(in: self.view, identifier: "wishlistButton") else { return .zero }
+                guard let self, let cell = self.tableView.cellForRow(at: indexPath),
+                      let target = TutorialSupport.target(in: cell, identifier: "wishlistButton") else { return .zero }
                 return target.convert(target.bounds, to: nil)
             })
         ])
