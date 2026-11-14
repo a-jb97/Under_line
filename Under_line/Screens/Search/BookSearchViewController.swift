@@ -195,7 +195,7 @@ final class BookSearchViewController: UIViewController {
         let rowCount = tableView.numberOfRows(inSection: 0)
         guard rowCount > 0 else { return }
 
-        // 셀의 뷰 계층 순서 대신 세 번째 도서의 하트를 예시로 사용한다.
+        // 셀의 뷰 계층 순서 대신 세 번째 도서의 버튼을 예시로 사용한다.
         let indexPath = IndexPath(row: min(2, rowCount - 1), section: 0)
         tableView.layoutIfNeeded()
         if !tableView.bounds.contains(tableView.rectForRow(at: indexPath)) {
@@ -203,8 +203,14 @@ final class BookSearchViewController: UIViewController {
             tableView.layoutIfNeeded()
         }
         guard let cell = tableView.cellForRow(at: indexPath),
+              TutorialSupport.target(in: cell, identifier: "registerBookButton") != nil,
               TutorialSupport.target(in: cell, identifier: "wishlistButton") != nil else { return }
         TutorialSupport.show(on: self, key: "tutorial.searchWishlist", steps: [
+            TutorialStep(targetFrame: .zero, message: "책장 아이콘을 누르면\n책장에 도서가 등록돼요", targetFrameProvider: { [weak self] in
+                guard let self, let cell = self.tableView.cellForRow(at: indexPath),
+                      let target = TutorialSupport.target(in: cell, identifier: "registerBookButton") else { return .zero }
+                return target.convert(target.bounds, to: nil)
+            }),
             TutorialStep(targetFrame: .zero, message: "하트를 눌러 읽고 싶은 책을\n위시리스트에 담아보세요", targetFrameProvider: { [weak self] in
                 guard let self, let cell = self.tableView.cellForRow(at: indexPath),
                       let target = TutorialSupport.target(in: cell, identifier: "wishlistButton") else { return .zero }
