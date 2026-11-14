@@ -28,24 +28,6 @@ final class WishlistViewController: UIViewController, UITableViewDataSource, SFS
     private var items: [WishlistItem] = []
     private var expandedISBN: String?
 
-    private let headerView = UIView()
-    private let backButton: UIButton = {
-        let button = UIButton(type: .system)
-        button.setImage(UIImage(systemName: "chevron.left"), for: .normal)
-        button.tintColor = UIColor.accent
-        button.accessibilityLabel = "뒤로가기"
-        button.accessibilityIdentifier = "wishlistBackButton"
-        return button
-    }()
-    private let titleLabel: UILabel = {
-        let label = UILabel()
-        label.text = "도서 위시리스트"
-        label.font = UIFont(name: "GowunBatang-Bold", size: 28) ?? .boldSystemFont(ofSize: 28)
-        label.textColor = UIColor.accent
-        label.adjustsFontSizeToFitWidth = true
-        label.minimumScaleFactor = 0.7
-        return label
-    }()
     private let searchBar = BookSearchBarView()
     private let tableView: UITableView = {
         let table = UITableView()
@@ -165,29 +147,11 @@ final class WishlistViewController: UIViewController, UITableViewDataSource, SFS
     }
 
     private func setupUI() {
+        SystemNavigationStyle.configure(self, title: "도서 위시리스트")
         view.backgroundColor = UIColor.background
-        // Add header last so expanding row shadows stay underneath it.
-        [tableView, loadingIndicator, statusStack, headerView, searchBar].forEach { view.addSubview($0) }
-        headerView.backgroundColor = UIColor.background
-        headerView.addSubview(backButton)
-        headerView.addSubview(titleLabel)
-        headerView.snp.makeConstraints { make in
-            make.top.equalTo(view.safeAreaLayoutGuide)
-            make.leading.trailing.equalToSuperview()
-            make.height.equalTo(62)
-        }
-        backButton.snp.makeConstraints { make in
-            make.leading.equalToSuperview().offset(12)
-            make.centerY.equalToSuperview()
-            make.size.equalTo(44)
-        }
-        titleLabel.snp.makeConstraints { make in
-            make.leading.equalTo(backButton.snp.trailing).offset(4)
-            make.trailing.lessThanOrEqualToSuperview().inset(24)
-            make.centerY.equalToSuperview()
-        }
+        [tableView, loadingIndicator, statusStack, searchBar].forEach { view.addSubview($0) }
         searchBar.snp.makeConstraints { make in
-            make.top.equalTo(headerView.snp.bottom)
+            make.top.equalTo(view.safeAreaLayoutGuide).offset(8)
             make.leading.trailing.equalToSuperview().inset(24)
             make.height.equalTo(48)
         }
@@ -232,9 +196,6 @@ final class WishlistViewController: UIViewController, UITableViewDataSource, SFS
             style.backgroundColor = UIColor.appPrimary.withAlphaComponent(0.9)
             style.messageFont = UIFont(name: "GowunBatang-Regular", size: 14) ?? .systemFont(ofSize: 14)
             self?.view.makeToast(message, duration: 1.2, position: .center, style: style)
-        }).disposed(by: disposeBag)
-        backButton.rx.tap.subscribe(onNext: { [weak self] in
-            self?.navigationController?.popViewController(animated: true)
         }).disposed(by: disposeBag)
         searchBar.textField.rx.controlEvent(.editingDidEndOnExit).subscribe(onNext: { [weak self] in
             self?.searchBar.textField.resignFirstResponder()

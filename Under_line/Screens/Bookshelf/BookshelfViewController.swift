@@ -21,7 +21,7 @@ final class BookshelfViewController: UIViewController {
     private let reorderRelay    = PublishRelay<[String]>()
 
     private var layoutReady = false
-    private var highlightLayers: [(view: UIView, layer: CAGradientLayer)] = []
+    private var lastShelfSize = CGSize.zero
     private var isEditMode = false
 
     // MARK: - Drag & Drop
@@ -75,38 +75,32 @@ final class BookshelfViewController: UIViewController {
 
     // MARK: - UI Components
 
-    // 헤더
-    private let headerView = UIView()
-
-    private let appTitleLabel: UILabel = {
-        let l = UILabel()
-        l.text = "밑줄"
-        l.font = UIFont(name: "GowunBatang-Bold", size: 34)
+    // 기존 제목의 표시 영역과 내비게이션 바 왼쪽 위치를 유지한다.
+    private let appLogoView: UIImageView = {
+        let titleLabel = UILabel()
+        titleLabel.text = "밑줄"
+        titleLabel.font = UIFont(name: "GowunBatang-Bold", size: 34)
             ?? .systemFont(ofSize: 34, weight: .bold)
-        l.textColor = UIColor.accent
-        return l
+        let titleSize = titleLabel.intrinsicContentSize
+
+        let imageView = UIImageView(image: UIImage(named: "Under_line_Logo"))
+        imageView.contentMode = .scaleAspectFit
+        imageView.snp.makeConstraints { make in
+            make.size.equalTo(titleSize)
+        }
+        imageView.isAccessibilityElement = true
+        imageView.accessibilityLabel = "밑줄"
+        imageView.accessibilityTraits = [.image, .header]
+        return imageView
     }()
 
-    private lazy var sortButton: UIButton = {
-        let btn = UIButton(type: .system)
-        let cfg = UIImage.SymbolConfiguration(pointSize: 14, weight: .regular)
-        btn.setImage(UIImage(systemName: "slider.horizontal.3", withConfiguration: cfg), for: .normal)
-        btn.tintColor = UIColor.walnut
-        btn.layer.cornerRadius = 20
-        btn.clipsToBounds = true
-        return btn
-    }()
+    private let sortButton = SystemNavigationStyle.item(
+        image: "slider.horizontal.3", label: "정렬·필터", identifier: "sortButton"
+    )
 
-    private let wishlistButton: UIButton = {
-        let button = UIButton(type: .system)
-        button.setImage(UIImage(systemName: "heart", withConfiguration: UIImage.SymbolConfiguration(pointSize: 14)), for: .normal)
-        button.tintColor = UIColor.walnut
-        button.layer.cornerRadius = 20
-        button.clipsToBounds = true
-        button.accessibilityLabel = "도서 위시리스트"
-        button.accessibilityIdentifier = "openWishlistButton"
-        return button
-    }()
+    private let wishlistButton = SystemNavigationStyle.item(
+        image: "heart", label: "도서 위시리스트", identifier: "openWishlistButton"
+    )
 
     // 책장 수평 페이징 스크롤뷰
     private let bookshelfScrollView: UIScrollView = {
@@ -141,9 +135,7 @@ final class BookshelfViewController: UIViewController {
         let btn = UIButton(type: .system)
         let cfg = UIImage.SymbolConfiguration(pointSize: 14, weight: .medium)
         btn.setImage(UIImage(systemName: "plus", withConfiguration: cfg), for: .normal)
-        btn.tintColor = UIColor.walnut
-        btn.layer.cornerRadius = 26
-        btn.clipsToBounds = true
+        btn.tintColor = UIColor.appPrimary
         return btn
     }()
 
@@ -152,9 +144,7 @@ final class BookshelfViewController: UIViewController {
         let btn = UIButton(type: .system)
         let cfg = UIImage.SymbolConfiguration(pointSize: 14, weight: .medium)
         btn.setImage(UIImage(systemName: "square.and.pencil", withConfiguration: cfg), for: .normal)
-        btn.tintColor = UIColor.walnut
-        btn.layer.cornerRadius = 26
-        btn.clipsToBounds = true
+        btn.tintColor = UIColor.appPrimary
         return btn
     }()
 
@@ -168,10 +158,8 @@ final class BookshelfViewController: UIViewController {
     private lazy var deleteAllButton: UIButton = {
         let btn = UIButton(type: .system)
         btn.setTitle("전부 꺼내기", for: .normal)
-        btn.setTitleColor(UIColor.walnut, for: .normal)
+        btn.setTitleColor(UIColor.systemRed, for: .normal)
         btn.titleLabel?.font = .systemFont(ofSize: 13, weight: .semibold)
-        btn.layer.cornerRadius = 26
-        btn.clipsToBounds = true
         return btn
     }()
 
@@ -187,13 +175,10 @@ final class BookshelfViewController: UIViewController {
     override func viewDidLayoutSubviews() {
         super.viewDidLayoutSubviews()
 
-        // 스페큘러 그라데이션 레이어 프레임 갱신
-        for (view, gradient) in highlightLayers {
-            gradient.frame = view.bounds
-        }
-
-        if !layoutReady, bookshelfScrollView.bounds.width > 0 {
+        let size = bookshelfScrollView.bounds.size
+        if size.width > 0, size.height > 0, !layoutReady || size != lastShelfSize {
             layoutReady = true
+            lastShelfSize = size
             rebuildShelfPages()
         }
     }
@@ -223,12 +208,14 @@ final class BookshelfViewController: UIViewController {
     // MARK: - Setup
 
     private func setupUI() {
+        SystemNavigationStyle.configure(self, title: "")
+        let titleItem = UIBarButtonItem(customView: appLogoView)
+        if #available(iOS 26.0, *) {
+            titleItem.hidesSharedBackground = true
+        }
+        navigationItem.leftBarButtonItem = titleItem
+        navigationItem.rightBarButtonItems = [sortButton, wishlistButton]
         view.backgroundColor = UIColor.background
-
-        view.addSubview(headerView)
-        headerView.addSubview(appTitleLabel)
-        headerView.addSubview(sortButton)
-        headerView.addSubview(wishlistButton)
 
         view.addSubview(bookshelfScrollView)
         view.addSubview(shelfOverlayView)   // 스크롤뷰 위에 고정 선반 오버레이
@@ -240,53 +227,28 @@ final class BookshelfViewController: UIViewController {
         view.addSubview(deleteAllButtonContainer)
         deleteAllButtonContainer.addSubview(deleteAllButton)
 
-        applyFabGlassStyle(to: sortButton,      cornerRadius: 20)
-        applyFabGlassStyle(to: wishlistButton,  cornerRadius: 20)
-        applyFabGlassStyle(to: fabButton,       cornerRadius: 26)
-        applyFabGlassStyle(to: editButton,      cornerRadius: 26)
-        applyFabGlassStyle(to: deleteAllButton, cornerRadius: 26)
+        SystemGlassButtonStyle.apply(to: fabButton, accessibilityLabel: "도서 추가")
+        SystemGlassButtonStyle.apply(to: editButton, accessibilityLabel: "책장 편집")
+        SystemGlassButtonStyle.apply(to: deleteAllButton, accessibilityLabel: "전부 꺼내기")
     }
 
     private func setupConstraints() {
-        headerView.snp.makeConstraints { make in
-            make.top.equalTo(view.safeAreaLayoutGuide)
-            make.leading.trailing.equalToSuperview().inset(24)
-            make.height.equalTo(54)
-        }
-
-        appTitleLabel.snp.makeConstraints { make in
-            make.leading.centerY.equalToSuperview()
-            make.trailing.lessThanOrEqualTo(wishlistButton.snp.leading).offset(-12)
-        }
-
-        wishlistButton.snp.makeConstraints { make in
-            make.trailing.equalTo(sortButton.snp.leading).offset(-8)
-            make.centerY.equalToSuperview()
-            make.size.equalTo(40)
-        }
-
-        sortButton.snp.makeConstraints { make in
-            make.trailing.equalToSuperview()
-            make.centerY.equalToSuperview()
-            make.size.equalTo(40)
-        }
-
         fabButton.snp.makeConstraints { make in
-            make.trailing.equalToSuperview().inset(24)
+            make.trailing.equalTo(view.safeAreaLayoutGuide).inset(24)
             make.bottom.equalTo(view.safeAreaLayoutGuide).inset(16)
             make.size.equalTo(52)
         }
 
         editButton.snp.makeConstraints { make in
-            make.leading.equalToSuperview().inset(24)
+            make.leading.equalTo(view.safeAreaLayoutGuide).offset(24)
             make.centerY.equalTo(fabButton)
             make.size.equalTo(52)
         }
 
         deleteAllButtonContainer.snp.makeConstraints { make in
-            make.leading.equalTo(editButton.snp.trailing).offset(16)
+            make.leading.equalTo(editButton.snp.trailing).offset(12)
             make.centerY.equalTo(editButton)
-            make.width.equalTo(84)
+            make.trailing.lessThanOrEqualTo(fabButton.snp.leading).offset(-12)
             make.height.equalTo(52)
         }
 
@@ -300,7 +262,7 @@ final class BookshelfViewController: UIViewController {
         }
 
         bookshelfScrollView.snp.makeConstraints { make in
-            make.top.equalTo(headerView.snp.bottom)
+            make.top.equalTo(view.safeAreaLayoutGuide)
             make.leading.trailing.equalToSuperview().inset(24)
             make.bottom.equalTo(fabButton.snp.top).offset(-16)
         }
@@ -334,6 +296,8 @@ final class BookshelfViewController: UIViewController {
         let displayBooks: [Book] = tutorialBooks.isEmpty ? savedBooks : Array(tutorialBooks.prefix(booksPerPage))
         let pageCount    = max(1, Int(ceil(Double(displayBooks.count) / Double(booksPerPage))))
 
+        let currentPage = min(pageControl.currentPage, pageCount - 1)
+        pageControl.currentPage = currentPage
         pageControl.numberOfPages = pageCount
         pageControl.isHidden = pageCount <= 1
 
@@ -341,6 +305,8 @@ final class BookshelfViewController: UIViewController {
             width:  pageWidth * CGFloat(pageCount),
             height: pageHeight
         )
+
+        bookshelfScrollView.setContentOffset(CGPoint(x: pageWidth * CGFloat(currentPage), y: 0), animated: false)
 
         let draggingIndex = dragState?.currentIndex
 
@@ -659,18 +625,8 @@ final class BookshelfViewController: UIViewController {
 
     private func setEditMode(_ editing: Bool) {
         isEditMode = editing
-        if editing {
-            editButton.setImage(nil, for: .normal)
-            editButton.setTitle("완료", for: .normal)
-            editButton.setTitleColor(UIColor.walnut, for: .normal)
-            editButton.titleLabel?.font = .systemFont(ofSize: 14, weight: .semibold)
-            deleteAllButtonContainer.isHidden = false
-        } else {
-            let cfg = UIImage.SymbolConfiguration(pointSize: 14, weight: .medium)
-            editButton.setImage(UIImage(systemName: "square.and.pencil", withConfiguration: cfg), for: .normal)
-            editButton.setTitle(nil, for: .normal)
-            deleteAllButtonContainer.isHidden = true
-        }
+        SystemGlassButtonStyle.setEditing(editing, on: editButton, accessibilityLabel: "책장 편집")
+        deleteAllButtonContainer.isHidden = !editing
         if layoutReady { rebuildShelfPages() }
     }
 
@@ -695,78 +651,6 @@ final class BookshelfViewController: UIViewController {
             self?.deleteBookRelay.accept(book)
         })
         present(alert, animated: true)
-    }
-
-    // MARK: - FAB Glass Style
-
-    private func applyFabGlassStyle(to button: UIButton, cornerRadius: CGFloat) {
-        guard let superview = button.superview else { return }
-
-        let shadowView = UIView()
-        shadowView.isUserInteractionEnabled = false
-        shadowView.layer.cornerRadius = cornerRadius
-        shadowView.backgroundColor = .white
-        shadowView.layer.shadowColor   = UIColor.black.cgColor
-        shadowView.layer.shadowOpacity = Float(CGFloat(0x18) / 255)
-        shadowView.layer.shadowRadius  = 8
-        shadowView.layer.shadowOffset  = CGSize(width: 0, height: 6)
-        superview.insertSubview(shadowView, belowSubview: button)
-        shadowView.snp.makeConstraints { $0.edges.equalTo(button) }
-
-        let glassContainer = UIView()
-        glassContainer.isUserInteractionEnabled = false
-        glassContainer.layer.cornerRadius = cornerRadius
-        glassContainer.clipsToBounds = true
-        glassContainer.layer.borderWidth = 1
-        glassContainer.layer.borderColor = UIColor(white: 1, alpha: CGFloat(0x70) / 255).cgColor
-        superview.insertSubview(glassContainer, belowSubview: button)
-        glassContainer.snp.makeConstraints { $0.edges.equalTo(button) }
-        superview.insertSubview(shadowView, belowSubview: glassContainer)
-
-        let blurView = UIVisualEffectView(effect: UIBlurEffect(style: .systemUltraThinMaterial))
-        blurView.isUserInteractionEnabled = false
-        glassContainer.addSubview(blurView)
-        blurView.snp.makeConstraints { $0.edges.equalToSuperview() }
-
-        let solidTint = UIView()
-        solidTint.isUserInteractionEnabled = false
-        solidTint.backgroundColor = UIColor(hex: "#832C11", alpha: CGFloat(0x24) / 255)
-        blurView.contentView.addSubview(solidTint)
-        solidTint.snp.makeConstraints { $0.edges.equalToSuperview() }
-
-        let topSpecular = UIView()
-        topSpecular.isUserInteractionEnabled = false
-        blurView.contentView.addSubview(topSpecular)
-        topSpecular.snp.makeConstraints { $0.edges.equalToSuperview() }
-        let topGrad = CAGradientLayer()
-        topGrad.colors = [
-            UIColor(white: 1, alpha: CGFloat(0x50) / 255).cgColor,
-            UIColor(white: 1, alpha: CGFloat(0x10) / 255).cgColor,
-            UIColor.clear.cgColor,
-        ]
-        topGrad.locations  = [0, 0.45, 1.0]
-        topGrad.startPoint = CGPoint(x: 0.5, y: 0)
-        topGrad.endPoint   = CGPoint(x: 0.5, y: 1)
-        topSpecular.layer.addSublayer(topGrad)
-        highlightLayers.append((topSpecular, topGrad))
-
-        let bottomWarm = UIView()
-        bottomWarm.isUserInteractionEnabled = false
-        blurView.contentView.addSubview(bottomWarm)
-        bottomWarm.snp.makeConstraints { $0.edges.equalToSuperview() }
-        let bottomGrad = CAGradientLayer()
-        bottomGrad.colors = [
-            UIColor(hex: "#832C11", alpha: CGFloat(0x20) / 255).cgColor,
-            UIColor(hex: "#832C11", alpha: CGFloat(0x0C) / 255).cgColor,
-            UIColor.clear.cgColor,
-        ]
-        bottomGrad.locations  = [0, 0.5, 1.0]
-        bottomGrad.startPoint = CGPoint(x: 0.5, y: 1)
-        bottomGrad.endPoint   = CGPoint(x: 0.5, y: 0)
-        bottomWarm.layer.addSublayer(bottomGrad)
-        highlightLayers.append((bottomWarm, bottomGrad))
-
-        button.backgroundColor = .clear
     }
 
     // MARK: - Bindings
@@ -936,7 +820,7 @@ extension BookshelfViewController {
     private func showTutorialIfNeeded() {
         guard !UserDefaults.standard.bool(forKey: "tutorial.bookshelf") else {
             TutorialSupport.show(on: self, key: "tutorial.bookshelfWishlist", steps: [
-                TutorialStep(targetFrame: wishlistButton.convert(wishlistButton.bounds, to: nil), message: "하트 버튼에서 위시리스트를 열고\n읽고 싶은 책을 관리해보세요")
+                TutorialSupport.navigationStep(on: self, message: "상단 하트 버튼에서 위시리스트를 열고\n읽고 싶은 책을 관리해보세요")
             ])
             return
         }
@@ -970,18 +854,16 @@ extension BookshelfViewController {
         tutorialBooks = books
         if layoutReady { rebuildShelfPages() }
         let steps: [TutorialStep] = [
-            TutorialStep(targetFrame: .zero, message: "하트 버튼에서 위시리스트를 열 수 있어요", targetFrameProvider: { [weak self] in
-                guard let button = self?.wishlistButton else { return .zero }
-                return button.convert(button.bounds, to: nil)
-            }),
+            TutorialSupport.navigationStep(on: self, message: "상단 하트 버튼에서 위시리스트를 열 수 있어요"),
             TutorialStep(
-                targetFrame: fabButton.convert(fabButton.bounds, to: nil),
-                message: "도서 검색으로 읽고 있는 책을\n책장에 추가해보세요!"
+                targetFrame: .zero,
+                message: "도서 검색으로 읽고 있는 책을\n책장에 추가해보세요!",
+                targetFrameProvider: { [weak self] in
+                    guard let target = self?.fabButton else { return .zero }
+                    return target.convert(target.bounds, to: nil)
+                }
             ),
-            TutorialStep(
-                targetFrame: sortButton.convert(sortButton.bounds, to: nil),
-                message: "정렬·필터로 원하는 책을\n빠르게 찾을 수 있어요"
-            ),
+            TutorialSupport.navigationStep(on: self, message: "상단 조절 아이콘에서 정렬·필터로\n원하는 책을 빠르게 찾을 수 있어요"),
         ]
 
         let tutorialVC = TutorialOverlayViewController()

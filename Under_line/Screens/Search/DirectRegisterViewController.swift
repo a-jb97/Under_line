@@ -28,8 +28,8 @@ final class DirectRegisterViewController: UIViewController {
     private let sheetTitleLabel: UILabel = {
         let l = UILabel()
         l.text = "도서 등록"
-        l.font = UIFont(name: "GowunBatang-Bold", size: 22)
-            ?? .systemFont(ofSize: 22, weight: .semibold)
+        l.font = UIFont(name: "GowunBatang-Bold", size: 20)
+            ?? .systemFont(ofSize: 20, weight: .semibold)
         l.textColor = .accent
         return l
     }()
@@ -223,9 +223,6 @@ private final class FormFieldView: UIView {
         tf.backgroundColor = .clear
         return tf
     }()
-
-    // 날짜 필드용
-    private var datePicker: UIDatePicker?
 
     init(label: String, keyboardType: UIKeyboardType = .default, placeholder: String = "") {
         super.init(frame: .zero)

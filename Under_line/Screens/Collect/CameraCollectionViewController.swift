@@ -15,7 +15,6 @@ import RxCocoa
 final class CameraCollectionViewController: UIViewController {
 
     private let disposeBag = DisposeBag()
-    private var highlightLayers: [(view: UIView, layer: CAGradientLayer)] = []
 
     /// directCollectButton 탭 → dismiss 완료 후 호출
     var onDirectCollect: (() -> Void)?
@@ -67,7 +66,7 @@ final class CameraCollectionViewController: UIViewController {
         config.attributedTitle = AttributedString(
             "직접 수집",
             attributes: AttributeContainer([
-                .font: UIFont(name: "GowunBatang-Bold", size: 12)
+                .font: UIFont(name: "Goyangilsan R", size: 12)
                     ?? UIFont.systemFont(ofSize: 12, weight: .semibold),
                 .foregroundColor: UIColor.appPrimary,
             ])
@@ -85,15 +84,6 @@ final class CameraCollectionViewController: UIViewController {
         let v = UIView()
         v.backgroundColor = UIColor(hex: "#1a1a1a")
         v.clipsToBounds = true
-        return v
-    }()
-
-    private let scanGuideView: UIView = {
-        let v = UIView()
-        v.backgroundColor = UIColor(white: 1, alpha: 6.0 / 255)
-        v.layer.cornerRadius = 12
-        v.layer.borderWidth = 1.5
-        v.layer.borderColor = UIColor(white: 1, alpha: 64.0 / 255).cgColor
         return v
     }()
 
@@ -119,8 +109,6 @@ final class CameraCollectionViewController: UIViewController {
         let cfg = UIImage.SymbolConfiguration(pointSize: 18, weight: .regular)
         btn.setImage(UIImage(systemName: "bolt", withConfiguration: cfg), for: .normal)
         btn.tintColor = UIColor.appPrimary
-        btn.layer.cornerRadius = 24
-        btn.clipsToBounds = true
         return btn
     }()
 
@@ -133,7 +121,7 @@ final class CameraCollectionViewController: UIViewController {
         config.attributedTitle = AttributedString(
             "수집하기",
             attributes: AttributeContainer([
-                .font: UIFont(name: "GowunBatang-Bold", size: 18)
+                .font: UIFont(name: "Goyangilsan R", size: 18)
                     ?? UIFont.systemFont(ofSize: 18, weight: .semibold),
             ])
         )
@@ -141,8 +129,6 @@ final class CameraCollectionViewController: UIViewController {
         config.imagePadding = 10
         config.baseForegroundColor = UIColor.appPrimary
         let btn = UIButton(configuration: config)
-        btn.layer.cornerRadius = 32
-        btn.clipsToBounds = true
         return btn
     }()
 
@@ -151,8 +137,6 @@ final class CameraCollectionViewController: UIViewController {
         let cfg = UIImage.SymbolConfiguration(pointSize: 18, weight: .regular)
         btn.setImage(UIImage(systemName: "arrow.triangle.2.circlepath.camera", withConfiguration: cfg), for: .normal)
         btn.tintColor = UIColor.appPrimary
-        btn.layer.cornerRadius = 24
-        btn.clipsToBounds = true
         return btn
     }()
 
@@ -173,7 +157,6 @@ final class CameraCollectionViewController: UIViewController {
         view.backgroundColor = UIColor(hex: "#1a1a1a")
         setupUI()
         setupConstraints()
-        addCornerMarkers()
         bindActions()
         requestCameraPermission()
     }
@@ -181,9 +164,6 @@ final class CameraCollectionViewController: UIViewController {
     override func viewDidLayoutSubviews() {
         super.viewDidLayoutSubviews()
         previewLayer?.frame = cameraSectionView.bounds
-        for (view, gradient) in highlightLayers {
-            gradient.frame = view.bounds
-        }
     }
 
     override var preferredStatusBarStyle: UIStatusBarStyle { .darkContent }
@@ -203,12 +183,11 @@ final class CameraCollectionViewController: UIViewController {
         bottomSectionView.addSubview(hintLabel)
 
         view.addSubview(cameraSectionView)
-        cameraSectionView.addSubview(scanGuideView)
         cameraSectionView.addSubview(scanInstructionLabel)
 
-        applyGlassStyle(to: flashButton,        cornerRadius: 24)
-        applyGlassStyle(to: captureButton,      cornerRadius: 32)
-        applyGlassStyle(to: switchCameraButton, cornerRadius: 24)
+        SystemGlassButtonStyle.apply(to: flashButton, accessibilityLabel: "플래시")
+        SystemGlassButtonStyle.apply(to: captureButton, accessibilityLabel: "수집하기")
+        SystemGlassButtonStyle.apply(to: switchCameraButton, accessibilityLabel: "카메라 전환")
     }
 
     private func setupConstraints() {
@@ -248,17 +227,12 @@ final class CameraCollectionViewController: UIViewController {
             make.bottom.equalTo(bottomSectionView.snp.top)
         }
 
-        // Scan guide: cameraSectionView 기준 leading/trailing/top/bottom inset 40
-        let scanGuideInset: CGFloat = UIDevice.current.userInterfaceIdiom == .pad ? 100 : 48
-        scanGuideView.snp.makeConstraints { make in
-            make.leading.trailing.top.bottom.equalToSuperview().inset(scanGuideInset)
-        }
-
+        // 가이드 테두리 없이 기존 안내 문구 위치를 유지한다.
+        let instructionInset: CGFloat = UIDevice.current.userInterfaceIdiom == .pad ? 100 : 48
         scanInstructionLabel.snp.makeConstraints { make in
             make.centerX.equalToSuperview()
-            make.top.equalTo(scanGuideView.snp.bottom).offset(12)
+            make.top.equalTo(cameraSectionView.snp.bottom).offset(12 - instructionInset)
         }
-
 
         // Capture button: centered, 20pt from bottom section top
         captureButton.snp.makeConstraints { make in
@@ -286,115 +260,6 @@ final class CameraCollectionViewController: UIViewController {
             make.leading.trailing.equalToSuperview().inset(24)
             make.bottom.equalTo(view.safeAreaLayoutGuide).inset(40)
         }
-    }
-
-    // MARK: - Corner Markers
-
-    private func addCornerMarkers() {
-        let len: CGFloat  = 28
-        let color = UIColor(white: 1, alpha: 0xAA / 255.0)
-        let width: CGFloat = 2.5
-
-        let configs: [(CornerMarkerView.Corner, (ConstraintMaker) -> Void)] = [
-            (.topLeft,     { [weak self] make in
-                guard let self else { return }
-                make.leading.top.equalTo(self.scanGuideView)
-            }),
-            (.topRight,    { [weak self] make in
-                guard let self else { return }
-                make.trailing.top.equalTo(self.scanGuideView)
-            }),
-            (.bottomLeft,  { [weak self] make in
-                guard let self else { return }
-                make.leading.bottom.equalTo(self.scanGuideView)
-            }),
-            (.bottomRight, { [weak self] make in
-                guard let self else { return }
-                make.trailing.bottom.equalTo(self.scanGuideView)
-            }),
-        ]
-
-        for (corner, constrain) in configs {
-            let marker = CornerMarkerView(corner: corner, length: len,
-                                          strokeColor: color, strokeWidth: width)
-            cameraSectionView.addSubview(marker)
-            marker.snp.makeConstraints { make in
-                make.size.equalTo(len)
-                constrain(make)
-            }
-        }
-    }
-
-    // MARK: - Glass Style (fabButton과 동일한 스타일)
-
-    private func applyGlassStyle(to button: UIButton, cornerRadius: CGFloat) {
-        guard let superview = button.superview else { return }
-
-        let shadowView = UIView()
-        shadowView.isUserInteractionEnabled = false
-        shadowView.layer.cornerRadius = cornerRadius
-        shadowView.backgroundColor = .white
-        shadowView.layer.shadowColor   = UIColor.black.cgColor
-        shadowView.layer.shadowOpacity = Float(CGFloat(0x18) / 255)
-        shadowView.layer.shadowRadius  = 8
-        shadowView.layer.shadowOffset  = CGSize(width: 0, height: 6)
-        superview.insertSubview(shadowView, belowSubview: button)
-        shadowView.snp.makeConstraints { $0.edges.equalTo(button) }
-
-        let glassContainer = UIView()
-        glassContainer.isUserInteractionEnabled = false
-        glassContainer.layer.cornerRadius = cornerRadius
-        glassContainer.clipsToBounds = true
-        glassContainer.layer.borderWidth = 1
-        glassContainer.layer.borderColor = UIColor(white: 1, alpha: CGFloat(0x70) / 255).cgColor
-        superview.insertSubview(glassContainer, belowSubview: button)
-        glassContainer.snp.makeConstraints { $0.edges.equalTo(button) }
-        superview.insertSubview(shadowView, belowSubview: glassContainer)
-
-        let blurView = UIVisualEffectView(effect: UIBlurEffect(style: .systemUltraThinMaterial))
-        blurView.isUserInteractionEnabled = false
-        glassContainer.addSubview(blurView)
-        blurView.snp.makeConstraints { $0.edges.equalToSuperview() }
-
-        let solidTint = UIView()
-        solidTint.isUserInteractionEnabled = false
-        solidTint.backgroundColor = UIColor(hex: "#832C11", alpha: CGFloat(0x24) / 255)
-        blurView.contentView.addSubview(solidTint)
-        solidTint.snp.makeConstraints { $0.edges.equalToSuperview() }
-
-        let topSpecular = UIView()
-        topSpecular.isUserInteractionEnabled = false
-        blurView.contentView.addSubview(topSpecular)
-        topSpecular.snp.makeConstraints { $0.edges.equalToSuperview() }
-        let topGrad = CAGradientLayer()
-        topGrad.colors = [
-            UIColor(white: 1, alpha: CGFloat(0x50) / 255).cgColor,
-            UIColor(white: 1, alpha: CGFloat(0x10) / 255).cgColor,
-            UIColor.clear.cgColor,
-        ]
-        topGrad.locations  = [0, 0.45, 1.0]
-        topGrad.startPoint = CGPoint(x: 0.5, y: 0)
-        topGrad.endPoint   = CGPoint(x: 0.5, y: 1)
-        topSpecular.layer.addSublayer(topGrad)
-        highlightLayers.append((topSpecular, topGrad))
-
-        let bottomWarm = UIView()
-        bottomWarm.isUserInteractionEnabled = false
-        blurView.contentView.addSubview(bottomWarm)
-        bottomWarm.snp.makeConstraints { $0.edges.equalToSuperview() }
-        let bottomGrad = CAGradientLayer()
-        bottomGrad.colors = [
-            UIColor(hex: "#832C11", alpha: CGFloat(0x20) / 255).cgColor,
-            UIColor(hex: "#832C11", alpha: CGFloat(0x0C) / 255).cgColor,
-            UIColor.clear.cgColor,
-        ]
-        bottomGrad.locations  = [0, 0.5, 1.0]
-        bottomGrad.startPoint = CGPoint(x: 0.5, y: 1)
-        bottomGrad.endPoint   = CGPoint(x: 0.5, y: 0)
-        bottomWarm.layer.addSublayer(bottomGrad)
-        highlightLayers.append((bottomWarm, bottomGrad))
-
-        button.backgroundColor = .clear
     }
 
     // MARK: - Camera
@@ -535,7 +400,10 @@ final class CameraCollectionViewController: UIViewController {
         }
         let iconName = isFlashOn ? "bolt.fill" : "bolt"
         let cfg = UIImage.SymbolConfiguration(pointSize: 18, weight: .regular)
-        flashButton.setImage(UIImage(systemName: iconName, withConfiguration: cfg), for: .normal)
+        var configuration = flashButton.configuration
+        configuration?.image = SystemGlassButtonStyle.icon(UIImage(systemName: iconName, withConfiguration: cfg))
+        flashButton.configuration = configuration
+        flashButton.accessibilityValue = isFlashOn ? "켜짐" : "꺼짐"
     }
 
     private func switchCamera() {
@@ -613,58 +481,5 @@ extension CameraCollectionViewController: AVCapturePhotoCaptureDelegate {
             }
             self.present(markupVC, animated: true)
         }
-    }
-}
-
-// MARK: - CornerMarkerView
-
-private final class CornerMarkerView: UIView {
-
-    enum Corner { case topLeft, topRight, bottomLeft, bottomRight }
-
-    private let corner: Corner
-    private let markerLength: CGFloat
-    private let strokeColor: UIColor
-    private let strokeWidth: CGFloat
-
-    init(corner: Corner, length: CGFloat, strokeColor: UIColor, strokeWidth: CGFloat) {
-        self.corner       = corner
-        self.markerLength = length
-        self.strokeColor  = strokeColor
-        self.strokeWidth  = strokeWidth
-        super.init(frame: .zero)
-        backgroundColor = .clear
-    }
-
-    required init?(coder: NSCoder) { fatalError() }
-
-    override func draw(_ rect: CGRect) {
-        let l = markerLength
-        let path = UIBezierPath()
-
-        switch corner {
-        case .topLeft:
-            path.move(to: CGPoint(x: l, y: 0))
-            path.addLine(to: CGPoint(x: 0, y: 0))
-            path.addLine(to: CGPoint(x: 0, y: l))
-        case .topRight:
-            path.move(to: CGPoint(x: 0, y: 0))
-            path.addLine(to: CGPoint(x: l, y: 0))
-            path.addLine(to: CGPoint(x: l, y: l))
-        case .bottomLeft:
-            path.move(to: CGPoint(x: 0, y: 0))
-            path.addLine(to: CGPoint(x: 0, y: l))
-            path.addLine(to: CGPoint(x: l, y: l))
-        case .bottomRight:
-            path.move(to: CGPoint(x: l, y: 0))
-            path.addLine(to: CGPoint(x: l, y: l))
-            path.addLine(to: CGPoint(x: 0, y: l))
-        }
-
-        strokeColor.setStroke()
-        path.lineWidth      = strokeWidth
-        path.lineCapStyle   = .round
-        path.lineJoinStyle  = .round
-        path.stroke()
     }
 }

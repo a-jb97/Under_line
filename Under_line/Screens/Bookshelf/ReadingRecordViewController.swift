@@ -59,23 +59,6 @@ final class ReadingRecordViewController: UIViewController {
 
     // MARK: - Header
 
-    private lazy var backButton: UIButton = {
-        let btn = UIButton(type: .system)
-        let cfg = UIImage.SymbolConfiguration(pointSize: 17, weight: .regular)
-        btn.setImage(UIImage(systemName: "chevron.left", withConfiguration: cfg), for: .normal)
-        btn.tintColor = UIColor.accent
-        return btn
-    }()
-
-    private let titleLabel: UILabel = {
-        let l = UILabel()
-        l.text = "독서 기록"
-        l.font = UIFont(name: "GowunBatang-Bold", size: 34)
-            ?? .systemFont(ofSize: 34, weight: .bold)
-        l.textColor = UIColor.accent
-        return l
-    }()
-
     // MARK: - Timer Dial
 
     private let timerDialView = TimerDialView()
@@ -149,8 +132,6 @@ final class ReadingRecordViewController: UIViewController {
 
     override func viewWillAppear(_ animated: Bool) {
         super.viewWillAppear(animated)
-        navigationController?.interactivePopGestureRecognizer?.delegate = nil
-        navigationController?.interactivePopGestureRecognizer?.isEnabled = true
     }
 
     override func viewDidAppear(_ animated: Bool) {
@@ -177,6 +158,7 @@ final class ReadingRecordViewController: UIViewController {
     // MARK: - Setup
 
     private func setupUI() {
+        SystemNavigationStyle.configure(self, title: "독서 기록")
         view.backgroundColor = UIColor.background
         bookTitleLabel.text = book.displayTitle
         timerDialView.persistenceKey = "timer_\(book.isbn13)"
@@ -184,8 +166,6 @@ final class ReadingRecordViewController: UIViewController {
         view.addSubview(scrollView)
         scrollView.addSubview(contentView)
 
-        contentView.addSubview(backButton)
-        contentView.addSubview(titleLabel)
         contentView.addSubview(timerDialView)
         contentView.addSubview(bookTitleLabel)
         contentView.addSubview(progressSectionView)
@@ -209,19 +189,9 @@ final class ReadingRecordViewController: UIViewController {
             make.width.equalTo(scrollView)
         }
 
-        backButton.snp.makeConstraints { make in
-            make.leading.equalToSuperview().inset(24)
-            make.top.equalToSuperview().offset(17)
-            make.size.equalTo(28)
-        }
-        titleLabel.snp.makeConstraints { make in
-            make.leading.equalTo(backButton.snp.trailing).offset(4)
-            make.centerY.equalTo(backButton)
-        }
-
         timerDialView.snp.makeConstraints { make in
             make.leading.trailing.equalToSuperview()
-            make.top.equalTo(backButton.snp.bottom).offset(32)
+            make.top.equalToSuperview().offset(24)
         }
 
         bookTitleLabel.snp.makeConstraints { make in
@@ -438,11 +408,6 @@ final class ReadingRecordViewController: UIViewController {
     // MARK: - Bindings
 
     private func bindActions() {
-        backButton.rx.tap
-            .subscribe(onNext: { [weak self] in
-                self?.navigationController?.popViewController(animated: true)
-            })
-            .disposed(by: disposeBag)
 
         progressSectionView.editButtonTap
             .subscribe(onNext: { [weak self] in
@@ -536,9 +501,13 @@ final class ReadingRecordViewController: UIViewController {
 
         let steps: [TutorialStep] = [
             TutorialStep(
-                targetFrame: timerDialView.convert(timerDialView.bounds, to: nil),
+                targetFrame: .zero,
                 message: "다이얼 바깥쪽을 돌려서 시간을 설정한 후\n시작 버튼을 탭해보세요",
-                animation: .dialRotation
+                animation: .dialRotation,
+                targetFrameProvider: { [weak self] in
+                    guard let target = self?.timerDialView else { return .zero }
+                    return target.convert(target.bounds, to: nil)
+                }
             ),
         ]
 

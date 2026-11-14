@@ -1,8 +1,8 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<document type="com.apple.InterfaceBuilder3.CocoaTouch.Storyboard.XIB" version="3.0" toolsVersion="24506" targetRuntime="iOS.CocoaTouch" propertyAccessControl="none" useAutolayout="YES" launchScreen="YES" useTraitCollections="YES" useSafeAreas="YES" colorMatched="YES" initialViewController="01J-lp-oVM">
+<document type="com.apple.InterfaceBuilder3.CocoaTouch.Storyboard.XIB" version="3.0" toolsVersion="25408" targetRuntime="iOS.CocoaTouch" propertyAccessControl="none" useAutolayout="YES" launchScreen="YES" useTraitCollections="YES" useSafeAreas="YES" colorMatched="YES" initialViewController="01J-lp-oVM">
     <device id="retina6_12" orientation="portrait" appearance="light"/>
     <dependencies>
-        <plugIn identifier="com.apple.InterfaceBuilder.IBCocoaTouchPlugin" version="24504"/>
+        <plugIn identifier="com.apple.InterfaceBuilder.IBCocoaTouchPlugin" version="25407"/>
         <capability name="Safe area layout guides" minToolsVersion="9.0"/>
         <capability name="documents saved in the Xcode 8 format" minToolsVersion="8.0"/>
     </dependencies>
@@ -16,18 +16,18 @@
                         <autoresizingMask key="autoresizingMask" widthSizable="YES" heightSizable="YES"/>
                         <subviews>
                             <imageView clipsSubviews="YES" userInteractionEnabled="NO" contentMode="scaleAspectFit" image="Launch_Image" translatesAutoresizingMaskIntoConstraints="NO" id="OQV-rH-RTL">
-                                <rect key="frame" x="100" y="318" width="193" height="210"/>
+                                <rect key="frame" x="136.66666666666666" y="309" width="119.99999999999997" height="120"/>
                                 <constraints>
-                                    <constraint firstAttribute="height" constant="210" id="PHS-eL-yA0"/>
-                                    <constraint firstAttribute="width" constant="193" id="hE8-FO-JYT"/>
+                                    <constraint firstAttribute="height" constant="120" id="PHS-eL-yA0"/>
+                                    <constraint firstAttribute="width" constant="120" id="hE8-FO-JYT"/>
                                 </constraints>
                             </imageView>
                         </subviews>
                         <viewLayoutGuide key="safeArea" id="6Tk-OE-BBY"/>
                         <color key="backgroundColor" red="0.96470588235294119" green="0.93725490196078431" blue="0.93333333333333335" alpha="1" colorSpace="custom" customColorSpace="sRGB"/>
                         <constraints>
-                            <constraint firstItem="OQV-rH-RTL" firstAttribute="centerX" secondItem="Ze5-6b-2t3" secondAttribute="centerX" id="PlJ-3k-WLz"/>
-                            <constraint firstItem="OQV-rH-RTL" firstAttribute="top" secondItem="6Tk-OE-BBY" secondAttribute="top" constant="200" id="UfE-ii-aah"/>
+                            <constraint firstItem="OQV-rH-RTL" firstAttribute="centerX" secondItem="Ze5-6b-2t3" secondAttribute="centerX" id="XT1-sw-8na"/>
+                            <constraint firstItem="OQV-rH-RTL" firstAttribute="top" secondItem="6Tk-OE-BBY" secondAttribute="top" constant="250" id="tbK-5h-wRe"/>
                         </constraints>
                     </view>
                 </viewController>

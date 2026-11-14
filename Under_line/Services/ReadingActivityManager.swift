@@ -98,16 +98,5 @@ final class ReadingActivityManager {
         }
         currentActivity = nil
     }
-
-    // MARK: - End All (앱 종료 시 정리용)
-
-    func endAllActivities() {
-        Task {
-            for activity in Activity<ReadingTimerAttributes>.activities {
-                await activity.end(nil, dismissalPolicy: .immediate)
-            }
-        }
-        currentActivity = nil
-    }
 }
 #endif

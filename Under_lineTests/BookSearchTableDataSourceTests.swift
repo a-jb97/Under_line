@@ -20,6 +20,48 @@ final class BookSearchTableDataSourceTests: XCTestCase {
         XCTAssertEqual(table.numberOfRows(inSection: 0), 100)
     }
 
+    func test_update_preservesVisibleCellsAndOffsetAndStoresOffscreenMetadata() throws {
+        let table = RecordingTableView(frame: CGRect(x: 0, y: 0, width: 320, height: 240))
+        table.rowHeight = 80
+        var updatedRows: [Int] = []
+        let dataSource = BookSearchTableDataSource(updateCell: { cell, path, book in
+            updatedRows.append(path.row)
+            cell.textLabel?.text = book.description
+        }) { _, _, book in
+            let cell = UITableViewCell()
+            cell.textLabel?.text = book.description
+            return cell
+        }
+        table.dataSource = dataSource
+        var original = books(50)
+        original[1] = original[0] // Duplicate ISBNs must update both visible rows.
+        dataSource.apply(.init(books: original, change: .replace), to: table)
+        table.layoutIfNeeded()
+        let path = IndexPath(row: 0, section: 0)
+        let cell = try XCTUnwrap(table.cellForRow(at: path))
+        let reloads = table.reloadCount
+        let offset = table.contentOffset
+        table.rowReloadCount = 0
+        table.offsetSetCount = 0
+        var enriched = original
+        for row in [0, 1, 49] {
+            enriched[row] = original[row].mergingListMetadata(from: BookListMetadata(
+                isbn13: original[row].isbn13, coverURL: nil, description: "새 소개"
+            ))
+        }
+        dataSource.apply(.init(books: enriched, change: .update(rows: [0, 0, 1, 49, -1, 100])), to: table)
+        XCTAssertTrue(table.cellForRow(at: path) === cell)
+        XCTAssertEqual(cell.textLabel?.text, "새 소개")
+        XCTAssertEqual(Set(updatedRows), [0, 1])
+        XCTAssertEqual(updatedRows.count, 2)
+        XCTAssertEqual(dataSource.books[49].description, "새 소개")
+        XCTAssertEqual(dataSource.tableView(table, cellForRowAt: IndexPath(row: 49, section: 0)).textLabel?.text, "새 소개")
+        XCTAssertEqual(table.reloadCount, reloads)
+        XCTAssertEqual(table.rowReloadCount, 0)
+        XCTAssertEqual(table.offsetSetCount, 0)
+        XCTAssertEqual(table.contentOffset, offset)
+    }
+
     func test_appendWithoutPreviousSnapshot_fallsBackToReplacement() {
         let table = RecordingTableView()
         let dataSource = BookSearchTableDataSource { _, _, _ in UITableViewCell() }
@@ -62,7 +104,20 @@ final class BookSearchTableDataSourceTests: XCTestCase {
 
 @MainActor
 private final class RecordingTableView: UITableView {
+    var rowReloadCount = 0
+    var offsetSetCount = 0
     var reloadCount = 0
+
+    override func reloadRows(at indexPaths: [IndexPath], with animation: UITableView.RowAnimation) {
+        rowReloadCount += 1
+        super.reloadRows(at: indexPaths, with: animation)
+    }
+
+    override func setContentOffset(_ contentOffset: CGPoint, animated: Bool) {
+        offsetSetCount += 1
+        super.setContentOffset(contentOffset, animated: animated)
+    }
+
     var insertedRows: [IndexPath] = []
 
     override func reloadData() {

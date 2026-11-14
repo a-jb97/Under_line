@@ -207,7 +207,7 @@ final class WishlistViewModelTests: XCTestCase {
         let screen = WishlistViewController(repository: repository)
         let root = UIViewController()
         let navigation = UINavigationController(rootViewController: root)
-        navigation.setNavigationBarHidden(true, animated: false)
+        SystemNavigationStyle.configure(navigation)
         let scene = try XCTUnwrap(UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first)
         let window = UIWindow(windowScene: scene)
         window.frame = CGRect(x: 0, y: 0, width: 390, height: 844)
@@ -230,7 +230,7 @@ final class WishlistViewModelTests: XCTestCase {
             XCTAssertEqual(shadow.boundingBoxOfPath.width, card.bounds.width, accuracy: 0.01)
             XCTAssertEqual(shadow.boundingBoxOfPath.height, card.bounds.height, accuracy: 0.01)
         }
-        attach(screen.view, name: "위시리스트 - 전체 목록")
+        attach(navigation.view, name: "위시리스트 - 전체 목록")
 
         field.text = "한강"
         field.sendActions(for: .editingChanged)
@@ -241,7 +241,7 @@ final class WishlistViewModelTests: XCTestCase {
         table.delegate?.tableView?(table, didSelectRowAt: indexPath)
         table.layoutIfNeeded()
         XCTAssertGreaterThan(table.rectForRow(at: indexPath).height, collapsedHeight)
-        attach(screen.view, name: "위시리스트 - 실시간 검색과 책소개 펼침")
+        attach(navigation.view, name: "위시리스트 - 실시간 검색과 책소개 펼침")
         let cell = try XCTUnwrap(table.cellForRow(at: indexPath) as? BookRowCell)
         let heart = try XCTUnwrap(findView(cell, id: "wishlistButton") as? UIButton)
         heart.sendActions(for: .touchUpInside)
@@ -254,8 +254,12 @@ final class WishlistViewModelTests: XCTestCase {
         field.sendActions(for: .editingChanged)
         screen.view.layoutIfNeeded()
         XCTAssertEqual(table.numberOfRows(inSection: 0), 2)
-        let back = try XCTUnwrap(findView(screen.view, id: "wishlistBackButton") as? UIButton)
-        back.sendActions(for: .touchUpInside)
+        XCTAssertFalse(navigation.isNavigationBarHidden)
+        XCTAssertEqual(screen.navigationItem.title, "도서 위시리스트")
+        XCTAssertFalse(screen.navigationItem.hidesBackButton)
+        XCTAssertNil(screen.navigationItem.leftBarButtonItem)
+        XCTAssertTrue(navigation.navigationBar.backItem === root.navigationItem)
+        navigation.popViewController(animated: false)
         XCTAssertTrue(navigation.topViewController === root)
     }
 

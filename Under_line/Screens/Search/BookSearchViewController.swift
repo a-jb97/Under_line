@@ -9,7 +9,6 @@ import UIKit
 import SnapKit
 import RxSwift
 import RxCocoa
-import Kingfisher
 import Toast
 
 final class BookSearchViewController: UIViewController {
@@ -41,7 +40,20 @@ final class BookSearchViewController: UIViewController {
     private var isLoadingNextPage = false
     private var expandedRow: Int?
     private var descriptionLoadingISBN: String?
-    private lazy var bookDataSource: BookSearchTableDataSource = BookSearchTableDataSource { [weak self] tableView, indexPath, book in
+    private var pendingDescriptionISBN: String?
+    private lazy var bookDataSource: BookSearchTableDataSource = BookSearchTableDataSource(updateCell: { [weak self] cell, indexPath, book in
+        guard let self, let cell = cell as? BookRowCell else { return }
+        let isExpanded = self.expandedRow == indexPath.row
+        cell.updateMetadata(
+            content: BookRowContent(book: book),
+            displayScale: self.view.traitCollection.displayScale,
+            updateDescription: !isExpanded
+        )
+        if isExpanded {
+            self.pendingDescriptionISBN = book.isbn13
+            self.flushPendingDescriptionUpdate()
+        }
+    }) { [weak self] tableView, indexPath, book in
         let cell = tableView.dequeueReusableCell(withIdentifier: BookRowCell.reuseID, for: indexPath) as! BookRowCell
         #if DEBUG
         cell.performanceBatchID = self?.performanceBatchID
@@ -88,8 +100,8 @@ final class BookSearchViewController: UIViewController {
     private let sheetTitleLabel: UILabel = {
         let l = UILabel()
         l.text = "도서 검색"
-        l.font = UIFont(name: "GowunBatang-Bold", size: 22)
-            ?? .systemFont(ofSize: 22, weight: .semibold)
+        l.font = UIFont(name: "GowunBatang-Bold", size: 20)
+            ?? .systemFont(ofSize: 20, weight: .semibold)
         l.textColor = UIColor(hex: "#190e0b")
         return l
     }()
@@ -177,10 +189,25 @@ final class BookSearchViewController: UIViewController {
     }
 
     private func showWishlistTutorial() {
-        guard TutorialSupport.target(in: view, identifier: "wishlistButton") != nil else { return }
+        guard isScreenVisible, view.window != nil, presentedViewController == nil,
+              !UserDefaults.standard.bool(forKey: "tutorial.searchWishlist"),
+              tableView.numberOfSections > 0 else { return }
+        let rowCount = tableView.numberOfRows(inSection: 0)
+        guard rowCount > 0 else { return }
+
+        // 셀의 뷰 계층 순서 대신 세 번째 도서의 하트를 예시로 사용한다.
+        let indexPath = IndexPath(row: min(2, rowCount - 1), section: 0)
+        tableView.layoutIfNeeded()
+        if !tableView.bounds.contains(tableView.rectForRow(at: indexPath)) {
+            tableView.scrollToRow(at: indexPath, at: .middle, animated: false)
+            tableView.layoutIfNeeded()
+        }
+        guard let cell = tableView.cellForRow(at: indexPath),
+              TutorialSupport.target(in: cell, identifier: "wishlistButton") != nil else { return }
         TutorialSupport.show(on: self, key: "tutorial.searchWishlist", steps: [
             TutorialStep(targetFrame: .zero, message: "하트를 눌러 읽고 싶은 책을\n위시리스트에 담아보세요", targetFrameProvider: { [weak self] in
-                guard let self, let target = TutorialSupport.target(in: self.view, identifier: "wishlistButton") else { return .zero }
+                guard let self, let cell = self.tableView.cellForRow(at: indexPath),
+                      let target = TutorialSupport.target(in: cell, identifier: "wishlistButton") else { return .zero }
                 return target.convert(target.bounds, to: nil)
             })
         ])
@@ -348,16 +375,17 @@ final class BookSearchViewController: UIViewController {
                     self.firstCellDisplaySpan = update.books.isEmpty ? nil : BookSearchPerformance.Span(
                         .firstCellWillDisplay, source: .table, id: batchID
                     )
-                case .reload:
+                case .update:
                     break
                 }
                 #endif
                 if case .replace = update.change {
+                    self.pendingDescriptionISBN = nil
                     self.expandedRow = nil
                     self.descriptionLoadingISBN = nil
                     self.coverPrefetcher.stop()
                 }
-                if case .reload = update.change {
+                if case .update = update.change {
                     // ISBN 보완은 페이지 상태를 변경하지 않는다.
                 } else {
                     self.paginationGate.listDidUpdate()
@@ -429,10 +457,8 @@ final class BookSearchViewController: UIViewController {
                       self.bookDataSource.books.indices.contains(row),
                       self.bookDataSource.books[row].isbn13 == isbn13 else { return }
                 self.descriptionLoadingISBN = nil
-                let indexPath = IndexPath(row: row, section: 0)
-                (self.tableView.cellForRow(at: indexPath) as? BookRowCell)?
-                    .setDescriptionLoading(false)
-                self.tableView.performBatchUpdates(nil)
+                self.pendingDescriptionISBN = isbn13
+                self.flushPendingDescriptionUpdate()
             })
             .disposed(by: disposeBag)
 
@@ -462,6 +488,16 @@ final class BookSearchViewController: UIViewController {
                 self?.scheduleEnrichmentWindowUpdate()
                 self?.scheduleNextPageIfNeeded()
             })
+            .disposed(by: disposeBag)
+
+        tableView.rx.didEndDragging
+            .subscribe(onNext: { [weak self] decelerate in
+                if !decelerate { self?.flushPendingDescriptionUpdate() }
+            })
+            .disposed(by: disposeBag)
+
+        tableView.rx.didEndDecelerating
+            .subscribe(onNext: { [weak self] in self?.flushPendingDescriptionUpdate() })
             .disposed(by: disposeBag)
 
         tableView.rx.itemSelected
@@ -529,6 +565,7 @@ final class BookSearchViewController: UIViewController {
         guard indexPath.row < bookDataSource.books.count,
               let selectedCell = tableView.cellForRow(at: indexPath) as? BookRowCell else { return }
 
+        pendingDescriptionISBN = nil
         let previousRow = expandedRow
         expandedRow = previousRow == indexPath.row ? nil : indexPath.row
         descriptionLoadingISBN = expandedRow == nil
@@ -547,6 +584,23 @@ final class BookSearchViewController: UIViewController {
         } else {
             selectedCell.setExpanded(false)
         }
+        tableView.performBatchUpdates(nil)
+    }
+
+    private func flushPendingDescriptionUpdate() {
+        guard !tableView.isDragging, !tableView.isDecelerating,
+              let isbn13 = pendingDescriptionISBN else { return }
+        pendingDescriptionISBN = nil
+        guard let row = expandedRow,
+              bookDataSource.books.indices.contains(row),
+              bookDataSource.books[row].isbn13 == isbn13,
+              let cell = tableView.cellForRow(at: IndexPath(row: row, section: 0)) as? BookRowCell,
+              cell.isbn13 == isbn13.trimmingCharacters(in: .whitespacesAndNewlines) else { return }
+        cell.updateMetadata(
+            content: BookRowContent(book: bookDataSource.books[row]),
+            displayScale: view.traitCollection.displayScale
+        )
+        cell.setDescriptionLoading(descriptionLoadingISBN == isbn13)
         tableView.performBatchUpdates(nil)
     }
 

@@ -137,6 +137,11 @@ final class BookRowCell: UITableViewCell {
     private var descriptionMeasurementWidth: CGFloat = 0
     private var descriptionIsLoading = false
     private var lastDescriptionHeight: CGFloat = 0
+    private var descriptionUpdateDeferred = false
+    private var renderedDescription: String?
+    private var measuredDescriptionWidth: CGFloat = 0
+    private var measuredDescriptionHeight: CGFloat = 0
+    private var descriptionNeedsMeasurement = true
 
     private var maximumDescriptionHeight: CGFloat {
         ceil((descriptionTextView.font?.lineHeight ?? 14) * 1.5 * 7)
@@ -171,6 +176,7 @@ final class BookRowCell: UITableViewCell {
         // 취소할 DownloadTask가 없는 디스크 캐시 조회도 이전 요청으로 처리되도록 초기화한다.
         thumbnailImageView.kf.setImage(with: Optional<URL>.none)
         currentContent = nil
+        descriptionUpdateDeferred = false
         setPrimaryAction(.registration(isRegistered: false))
         onPrimaryAction = nil
         onToggleWishlist = nil
@@ -190,6 +196,8 @@ final class BookRowCell: UITableViewCell {
         descriptionMeasurementWidth = 0
         descriptionIsLoading = false
         lastDescriptionHeight = 0
+        renderedDescription = nil
+        descriptionNeedsMeasurement = true
         #if DEBUG
         performanceBatchID = nil
         #endif
@@ -332,9 +340,8 @@ final class BookRowCell: UITableViewCell {
         primaryAction: BookRowAction,
         wishlistAction: BookRowAction
     ) {
-        thumbnailImageView.kf.cancelDownloadTask()
-        let imageOptions = BookCoverImageOptions.make(displayScale: displayScale)
         currentContent = content
+        descriptionUpdateDeferred = false
         setPrimaryAction(primaryAction)
         setWishlistAction(wishlistAction)
         rankLabel.text   = content.rank.map { "\($0)" }
@@ -344,22 +351,37 @@ final class BookRowCell: UITableViewCell {
         publisherLabel.text = publisher
         publisherLabel.isHidden = publisher.isEmpty
 
-        let description = content.description.trimmingCharacters(in: .whitespacesAndNewlines)
-        let paragraphStyle = NSMutableParagraphStyle()
-        paragraphStyle.lineHeightMultiple = 1.5
-        descriptionTextView.attributedText = NSAttributedString(
-            string: description.isEmpty ? "책 소개가 없습니다" : description,
-            attributes: [
-                .font: descriptionTextView.font as Any,
-                .foregroundColor: descriptionTextView.textColor as Any,
-                .paragraphStyle: paragraphStyle,
-            ]
-        )
         descriptionMeasurementWidth = descriptionWidth
-        lastDescriptionHeight = 0
+        if currentContent?.description != renderedDescription {
+            descriptionNeedsMeasurement = true
+        }
         descriptionTextView.setContentOffset(.zero, animated: false)
+        descriptionIsLoading = isExpanded && isDescriptionLoading
         setExpanded(isExpanded)
-        setDescriptionLoading(isExpanded && isDescriptionLoading)
+        setDescriptionLoading(descriptionIsLoading)
+        loadCover(content: content, displayScale: displayScale)
+
+        let showRank = content.rank != nil
+        guard showRank != rankVisible else { return }
+        rankVisible = showRank
+        rankLabel.isHidden = !showRank
+        updateThumbnailLeading(showRank: showRank)
+    }
+
+    /// Keeps the current cell, action handlers and expansion state during enrichment.
+    func updateMetadata(content: BookRowContent, displayScale: CGFloat, updateDescription: Bool = true) {
+        guard let previous = currentContent, previous.isbn13 == content.isbn13 else { return }
+        currentContent = content
+        if previous.coverURL != content.coverURL {
+            loadCover(content: content, displayScale: displayScale)
+        }
+        descriptionUpdateDeferred = !updateDescription
+        if updateDescription { updateDescriptionViewportHeight() }
+    }
+
+    private func loadCover(content: BookRowContent, displayScale: CGFloat) {
+        thumbnailImageView.kf.cancelDownloadTask()
+        let imageOptions = BookCoverImageOptions.make(displayScale: displayScale)
         #if DEBUG
         let coverSpan = BookSearchPerformance.Span(.coverLoaded, source: .table, id: performanceBatchID ?? UUID())
         thumbnailImageView.kf.setImage(with: content.coverURL, options: imageOptions) { result in
@@ -387,23 +409,18 @@ final class BookRowCell: UITableViewCell {
         #else
         thumbnailImageView.kf.setImage(with: content.coverURL, options: imageOptions)
         #endif
-
-        let showRank = content.rank != nil
-        guard showRank != rankVisible else { return }
-        rankVisible        = showRank
-        rankLabel.isHidden = !showRank
-        updateThumbnailLeading(showRank: showRank)
     }
 
     func setExpanded(_ isExpanded: Bool) {
+        descriptionUpdateDeferred = false
+        descriptionContainer.isHidden = !isExpanded
         if !isExpanded {
             descriptionIsLoading = false
             descriptionLoadingIndicator.stopAnimating()
             descriptionTextView.isHidden = false
+        } else {
             updateDescriptionViewportHeight()
         }
-        guard descriptionContainer.isHidden == isExpanded else { return }
-        descriptionContainer.isHidden = !isExpanded
     }
 
     func setDescriptionLoading(_ isLoading: Bool) {
@@ -419,6 +436,25 @@ final class BookRowCell: UITableViewCell {
     }
 
     private func updateDescriptionViewportHeight() {
+        guard !descriptionContainer.isHidden, !descriptionUpdateDeferred else { return }
+        if !descriptionIsLoading {
+            let description = currentContent?.description ?? ""
+            if renderedDescription != description {
+                let paragraphStyle = NSMutableParagraphStyle()
+                paragraphStyle.lineHeightMultiple = 1.5
+                let normalized = description.trimmingCharacters(in: .whitespacesAndNewlines)
+                descriptionTextView.attributedText = NSAttributedString(
+                    string: normalized.isEmpty ? "책 소개가 없습니다" : normalized,
+                    attributes: [
+                        .font: descriptionTextView.font as Any,
+                        .foregroundColor: descriptionTextView.textColor as Any,
+                        .paragraphStyle: paragraphStyle,
+                    ]
+                )
+                renderedDescription = description
+                descriptionNeedsMeasurement = true
+            }
+        }
         let targetHeight: CGFloat
         let shouldScroll: Bool
 
@@ -427,12 +463,17 @@ final class BookRowCell: UITableViewCell {
             shouldScroll = false
         } else if descriptionMeasurementWidth > 0,
                   descriptionTextView.attributedText.length > 0 {
-            descriptionTextView.isScrollEnabled = false
-            let fittingSize = descriptionTextView.sizeThatFits(CGSize(
-                width: descriptionMeasurementWidth,
-                height: .greatestFiniteMagnitude
-            ))
-            let contentHeight = ceil(fittingSize.height)
+            if descriptionNeedsMeasurement || abs(measuredDescriptionWidth - descriptionMeasurementWidth) > 0.5 {
+                descriptionTextView.isScrollEnabled = false
+                let fittingSize = descriptionTextView.sizeThatFits(CGSize(
+                    width: descriptionMeasurementWidth,
+                    height: .greatestFiniteMagnitude
+                ))
+                measuredDescriptionHeight = ceil(fittingSize.height)
+                measuredDescriptionWidth = descriptionMeasurementWidth
+                descriptionNeedsMeasurement = false
+            }
+            let contentHeight = measuredDescriptionHeight
             targetHeight = min(contentHeight, maximumDescriptionHeight)
             shouldScroll = contentHeight > maximumDescriptionHeight + 0.5
         } else {

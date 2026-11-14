@@ -30,8 +30,8 @@ final class PageRecordViewController: UIViewController {
     private let sheetTitleLabel: UILabel = {
         let label = UILabel()
         label.text = "독서 진행률"
-        label.font = UIFont(name: "GowunBatang-Bold", size: 22)
-            ?? .systemFont(ofSize: 22, weight: .semibold)
+        label.font = UIFont(name: "GowunBatang-Bold", size: 20)
+            ?? .systemFont(ofSize: 20, weight: .semibold)
         label.textColor = .accent
         return label
     }()

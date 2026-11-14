@@ -179,10 +179,3 @@ final class BackupService {
         try modelContext.save()
     }
 }
-
-// MARK: - Error
-
-enum BackupError: LocalizedError {
-    case unknown
-    var errorDescription: String? { "알 수 없는 오류가 발생했습니다." }
-}

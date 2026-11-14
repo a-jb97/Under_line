@@ -47,9 +47,10 @@ final class SettingsViewController: UIViewController {
     private let titleLabel: UILabel = {
         let l = UILabel()
         l.text = "설정"
-        l.font = UIFont(name: "GowunBatang-Bold", size: 34)
-            ?? .systemFont(ofSize: 34, weight: .bold)
+        l.font = UIFont(name: "GowunBatang-Bold", size: 26)
+            ?? .systemFont(ofSize: 26, weight: .bold)
         l.textColor = .accent
+        l.accessibilityTraits.insert(.header)
         return l
     }()
 
@@ -98,7 +99,18 @@ final class SettingsViewController: UIViewController {
     // MARK: - Setup
 
     private func setupUI() {
-        view.addSubview(titleLabel)
+        SystemNavigationStyle.configure(self, title: "")
+        let titleContainer = UIView()
+        titleContainer.addSubview(titleLabel)
+        titleLabel.snp.makeConstraints { make in
+            make.leading.equalToSuperview().offset(10)
+            make.top.bottom.trailing.equalToSuperview()
+        }
+        let titleItem = UIBarButtonItem(customView: titleContainer)
+        if #available(iOS 26.0, *) {
+            titleItem.hidesSharedBackground = true
+        }
+        navigationItem.leftBarButtonItem = titleItem
         view.addSubview(scrollView)
         scrollView.addSubview(tableSection)
 
@@ -149,16 +161,8 @@ final class SettingsViewController: UIViewController {
     }
 
     private func setupConstraints() {
-        titleLabel.snp.makeConstraints { make in
-            make.top.equalTo(view.safeAreaLayoutGuide).offset(8)
-            make.leading.greaterThanOrEqualToSuperview().inset(24)
-            make.width.lessThanOrEqualTo(600)
-            make.width.equalToSuperview().priority(.high)
-            make.centerX.equalToSuperview()
-        }
-
         scrollView.snp.makeConstraints { make in
-            make.top.equalTo(titleLabel.snp.bottom).offset(28)
+            make.top.equalTo(view.safeAreaLayoutGuide).offset(12)
             make.leading.trailing.bottom.equalTo(view.safeAreaLayoutGuide)
         }
         scrollView.contentLayoutGuide.snp.makeConstraints { make in
