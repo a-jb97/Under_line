@@ -15,7 +15,6 @@ import RxCocoa
 final class CameraCollectionViewController: UIViewController {
 
     private let disposeBag = DisposeBag()
-    private var highlightLayers: [(view: UIView, layer: CAGradientLayer)] = []
 
     /// directCollectButton 탭 → dismiss 완료 후 호출
     var onDirectCollect: (() -> Void)?
@@ -119,8 +118,6 @@ final class CameraCollectionViewController: UIViewController {
         let cfg = UIImage.SymbolConfiguration(pointSize: 18, weight: .regular)
         btn.setImage(UIImage(systemName: "bolt", withConfiguration: cfg), for: .normal)
         btn.tintColor = UIColor.appPrimary
-        btn.layer.cornerRadius = 24
-        btn.clipsToBounds = true
         return btn
     }()
 
@@ -141,8 +138,6 @@ final class CameraCollectionViewController: UIViewController {
         config.imagePadding = 10
         config.baseForegroundColor = UIColor.appPrimary
         let btn = UIButton(configuration: config)
-        btn.layer.cornerRadius = 32
-        btn.clipsToBounds = true
         return btn
     }()
 
@@ -151,8 +146,6 @@ final class CameraCollectionViewController: UIViewController {
         let cfg = UIImage.SymbolConfiguration(pointSize: 18, weight: .regular)
         btn.setImage(UIImage(systemName: "arrow.triangle.2.circlepath.camera", withConfiguration: cfg), for: .normal)
         btn.tintColor = UIColor.appPrimary
-        btn.layer.cornerRadius = 24
-        btn.clipsToBounds = true
         return btn
     }()
 
@@ -181,9 +174,6 @@ final class CameraCollectionViewController: UIViewController {
     override func viewDidLayoutSubviews() {
         super.viewDidLayoutSubviews()
         previewLayer?.frame = cameraSectionView.bounds
-        for (view, gradient) in highlightLayers {
-            gradient.frame = view.bounds
-        }
     }
 
     override var preferredStatusBarStyle: UIStatusBarStyle { .darkContent }
@@ -206,9 +196,9 @@ final class CameraCollectionViewController: UIViewController {
         cameraSectionView.addSubview(scanGuideView)
         cameraSectionView.addSubview(scanInstructionLabel)
 
-        applyGlassStyle(to: flashButton,        cornerRadius: 24)
-        applyGlassStyle(to: captureButton,      cornerRadius: 32)
-        applyGlassStyle(to: switchCameraButton, cornerRadius: 24)
+        SystemGlassButtonStyle.apply(to: flashButton, accessibilityLabel: "플래시")
+        SystemGlassButtonStyle.apply(to: captureButton, accessibilityLabel: "수집하기")
+        SystemGlassButtonStyle.apply(to: switchCameraButton, accessibilityLabel: "카메라 전환")
     }
 
     private func setupConstraints() {
@@ -325,77 +315,6 @@ final class CameraCollectionViewController: UIViewController {
         }
     }
 
-    // MARK: - Glass Style (fabButton과 동일한 스타일)
-
-    private func applyGlassStyle(to button: UIButton, cornerRadius: CGFloat) {
-        guard let superview = button.superview else { return }
-
-        let shadowView = UIView()
-        shadowView.isUserInteractionEnabled = false
-        shadowView.layer.cornerRadius = cornerRadius
-        shadowView.backgroundColor = .white
-        shadowView.layer.shadowColor   = UIColor.black.cgColor
-        shadowView.layer.shadowOpacity = Float(CGFloat(0x18) / 255)
-        shadowView.layer.shadowRadius  = 8
-        shadowView.layer.shadowOffset  = CGSize(width: 0, height: 6)
-        superview.insertSubview(shadowView, belowSubview: button)
-        shadowView.snp.makeConstraints { $0.edges.equalTo(button) }
-
-        let glassContainer = UIView()
-        glassContainer.isUserInteractionEnabled = false
-        glassContainer.layer.cornerRadius = cornerRadius
-        glassContainer.clipsToBounds = true
-        glassContainer.layer.borderWidth = 1
-        glassContainer.layer.borderColor = UIColor(white: 1, alpha: CGFloat(0x70) / 255).cgColor
-        superview.insertSubview(glassContainer, belowSubview: button)
-        glassContainer.snp.makeConstraints { $0.edges.equalTo(button) }
-        superview.insertSubview(shadowView, belowSubview: glassContainer)
-
-        let blurView = UIVisualEffectView(effect: UIBlurEffect(style: .systemUltraThinMaterial))
-        blurView.isUserInteractionEnabled = false
-        glassContainer.addSubview(blurView)
-        blurView.snp.makeConstraints { $0.edges.equalToSuperview() }
-
-        let solidTint = UIView()
-        solidTint.isUserInteractionEnabled = false
-        solidTint.backgroundColor = UIColor(hex: "#832C11", alpha: CGFloat(0x24) / 255)
-        blurView.contentView.addSubview(solidTint)
-        solidTint.snp.makeConstraints { $0.edges.equalToSuperview() }
-
-        let topSpecular = UIView()
-        topSpecular.isUserInteractionEnabled = false
-        blurView.contentView.addSubview(topSpecular)
-        topSpecular.snp.makeConstraints { $0.edges.equalToSuperview() }
-        let topGrad = CAGradientLayer()
-        topGrad.colors = [
-            UIColor(white: 1, alpha: CGFloat(0x50) / 255).cgColor,
-            UIColor(white: 1, alpha: CGFloat(0x10) / 255).cgColor,
-            UIColor.clear.cgColor,
-        ]
-        topGrad.locations  = [0, 0.45, 1.0]
-        topGrad.startPoint = CGPoint(x: 0.5, y: 0)
-        topGrad.endPoint   = CGPoint(x: 0.5, y: 1)
-        topSpecular.layer.addSublayer(topGrad)
-        highlightLayers.append((topSpecular, topGrad))
-
-        let bottomWarm = UIView()
-        bottomWarm.isUserInteractionEnabled = false
-        blurView.contentView.addSubview(bottomWarm)
-        bottomWarm.snp.makeConstraints { $0.edges.equalToSuperview() }
-        let bottomGrad = CAGradientLayer()
-        bottomGrad.colors = [
-            UIColor(hex: "#832C11", alpha: CGFloat(0x20) / 255).cgColor,
-            UIColor(hex: "#832C11", alpha: CGFloat(0x0C) / 255).cgColor,
-            UIColor.clear.cgColor,
-        ]
-        bottomGrad.locations  = [0, 0.5, 1.0]
-        bottomGrad.startPoint = CGPoint(x: 0.5, y: 1)
-        bottomGrad.endPoint   = CGPoint(x: 0.5, y: 0)
-        bottomWarm.layer.addSublayer(bottomGrad)
-        highlightLayers.append((bottomWarm, bottomGrad))
-
-        button.backgroundColor = .clear
-    }
 
     // MARK: - Camera
 
@@ -535,7 +454,10 @@ final class CameraCollectionViewController: UIViewController {
         }
         let iconName = isFlashOn ? "bolt.fill" : "bolt"
         let cfg = UIImage.SymbolConfiguration(pointSize: 18, weight: .regular)
-        flashButton.setImage(UIImage(systemName: iconName, withConfiguration: cfg), for: .normal)
+        var configuration = flashButton.configuration
+        configuration?.image = SystemGlassButtonStyle.icon(UIImage(systemName: iconName, withConfiguration: cfg))
+        flashButton.configuration = configuration
+        flashButton.accessibilityValue = isFlashOn ? "켜짐" : "꺼짐"
     }
 
     private func switchCamera() {

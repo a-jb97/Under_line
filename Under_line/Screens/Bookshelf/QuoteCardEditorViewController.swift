@@ -17,11 +17,9 @@ final class QuoteCardEditorViewController: UIViewController {
     private let disposeBag = DisposeBag()
     private let sentence: Sentence
     private let bookTitle: String
-    private var highlightLayers: [(view: UIView, layer: CAGradientLayer)] = []
     private let ciContext = CIContext(options: [.useSoftwareRenderer: false])
     private var isDominantColorEnabled = false
     private var dominantTextColor: UIColor = .appPrimary
-    private var colorSyncDecorations: [UIView] = []
 
     init(sentence: Sentence, bookTitle: String) {
         self.sentence  = sentence
@@ -131,9 +129,7 @@ final class QuoteCardEditorViewController: UIViewController {
         let btn = UIButton(type: .system)
         let cfg = UIImage.SymbolConfiguration(pointSize: 14, weight: .medium)
         btn.setImage(UIImage(systemName: "eye.slash", withConfiguration: cfg), for: .normal)
-        btn.tintColor = UIColor.walnut
-        btn.layer.cornerRadius = 26
-        btn.clipsToBounds = true
+        btn.tintColor = UIColor.appPrimary
         return btn
     }()
 
@@ -141,9 +137,7 @@ final class QuoteCardEditorViewController: UIViewController {
         let btn = UIButton(type: .system)
         let cfg = UIImage.SymbolConfiguration(pointSize: 14, weight: .medium)
         btn.setImage(UIImage(systemName: "photo", withConfiguration: cfg), for: .normal)
-        btn.tintColor = UIColor.walnut
-        btn.layer.cornerRadius = 26
-        btn.clipsToBounds = true
+        btn.tintColor = UIColor.appPrimary
         return btn
     }()
 
@@ -151,9 +145,7 @@ final class QuoteCardEditorViewController: UIViewController {
         let btn = UIButton(type: .system)
         let cfg = UIImage.SymbolConfiguration(pointSize: 14, weight: .medium)
         btn.setImage(UIImage(systemName: "paintpalette.fill", withConfiguration: cfg), for: .normal)
-        btn.tintColor = UIColor.walnut
-        btn.layer.cornerRadius = 26
-        btn.clipsToBounds = true
+        btn.tintColor = UIColor.appPrimary
         btn.isHidden = true
         return btn
     }()
@@ -162,9 +154,7 @@ final class QuoteCardEditorViewController: UIViewController {
         let btn = UIButton(type: .system)
         let cfg = UIImage.SymbolConfiguration(pointSize: 14, weight: .medium)
         btn.setImage(UIImage(systemName: "square.and.arrow.up", withConfiguration: cfg), for: .normal)
-        btn.tintColor = UIColor.walnut
-        btn.layer.cornerRadius = 26
-        btn.clipsToBounds = true
+        btn.tintColor = UIColor.appPrimary
         return btn
     }()
 
@@ -195,9 +185,6 @@ final class QuoteCardEditorViewController: UIViewController {
 
     override func viewDidLayoutSubviews() {
         super.viewDidLayoutSubviews()
-        for (view, gradient) in highlightLayers {
-            gradient.frame = view.bounds
-        }
         [bookTitleBlur].forEach { applyFadeMask(to: $0) }
         applyFadeMask(to: sentenceBlur, cornerRadius: 24)
     }
@@ -237,11 +224,10 @@ final class QuoteCardEditorViewController: UIViewController {
         view.addSubview(colorSyncLabel)
         view.addSubview(saveLabel)
 
-        applyFabGlassStyle(to: removeLogoButton, cornerRadius: 26)
-        applyFabGlassStyle(to: backgroundButton, cornerRadius: 26)
-        colorSyncDecorations = applyFabGlassStyle(to: colorSyncButton, cornerRadius: 26)
-        colorSyncDecorations.forEach { $0.isHidden = true }
-        applyFabGlassStyle(to: saveButton,        cornerRadius: 26)
+        SystemGlassButtonStyle.apply(to: removeLogoButton, accessibilityLabel: "로고 제거")
+        SystemGlassButtonStyle.apply(to: colorSyncButton, accessibilityLabel: "색상 동기화")
+        SystemGlassButtonStyle.apply(to: backgroundButton, accessibilityLabel: "배경 지정")
+        SystemGlassButtonStyle.apply(to: saveButton, accessibilityLabel: "공유하기")
     }
 
     private func setupConstraints() {
@@ -268,7 +254,7 @@ final class QuoteCardEditorViewController: UIViewController {
 
         // 버튼: 레이블 바로 위
         removeLogoButton.snp.makeConstraints { make in
-            make.leading.equalToSuperview().inset(24)
+            make.leading.equalTo(view.safeAreaLayoutGuide).offset(24)
             make.bottom.equalTo(removeLogoLabel.snp.top).offset(-6)
             make.size.equalTo(52)
         }
@@ -283,7 +269,7 @@ final class QuoteCardEditorViewController: UIViewController {
             make.size.equalTo(52)
         }
         saveButton.snp.makeConstraints { make in
-            make.trailing.equalToSuperview().inset(24)
+            make.trailing.equalTo(view.safeAreaLayoutGuide).inset(24)
             make.centerY.equalTo(removeLogoButton)
             make.size.equalTo(52)
         }
@@ -378,7 +364,10 @@ final class QuoteCardEditorViewController: UIViewController {
                 self.logoImageView.isHidden = hide
                 let symbolName = hide ? "eye" : "eye.slash"
                 let cfg = UIImage.SymbolConfiguration(pointSize: 14, weight: .medium)
-                self.removeLogoButton.setImage(UIImage(systemName: symbolName, withConfiguration: cfg), for: .normal)
+                var configuration = self.removeLogoButton.configuration
+                configuration?.image = SystemGlassButtonStyle.icon(UIImage(systemName: symbolName, withConfiguration: cfg))
+                self.removeLogoButton.configuration = configuration
+                self.removeLogoButton.accessibilityValue = hide ? "로고 숨김" : "로고 표시"
             })
             .disposed(by: disposeBag)
 
@@ -392,7 +381,10 @@ final class QuoteCardEditorViewController: UIViewController {
                 self.isDominantColorEnabled.toggle()
                 let icon = self.isDominantColorEnabled ? "paintpalette.fill" : "paintpalette"
                 let cfg = UIImage.SymbolConfiguration(pointSize: 14, weight: .medium)
-                self.colorSyncButton.setImage(UIImage(systemName: icon, withConfiguration: cfg), for: .normal)
+                var configuration = self.colorSyncButton.configuration
+                configuration?.image = SystemGlassButtonStyle.icon(UIImage(systemName: icon, withConfiguration: cfg))
+                self.colorSyncButton.configuration = configuration
+                self.colorSyncButton.accessibilityValue = self.isDominantColorEnabled ? "켜짐" : "꺼짐"
                 self.updateTextColor(self.isDominantColorEnabled ? self.dominantTextColor : nil)
             })
             .disposed(by: disposeBag)
@@ -435,80 +427,6 @@ final class QuoteCardEditorViewController: UIViewController {
         blurView.layer.mask = maskLayer
     }
 
-    // MARK: - FAB Glass Style (BookDetailViewController와 동일한 스펙)
-
-    @discardableResult
-    private func applyFabGlassStyle(to button: UIButton, cornerRadius: CGFloat) -> [UIView] {
-        guard let superview = button.superview else { return [] }
-
-        let shadowView = UIView()
-        shadowView.isUserInteractionEnabled = false
-        shadowView.layer.cornerRadius = cornerRadius
-        shadowView.backgroundColor = .white
-        shadowView.layer.shadowColor   = UIColor.black.cgColor
-        shadowView.layer.shadowOpacity = Float(CGFloat(0x18) / 255)
-        shadowView.layer.shadowRadius  = 8
-        shadowView.layer.shadowOffset  = CGSize(width: 0, height: 6)
-        superview.insertSubview(shadowView, belowSubview: button)
-        shadowView.snp.makeConstraints { $0.edges.equalTo(button) }
-
-        let glassContainer = UIView()
-        glassContainer.isUserInteractionEnabled = false
-        glassContainer.layer.cornerRadius = cornerRadius
-        glassContainer.clipsToBounds = true
-        glassContainer.layer.borderWidth = 1
-        glassContainer.layer.borderColor = UIColor(white: 1, alpha: CGFloat(0x70) / 255).cgColor
-        superview.insertSubview(glassContainer, belowSubview: button)
-        glassContainer.snp.makeConstraints { $0.edges.equalTo(button) }
-        superview.insertSubview(shadowView, belowSubview: glassContainer)
-
-        let blurView = UIVisualEffectView(effect: UIBlurEffect(style: .systemUltraThinMaterial))
-        blurView.isUserInteractionEnabled = false
-        glassContainer.addSubview(blurView)
-        blurView.snp.makeConstraints { $0.edges.equalToSuperview() }
-
-        let solidTint = UIView()
-        solidTint.isUserInteractionEnabled = false
-        solidTint.backgroundColor = UIColor(hex: "#832C11", alpha: CGFloat(0x24) / 255)
-        blurView.contentView.addSubview(solidTint)
-        solidTint.snp.makeConstraints { $0.edges.equalToSuperview() }
-
-        let topSpecular = UIView()
-        topSpecular.isUserInteractionEnabled = false
-        blurView.contentView.addSubview(topSpecular)
-        topSpecular.snp.makeConstraints { $0.edges.equalToSuperview() }
-        let topGrad = CAGradientLayer()
-        topGrad.colors = [
-            UIColor(white: 1, alpha: CGFloat(0x50) / 255).cgColor,
-            UIColor(white: 1, alpha: CGFloat(0x10) / 255).cgColor,
-            UIColor.clear.cgColor,
-        ]
-        topGrad.locations  = [0, 0.45, 1.0]
-        topGrad.startPoint = CGPoint(x: 0.5, y: 0)
-        topGrad.endPoint   = CGPoint(x: 0.5, y: 1)
-        topSpecular.layer.addSublayer(topGrad)
-        highlightLayers.append((topSpecular, topGrad))
-
-        let bottomWarm = UIView()
-        bottomWarm.isUserInteractionEnabled = false
-        blurView.contentView.addSubview(bottomWarm)
-        bottomWarm.snp.makeConstraints { $0.edges.equalToSuperview() }
-        let bottomGrad = CAGradientLayer()
-        bottomGrad.colors = [
-            UIColor(hex: "#832C11", alpha: CGFloat(0x20) / 255).cgColor,
-            UIColor(hex: "#832C11", alpha: CGFloat(0x0C) / 255).cgColor,
-            UIColor.clear.cgColor,
-        ]
-        bottomGrad.locations  = [0, 0.5, 1.0]
-        bottomGrad.startPoint = CGPoint(x: 0.5, y: 1)
-        bottomGrad.endPoint   = CGPoint(x: 0.5, y: 0)
-        bottomWarm.layer.addSublayer(bottomGrad)
-        highlightLayers.append((bottomWarm, bottomGrad))
-
-        button.backgroundColor = .clear
-        return [shadowView, glassContainer]
-    }
-
     // MARK: - Share Card
 
     private func shareCard() {
@@ -527,7 +445,6 @@ final class QuoteCardEditorViewController: UIViewController {
     private func setColorSyncVisible(_ visible: Bool) {
         colorSyncButton.isHidden = !visible
         colorSyncLabel.isHidden  = !visible
-        colorSyncDecorations.forEach { $0.isHidden = !visible }
     }
 
     // MARK: - Dominant Color
@@ -594,9 +511,10 @@ extension QuoteCardEditorViewController: PHPickerViewControllerDelegate {
                 self.dominantTextColor = dominant
                 self.isDominantColorEnabled = false
                 let cfg = UIImage.SymbolConfiguration(pointSize: 14, weight: .medium)
-                self.colorSyncButton.setImage(
-                    UIImage(systemName: "paintpalette", withConfiguration: cfg), for: .normal
-                )
+                var configuration = self.colorSyncButton.configuration
+                configuration?.image = SystemGlassButtonStyle.icon(UIImage(systemName: "paintpalette", withConfiguration: cfg))
+                self.colorSyncButton.configuration = configuration
+                self.colorSyncButton.accessibilityValue = "꺼짐"
                 self.backgroundImageView.image = image
                 self.backgroundImageView.isHidden = false
                 [self.sentenceBlur, self.bookTitleBlur]
@@ -616,16 +534,28 @@ extension QuoteCardEditorViewController {
 
         let steps: [TutorialStep] = [
             TutorialStep(
-                targetFrame: removeLogoButton.convert(removeLogoButton.bounds, to: nil),
-                message: "로고를 숨기거나\n다시 표시할 수 있어요"
+                targetFrame: .zero,
+                message: "로고를 숨기거나\n다시 표시할 수 있어요",
+                targetFrameProvider: { [weak self] in
+                    guard let target = self?.removeLogoButton else { return .zero }
+                    return target.convert(target.bounds, to: nil)
+                }
             ),
             TutorialStep(
-                targetFrame: backgroundButton.convert(backgroundButton.bounds, to: nil),
-                message: "사진을 배경으로 설정해\n카드를 꾸밀 수 있어요\n\n배경을 지정하면 색상 동기화 버튼이 나타나\n텍스트 색상을 사진의 주요 색상으로 바꿀 수 있어요"
+                targetFrame: .zero,
+                message: "사진을 배경으로 설정해\n카드를 꾸밀 수 있어요\n\n배경을 지정하면 색상 동기화 버튼이 나타나\n텍스트 색상을 사진의 주요 색상으로 바꿀 수 있어요",
+                targetFrameProvider: { [weak self] in
+                    guard let target = self?.backgroundButton else { return .zero }
+                    return target.convert(target.bounds, to: nil)
+                }
             ),
             TutorialStep(
-                targetFrame: saveButton.convert(saveButton.bounds, to: nil),
-                message: "공유 버튼으로 이미지를 저장하거나\n다른 앱에 공유할 수 있어요"
+                targetFrame: .zero,
+                message: "공유 버튼으로 이미지를 저장하거나\n다른 앱에 공유할 수 있어요",
+                targetFrameProvider: { [weak self] in
+                    guard let target = self?.saveButton else { return .zero }
+                    return target.convert(target.bounds, to: nil)
+                }
             ),
         ]
 
