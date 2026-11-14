@@ -46,8 +46,8 @@ final class StatisticsViewController: UIViewController {
     private let titleLabel: UILabel = {
         let label = UILabel()
         label.text = "통계"
-        label.font = UIFont(name: "GowunBatang-Bold", size: 34)
-            ?? .systemFont(ofSize: 34, weight: .bold)
+        label.font = UIFont(name: "GowunBatang-Bold", size: 26)
+            ?? .systemFont(ofSize: 26, weight: .bold)
         label.textColor = .accent
         label.accessibilityTraits.insert(.header)
         return label
@@ -128,7 +128,13 @@ final class StatisticsViewController: UIViewController {
 
     private func setupUI() {
         SystemNavigationStyle.configure(self, title: "")
-        let titleItem = UIBarButtonItem(customView: titleLabel)
+        let titleContainer = UIView()
+        titleContainer.addSubview(titleLabel)
+        titleLabel.snp.makeConstraints { make in
+            make.leading.equalToSuperview().offset(8)
+            make.top.bottom.trailing.equalToSuperview()
+        }
+        let titleItem = UIBarButtonItem(customView: titleContainer)
         if #available(iOS 26.0, *) {
             titleItem.hidesSharedBackground = true
         }

@@ -47,8 +47,8 @@ final class SettingsViewController: UIViewController {
     private let titleLabel: UILabel = {
         let l = UILabel()
         l.text = "설정"
-        l.font = UIFont(name: "GowunBatang-Bold", size: 34)
-            ?? .systemFont(ofSize: 34, weight: .bold)
+        l.font = UIFont(name: "GowunBatang-Bold", size: 26)
+            ?? .systemFont(ofSize: 26, weight: .bold)
         l.textColor = .accent
         l.accessibilityTraits.insert(.header)
         return l
@@ -100,7 +100,13 @@ final class SettingsViewController: UIViewController {
 
     private func setupUI() {
         SystemNavigationStyle.configure(self, title: "")
-        let titleItem = UIBarButtonItem(customView: titleLabel)
+        let titleContainer = UIView()
+        titleContainer.addSubview(titleLabel)
+        titleLabel.snp.makeConstraints { make in
+            make.leading.equalToSuperview().offset(10)
+            make.top.bottom.trailing.equalToSuperview()
+        }
+        let titleItem = UIBarButtonItem(customView: titleContainer)
         if #available(iOS 26.0, *) {
             titleItem.hidesSharedBackground = true
         }
@@ -156,7 +162,7 @@ final class SettingsViewController: UIViewController {
 
     private func setupConstraints() {
         scrollView.snp.makeConstraints { make in
-            make.top.equalTo(view.safeAreaLayoutGuide).offset(28)
+            make.top.equalTo(view.safeAreaLayoutGuide).offset(12)
             make.leading.trailing.bottom.equalTo(view.safeAreaLayoutGuide)
         }
         scrollView.contentLayoutGuide.snp.makeConstraints { make in
