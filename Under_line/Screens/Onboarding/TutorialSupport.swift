@@ -20,6 +20,13 @@ enum TutorialSupport {
         controller.present(overlay, animated: true)
     }
 
+    static func viewStep(target: UIView, message: String) -> TutorialStep {
+        TutorialStep(targetFrame: .zero, message: message, targetFrameProvider: { [weak target] in
+            guard let target, target.window != nil else { return .zero }
+            return target.convert(target.bounds, to: nil)
+        })
+    }
+
     static func navigationStep(on controller: UIViewController, message: String) -> TutorialStep {
         TutorialStep(targetFrame: .zero, message: message, targetFrameProvider: { [weak controller] in
             guard let bar = controller?.navigationController?.navigationBar,

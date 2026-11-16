@@ -60,6 +60,7 @@ final class TutorialOverlayViewController: UIViewController {
 
     private var currentIndex = 0
     private var lastLayoutSize = CGSize.zero
+    private var lastTargetFrame: CGRect?
     private let disposeBag = DisposeBag()
     private var fingerHintView: UIImageView?
     private var isFinishing = false
@@ -154,8 +155,9 @@ final class TutorialOverlayViewController: UIViewController {
         let step = steps[currentIndex]
         let frame = step.targetFrameProvider?() ?? step.targetFrame
         updateSpotlight(targetFrame: frame)
-        if lastLayoutSize != view.bounds.size {
+        if lastLayoutSize != view.bounds.size || lastTargetFrame != frame {
             lastLayoutSize = view.bounds.size
+            lastTargetFrame = frame
             repositionCallout(relativeTo: frame)
         }
     }

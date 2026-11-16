@@ -94,11 +94,11 @@ final class BookshelfViewController: UIViewController {
         return imageView
     }()
 
-    private let sortButton = SystemNavigationStyle.item(
+    private let sortButton = SystemNavigationStyle.button(
         image: "slider.horizontal.3", label: "정렬·필터", identifier: "sortButton"
     )
 
-    private let wishlistButton = SystemNavigationStyle.item(
+    private let wishlistButton = SystemNavigationStyle.button(
         image: "heart", label: "도서 위시리스트", identifier: "openWishlistButton"
     )
 
@@ -214,7 +214,10 @@ final class BookshelfViewController: UIViewController {
             titleItem.hidesSharedBackground = true
         }
         navigationItem.leftBarButtonItem = titleItem
-        navigationItem.rightBarButtonItems = [sortButton, wishlistButton]
+        navigationItem.rightBarButtonItems = [
+            UIBarButtonItem(customView: sortButton),
+            UIBarButtonItem(customView: wishlistButton)
+        ]
         view.backgroundColor = UIColor.background
 
         view.addSubview(bookshelfScrollView)
@@ -820,7 +823,7 @@ extension BookshelfViewController {
     private func showTutorialIfNeeded() {
         guard !UserDefaults.standard.bool(forKey: "tutorial.bookshelf") else {
             TutorialSupport.show(on: self, key: "tutorial.bookshelfWishlist", steps: [
-                TutorialSupport.navigationStep(on: self, message: "상단 하트 버튼에서 위시리스트를 열고\n읽고 싶은 책을 관리해보세요")
+                TutorialSupport.viewStep(target: wishlistButton, message: "상단 하트 버튼에서 위시리스트를 열고\n읽고 싶은 책을 관리해보세요")
             ])
             return
         }
@@ -854,7 +857,8 @@ extension BookshelfViewController {
         tutorialBooks = books
         if layoutReady { rebuildShelfPages() }
         let steps: [TutorialStep] = [
-            TutorialSupport.navigationStep(on: self, message: "상단 하트 버튼에서 위시리스트를 열 수 있어요"),
+            TutorialSupport.viewStep(target: wishlistButton, message: "상단 하트 버튼에서 위시리스트를 열 수 있어요"),
+            TutorialSupport.viewStep(target: sortButton, message: "상단 조절 아이콘에서 정렬·필터로\n원하는 책을 빠르게 찾을 수 있어요"),
             TutorialStep(
                 targetFrame: .zero,
                 message: "도서 검색으로 읽고 있는 책을\n책장에 추가해보세요!",
@@ -863,7 +867,6 @@ extension BookshelfViewController {
                     return target.convert(target.bounds, to: nil)
                 }
             ),
-            TutorialSupport.navigationStep(on: self, message: "상단 조절 아이콘에서 정렬·필터로\n원하는 책을 빠르게 찾을 수 있어요"),
         ]
 
         let tutorialVC = TutorialOverlayViewController()

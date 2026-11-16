@@ -1,4 +1,5 @@
 import UIKit
+import SnapKit
 
 @MainActor
 enum SystemNavigationStyle {
@@ -34,6 +35,18 @@ enum SystemNavigationStyle {
         )
         bar.standardAppearance = appearance
         bar.compactAppearance = appearance
+    }
+
+    static func button(image: String, label: String, identifier: String) -> UIButton {
+        let button = UIButton(type: .system)
+        button.setImage(UIImage(systemName: image), for: .normal)
+        button.tintColor = .appPrimary
+        button.accessibilityLabel = label
+        button.accessibilityIdentifier = identifier
+        button.snp.makeConstraints { make in
+            make.size.equalTo(44)
+        }
+        return button
     }
 
     static func item(image: String, label: String, identifier: String, tint: UIColor? = nil) -> UIBarButtonItem {
