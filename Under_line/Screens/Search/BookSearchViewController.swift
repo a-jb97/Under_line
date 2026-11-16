@@ -215,6 +215,12 @@ final class BookSearchViewController: UIViewController {
                 guard let self, let cell = self.tableView.cellForRow(at: indexPath),
                       let target = TutorialSupport.target(in: cell, identifier: "wishlistButton") else { return .zero }
                 return target.convert(target.bounds, to: nil)
+            }),
+            TutorialStep(targetFrame: .zero, message: "도서를 탭하면\n해당 도서의 소개를 펼쳐볼 수 있어요", targetFrameProvider: { [weak self] in
+                guard let self, let cell = self.tableView.cellForRow(at: indexPath) else { return .zero }
+                return cell.convert(cell.bounds, to: nil)
+            }, onTargetTap: { [weak self] in
+                self?.toggleBookDescription(at: indexPath)
             })
         ])
     }

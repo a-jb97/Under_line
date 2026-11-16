@@ -28,11 +28,13 @@ struct TutorialStep {
     let message: String
     var animation: TutorialAnimation? = nil
     var targetFrameProvider: (() -> CGRect)? = nil
+    /// 강조 영역을 탭하면 튜토리얼을 종료한 뒤 실행할 동작.
+    var onTargetTap: (() -> Void)? = nil
 }
 
 // MARK: - TutorialBlockingView
 
-/// 튜토리얼 루트 뷰: 허용된 뷰(이전/다음/확인 버튼)에 대한 터치만 전달하고
+/// 튜토리얼 루트 뷰: 허용된 버튼(이전/다음/확인 및 강조 영역)에 대한 터치만 전달하고
 /// 나머지 터치는 self를 반환해 흡수합니다. (nil 반환 시 하위 레이어로 pass-through됨)
 private final class TutorialBlockingView: UIView {
     var interactableViews: [UIView] = []
@@ -60,6 +62,7 @@ final class TutorialOverlayViewController: UIViewController {
     private var lastLayoutSize = CGSize.zero
     private let disposeBag = DisposeBag()
     private var fingerHintView: UIImageView?
+    private var isFinishing = false
 
     private let blockingView = TutorialBlockingView()
     private weak var presentingTabBarController: UITabBarController?
@@ -67,6 +70,7 @@ final class TutorialOverlayViewController: UIViewController {
     // MARK: - UI
 
     private let dimView = UIView()
+    private let targetButton = UIButton(type: .custom)
 
     private let bubbleContainer: UIView = {
         let v = UIView()
@@ -169,6 +173,9 @@ final class TutorialOverlayViewController: UIViewController {
             make.edges.equalToSuperview()
         }
 
+        view.addSubview(targetButton)
+        targetButton.isHidden = true
+
         view.addSubview(arrowImageView)
         view.addSubview(bubbleContainer)
         bubbleContainer.addSubview(messageLabel)
@@ -210,10 +217,18 @@ final class TutorialOverlayViewController: UIViewController {
         }
 
         // 튜토리얼 버튼만 터치를 허용
-        blockingView.interactableViews = [prevButton, nextButton]
+        blockingView.interactableViews = [prevButton, nextButton, targetButton]
     }
 
     private func bindActions() {
+        targetButton.rx.tap
+            .subscribe(onNext: { [weak self] in
+                guard let self, self.steps.indices.contains(self.currentIndex),
+                      let action = self.steps[self.currentIndex].onTargetTap else { return }
+                self.finish(completion: action)
+            })
+            .disposed(by: disposeBag)
+
         nextButton.rx.tap
             .subscribe(onNext: { [weak self] in
                 guard let self else { return }
@@ -267,6 +282,11 @@ final class TutorialOverlayViewController: UIViewController {
     // MARK: - Spotlight Mask
 
     private func updateSpotlight(targetFrame: CGRect) {
+        let step = steps[currentIndex]
+        targetButton.isHidden = step.onTargetTap == nil || targetFrame == .zero
+        targetButton.frame = view.convert(targetFrame, from: nil)
+        targetButton.accessibilityLabel = step.message
+
         let fullPath = UIBezierPath(rect: dimView.bounds)
         if targetFrame != .zero {
             let hole = UIBezierPath(
@@ -328,10 +348,14 @@ final class TutorialOverlayViewController: UIViewController {
         nextButton.setTitle(currentIndex == steps.count - 1 ? "확인" : "다음 >", for: .normal)
     }
 
-    private func finish() {
+    private func finish(completion: (() -> Void)? = nil) {
+        guard !isFinishing else { return }
+        isFinishing = true
         removeFingerHint()
-        dismiss(animated: true) { [weak self] in
-            self?.onFinished?()
+        let onFinished = onFinished
+        dismiss(animated: true) {
+            onFinished?()
+            completion?()
         }
     }
 
