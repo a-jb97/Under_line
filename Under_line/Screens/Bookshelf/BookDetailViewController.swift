@@ -52,7 +52,7 @@ final class BookDetailViewController: UIViewController {
     // Header
 
     private let timerButton = SystemNavigationStyle.item(
-        image: "timer", label: "독서 타이머", identifier: "readingTimerButton", tint: .appPrimary
+        image: "timer", label: "독서 타이머", identifier: "readingTimerButton", tint: .appPrimary, priority: .high
     )
 
     // Quote Card
@@ -240,7 +240,7 @@ final class BookDetailViewController: UIViewController {
 
     private func setupUI() {
         SystemNavigationStyle.configure(self, title: "나의 밑줄")
-        navigationItem.rightBarButtonItem = timerButton
+        SystemNavigationStyle.setTrailingItems([timerButton], on: navigationItem)
         view.backgroundColor = UIColor.background
 
         // Scroll container
@@ -281,7 +281,7 @@ final class BookDetailViewController: UIViewController {
         // Scroll container
         scrollView.snp.makeConstraints { make in
             make.top.equalTo(view.safeAreaLayoutGuide)
-            make.leading.trailing.equalToSuperview()
+            make.leading.trailing.equalTo(view.safeAreaLayoutGuide)
             make.bottom.equalTo(view.safeAreaLayoutGuide)
         }
         scrollView.contentInset.bottom = 80
@@ -886,7 +886,7 @@ extension BookDetailViewController {
                     return target.convert(target.bounds, to: nil)
                 }
             ),
-            TutorialSupport.navigationStep(on: self, message: "상단 타이머 아이콘에서 독서 시간을 기록하고\n통계를 확인하세요"),
+            TutorialSupport.barButtonStep(item: timerButton, on: self, message: "타이머 아이콘에서 독서 시간을 기록하고\n통계를 확인하세요"),
         ]
 
         let tutorialVC = TutorialOverlayViewController()

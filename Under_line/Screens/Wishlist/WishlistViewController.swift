@@ -155,12 +155,12 @@ final class WishlistViewController: UIViewController, UITableViewDataSource, SFS
         [tableView, loadingIndicator, statusStack, searchBar].forEach { view.addSubview($0) }
         searchBar.snp.makeConstraints { make in
             make.top.equalTo(view.safeAreaLayoutGuide).offset(8)
-            make.leading.trailing.equalToSuperview().inset(24)
+            make.leading.trailing.equalTo(view.safeAreaLayoutGuide).inset(24)
             make.height.equalTo(48)
         }
         tableView.snp.makeConstraints { make in
             make.top.equalTo(searchBar.snp.bottom).offset(8)
-            make.leading.trailing.equalToSuperview().inset(16)
+            make.leading.trailing.equalTo(view.safeAreaLayoutGuide).inset(16)
             make.bottom.equalTo(view.keyboardLayoutGuide.snp.top)
         }
         loadingIndicator.snp.makeConstraints { make in make.center.equalTo(tableView) }

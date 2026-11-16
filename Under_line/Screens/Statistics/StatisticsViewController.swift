@@ -43,18 +43,8 @@ final class StatisticsViewController: UIViewController {
         return sv
     }()
 
-    private let titleLabel: UILabel = {
-        let label = UILabel()
-        label.text = "통계"
-        label.font = UIFont(name: "GowunBatang-Bold", size: 26)
-            ?? .systemFont(ofSize: 26, weight: .bold)
-        label.textColor = .accent
-        label.accessibilityTraits.insert(.header)
-        return label
-    }()
-
     private let allSentencesButton = SystemNavigationStyle.item(
-        image: "text.quote", label: "밑줄 모아보기", identifier: "allSentencesButton"
+        image: "text.quote", label: "밑줄 모아보기", identifier: "allSentencesButton", priority: .high
     )
 
     // 히트맵 카드
@@ -73,7 +63,13 @@ final class StatisticsViewController: UIViewController {
         view.backgroundColor = .background
         setupUI()
         setupConstraints()
+        SystemNavigationStyle.observeBarPlacement(on: self)
         bindViewModel()
+    }
+
+    override func viewWillLayoutSubviews() {
+        super.viewWillLayoutSubviews()
+        SystemNavigationStyle.setSectionTitle("통계", leadingInset: 8, on: self)
     }
 
     override func viewWillAppear(_ animated: Bool) {
@@ -128,18 +124,8 @@ final class StatisticsViewController: UIViewController {
 
     private func setupUI() {
         SystemNavigationStyle.configure(self, title: "")
-        let titleContainer = UIView()
-        titleContainer.addSubview(titleLabel)
-        titleLabel.snp.makeConstraints { make in
-            make.leading.equalToSuperview().offset(8)
-            make.top.bottom.trailing.equalToSuperview()
-        }
-        let titleItem = UIBarButtonItem(customView: titleContainer)
-        if #available(iOS 26.0, *) {
-            titleItem.hidesSharedBackground = true
-        }
-        navigationItem.leftBarButtonItem = titleItem
-        navigationItem.rightBarButtonItem = allSentencesButton
+        SystemNavigationStyle.setSectionTitle("통계", leadingInset: 8, on: self)
+        SystemNavigationStyle.setTrailingItems([allSentencesButton], on: navigationItem)
         view.addSubview(scrollView)
         scrollView.addSubview(contentStack)
 
@@ -151,7 +137,7 @@ final class StatisticsViewController: UIViewController {
     private func setupConstraints() {
         scrollView.snp.makeConstraints { make in
             make.top.equalTo(view.safeAreaLayoutGuide)
-            make.leading.trailing.equalToSuperview()
+            make.leading.trailing.equalTo(view.safeAreaLayoutGuide)
             make.bottom.equalTo(view.safeAreaLayoutGuide)
         }
 

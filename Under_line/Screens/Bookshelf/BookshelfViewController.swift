@@ -75,8 +75,8 @@ final class BookshelfViewController: UIViewController {
 
     // MARK: - UI Components
 
-    // 기존 제목의 표시 영역과 내비게이션 바 왼쪽 위치를 유지한다.
-    private let appLogoView: UIImageView = {
+    // 가로 막대에서는 기존 왼쪽 로고, 세로 막대에서는 콘텐츠 로고를 표시한다.
+    private static func makeLogoView() -> UIImageView {
         let titleLabel = UILabel()
         titleLabel.text = "밑줄"
         titleLabel.font = UIFont(name: "GowunBatang-Bold", size: 34)
@@ -92,14 +92,27 @@ final class BookshelfViewController: UIViewController {
         imageView.accessibilityLabel = "밑줄"
         imageView.accessibilityTraits = [.image, .header]
         return imageView
+    }
+
+    private let appLogoView = BookshelfViewController.makeLogoView()
+    private let contentLogoView = BookshelfViewController.makeLogoView()
+    private let logoHeaderView = UIView()
+    private var logoHeaderHeight: Constraint?
+    private var usesContentLogo: Bool?
+    private lazy var logoBarItem: UIBarButtonItem = {
+        let item = UIBarButtonItem(customView: appLogoView)
+        if #available(iOS 26.0, *) {
+            item.hidesSharedBackground = true
+        }
+        return item
     }()
 
-    private let sortButton = SystemNavigationStyle.button(
+    private let sortButton = SystemNavigationStyle.item(
         image: "slider.horizontal.3", label: "정렬·필터", identifier: "sortButton"
     )
 
-    private let wishlistButton = SystemNavigationStyle.button(
-        image: "heart", label: "도서 위시리스트", identifier: "openWishlistButton"
+    private let wishlistButton = SystemNavigationStyle.item(
+        image: "heart", label: "도서 위시리스트", identifier: "openWishlistButton", priority: .high
     )
 
     // 책장 수평 페이징 스크롤뷰
@@ -169,7 +182,14 @@ final class BookshelfViewController: UIViewController {
         super.viewDidLoad()
         setupUI()
         setupConstraints()
+        updateLogoPlacement()
+        SystemNavigationStyle.observeBarPlacement(on: self)
         bindActions()
+    }
+
+    override func viewWillLayoutSubviews() {
+        super.viewWillLayoutSubviews()
+        updateLogoPlacement()
     }
 
     override func viewDidLayoutSubviews() {
@@ -209,17 +229,11 @@ final class BookshelfViewController: UIViewController {
 
     private func setupUI() {
         SystemNavigationStyle.configure(self, title: "")
-        let titleItem = UIBarButtonItem(customView: appLogoView)
-        if #available(iOS 26.0, *) {
-            titleItem.hidesSharedBackground = true
-        }
-        navigationItem.leftBarButtonItem = titleItem
-        navigationItem.rightBarButtonItems = [
-            UIBarButtonItem(customView: sortButton),
-            UIBarButtonItem(customView: wishlistButton)
-        ]
+        SystemNavigationStyle.setTrailingItems([wishlistButton, sortButton], on: navigationItem)
         view.backgroundColor = UIColor.background
 
+        view.addSubview(logoHeaderView)
+        logoHeaderView.addSubview(contentLogoView)
         view.addSubview(bookshelfScrollView)
         view.addSubview(shelfOverlayView)   // 스크롤뷰 위에 고정 선반 오버레이
         view.addSubview(pageControl)
@@ -236,6 +250,15 @@ final class BookshelfViewController: UIViewController {
     }
 
     private func setupConstraints() {
+        logoHeaderView.snp.makeConstraints { make in
+            make.top.leading.trailing.equalTo(view.safeAreaLayoutGuide)
+            logoHeaderHeight = make.height.equalTo(0).constraint
+        }
+        contentLogoView.snp.makeConstraints { make in
+            make.leading.equalToSuperview().offset(24)
+            make.centerY.equalToSuperview()
+        }
+
         fabButton.snp.makeConstraints { make in
             make.trailing.equalTo(view.safeAreaLayoutGuide).inset(24)
             make.bottom.equalTo(view.safeAreaLayoutGuide).inset(16)
@@ -260,19 +283,29 @@ final class BookshelfViewController: UIViewController {
         }
 
         pageControl.snp.makeConstraints { make in
-            make.centerX.equalToSuperview()
+            make.centerX.equalTo(view.safeAreaLayoutGuide)
             make.top.equalTo(shelfOverlayView)   // 초기 플레이스홀더, setupFixedShelfBoards에서 remakeConstraints
         }
 
         bookshelfScrollView.snp.makeConstraints { make in
-            make.top.equalTo(view.safeAreaLayoutGuide)
-            make.leading.trailing.equalToSuperview().inset(24)
+            make.top.equalTo(logoHeaderView.snp.bottom)
+            make.leading.trailing.equalTo(view.safeAreaLayoutGuide).inset(24)
             make.bottom.equalTo(fabButton.snp.top).offset(-16)
         }
 
         shelfOverlayView.snp.makeConstraints { make in
             make.edges.equalTo(bookshelfScrollView)
         }
+    }
+
+    private func updateLogoPlacement() {
+        let usesContentLogo = SystemNavigationStyle.usesVerticalBar(on: self)
+        guard self.usesContentLogo != usesContentLogo else { return }
+        self.usesContentLogo = usesContentLogo
+        navigationItem.leftBarButtonItem = usesContentLogo ? nil : logoBarItem
+        logoHeaderView.isHidden = !usesContentLogo
+        let logoHeight = contentLogoView.systemLayoutSizeFitting(UIView.layoutFittingCompressedSize).height
+        logoHeaderHeight?.update(offset: usesContentLogo ? logoHeight + 16 : 0)
     }
 
     // MARK: - Shelf Pages
@@ -406,7 +439,7 @@ final class BookshelfViewController: UIViewController {
 
         // pageControl을 마지막 선반 하단에서 16pt 아래에 배치
         pageControl.snp.remakeConstraints { make in
-            make.centerX.equalToSuperview()
+            make.centerX.equalTo(view.safeAreaLayoutGuide)
             make.top.equalTo(shelfOverlayView).offset(lastShelfMaxY + 16)
         }
     }
@@ -823,7 +856,7 @@ extension BookshelfViewController {
     private func showTutorialIfNeeded() {
         guard !UserDefaults.standard.bool(forKey: "tutorial.bookshelf") else {
             TutorialSupport.show(on: self, key: "tutorial.bookshelfWishlist", steps: [
-                TutorialSupport.viewStep(target: wishlistButton, message: "상단 하트 버튼에서 위시리스트를 열고\n읽고 싶은 책을 관리해보세요")
+                TutorialSupport.barButtonStep(item: wishlistButton, on: self, message: "하트 아이콘에서 위시리스트를 열고\n읽고 싶은 책을 관리해보세요")
             ])
             return
         }
@@ -857,8 +890,8 @@ extension BookshelfViewController {
         tutorialBooks = books
         if layoutReady { rebuildShelfPages() }
         let steps: [TutorialStep] = [
-            TutorialSupport.viewStep(target: wishlistButton, message: "상단 하트 버튼에서 위시리스트를 열 수 있어요"),
-            TutorialSupport.viewStep(target: sortButton, message: "상단 조절 아이콘에서 정렬·필터로\n원하는 책을 빠르게 찾을 수 있어요"),
+            TutorialSupport.barButtonStep(item: wishlistButton, on: self, message: "하트 아이콘에서 위시리스트를 열 수 있어요"),
+            TutorialSupport.barButtonStep(item: sortButton, on: self, message: "조절 아이콘에서 정렬·필터로\n원하는 책을 빠르게 찾을 수 있어요"),
             TutorialStep(
                 targetFrame: .zero,
                 message: "도서 검색으로 읽고 있는 책을\n책장에 추가해보세요!",
