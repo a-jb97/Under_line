@@ -13,8 +13,20 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
         guard let scene = (scene as? UIWindowScene) else { return }
 
         window = UIWindow(windowScene: scene)
-        window?.rootViewController = MainTabBarController()
+        let launchController = LaunchAnimationViewController()
+        launchController.onCompletion = { [weak self, weak launchController] in
+            guard let window = self?.window,
+                  let launchController,
+                  window.rootViewController === launchController else { return }
+
+            window.rootViewController = MainTabBarController()
+        }
+        window?.rootViewController = launchController
         window?.makeKeyAndVisible()
+    }
+
+    func sceneDidBecomeActive(_ scene: UIScene) {
+        (window?.rootViewController as? LaunchAnimationViewController)?.startIfNeeded()
     }
 
     func sceneWillEnterForeground(_ scene: UIScene) {
@@ -22,6 +34,7 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
     }
 
     func sceneDidEnterBackground(_ scene: UIScene) {
+        (window?.rootViewController as? LaunchAnimationViewController)?.cancelForBackground()
         WidgetCacheService.shared.refreshCache()
     }
 }

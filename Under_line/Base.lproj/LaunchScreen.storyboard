@@ -15,16 +15,16 @@
                         <rect key="frame" x="0.0" y="0.0" width="393" height="852"/>
                         <autoresizingMask key="autoresizingMask" widthSizable="YES" heightSizable="YES"/>
                         <subviews>
-                            <imageView clipsSubviews="YES" userInteractionEnabled="NO" contentMode="scaleAspectFit" image="Launch_Image" translatesAutoresizingMaskIntoConstraints="NO" id="OQV-rH-RTL">
-                                <rect key="frame" x="136.66666666666666" y="309" width="119.99999999999997" height="120"/>
+                            <imageView clipsSubviews="YES" userInteractionEnabled="NO" contentMode="scaleAspectFit" image="LaunchTitle" translatesAutoresizingMaskIntoConstraints="NO" id="OQV-rH-RTL">
+                                <rect key="frame" x="146.5" y="309" width="100" height="113.11475409836065"/>
                                 <constraints>
-                                    <constraint firstAttribute="height" constant="120" id="PHS-eL-yA0"/>
-                                    <constraint firstAttribute="width" constant="120" id="hE8-FO-JYT"/>
+                                    <constraint firstAttribute="height" constant="113.11475409836065" id="PHS-eL-yA0"/>
+                                    <constraint firstAttribute="width" constant="100" id="hE8-FO-JYT"/>
                                 </constraints>
                             </imageView>
                         </subviews>
                         <viewLayoutGuide key="safeArea" id="6Tk-OE-BBY"/>
-                        <color key="backgroundColor" red="0.96470588235294119" green="0.93725490196078431" blue="0.93333333333333335" alpha="1" colorSpace="custom" customColorSpace="sRGB"/>
+                        <color key="backgroundColor" name="background"/>
                         <constraints>
                             <constraint firstItem="OQV-rH-RTL" firstAttribute="centerX" secondItem="Ze5-6b-2t3" secondAttribute="centerX" id="XT1-sw-8na"/>
                             <constraint firstItem="OQV-rH-RTL" firstAttribute="top" secondItem="6Tk-OE-BBY" secondAttribute="top" constant="250" id="tbK-5h-wRe"/>
@@ -37,6 +37,9 @@
         </scene>
     </scenes>
     <resources>
-        <image name="Launch_Image" width="193" height="210"/>
+        <image name="LaunchTitle" width="61" height="69"/>
+        <namedColor name="background">
+            <color red="0.965" green="0.937" blue="0.933" alpha="1" colorSpace="custom" customColorSpace="sRGB"/>
+        </namedColor>
     </resources>
 </document>
