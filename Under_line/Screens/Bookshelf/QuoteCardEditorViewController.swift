@@ -431,7 +431,7 @@ final class QuoteCardEditorViewController: UIViewController {
 
     private func shareCard() {
         let format = UIGraphicsImageRendererFormat()
-        format.scale = UIScreen.main.scale
+        format.scale = cardView.traitCollection.displayScale
         let renderer = UIGraphicsImageRenderer(bounds: cardView.bounds, format: format)
         let image = renderer.image { _ in
             cardView.drawHierarchy(in: cardView.bounds, afterScreenUpdates: true)

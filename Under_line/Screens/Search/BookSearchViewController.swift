@@ -164,7 +164,8 @@ final class BookSearchViewController: UIViewController {
     private let loadMoreIndicator: UIActivityIndicatorView = {
         let ai = UIActivityIndicatorView(style: .medium)
         ai.color = UIColor.walnut
-        ai.frame = CGRect(x: 0, y: 0, width: UIScreen.main.bounds.width, height: 48)
+        ai.frame = CGRect(x: 0, y: 0, width: 0, height: 48)
+        ai.autoresizingMask = [.flexibleWidth]
         ai.startAnimating()
         return ai
     }()
@@ -235,9 +236,17 @@ final class BookSearchViewController: UIViewController {
     override func viewDidLayoutSubviews() {
         DispatchQueue.main.async { [weak self] in self?.showWishlistTutorial() }
         super.viewDidLayoutSubviews()
+        updateLoadingFooterWidth()
         scheduleCoverPrefetch()
         scheduleEnrichmentWindowUpdate()
         scheduleNextPageIfNeeded()
+    }
+
+    private func updateLoadingFooterWidth() {
+        guard tableView.tableFooterView === loadMoreIndicator,
+              loadMoreIndicator.frame.width != tableView.bounds.width else { return }
+        loadMoreIndicator.frame.size.width = tableView.bounds.width
+        tableView.tableFooterView = loadMoreIndicator
     }
 
     #if DEBUG
@@ -429,6 +438,7 @@ final class BookSearchViewController: UIViewController {
                 guard let self else { return }
                 self.isLoadingNextPage = loading
                 self.tableView.tableFooterView = loading ? self.loadMoreIndicator : UIView()
+                if loading { self.updateLoadingFooterWidth() }
                 if !loading { self.scheduleNextPageIfNeeded() }
             })
             .disposed(by: disposeBag)
