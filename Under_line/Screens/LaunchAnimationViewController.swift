@@ -8,7 +8,9 @@ final class LaunchAnimationViewController: UIViewController {
     var onCompletion: (() -> Void)?
 
     private let titleImageView = UIImageView(image: UIImage(named: "LaunchTitle"))
+    private let underlineContainerView = UIView()
     private let underlineImageView = UIImageView(image: UIImage(named: "LaunchUnderline"))
+    private let strokeCoverLayer = CAShapeLayer()
     private let subtitleLabel = UILabel()
     private let underlineMask = CALayer()
     private let disposeBag = DisposeBag()
@@ -35,7 +37,11 @@ final class LaunchAnimationViewController: UIViewController {
         subtitleLabel.isAccessibilityElement = true
         subtitleLabel.accessibilityLabel = subtitle
 
-        [titleImageView, underlineImageView, subtitleLabel].forEach(view.addSubview)
+        [titleImageView, underlineContainerView, subtitleLabel].forEach(view.addSubview)
+        underlineContainerView.isUserInteractionEnabled = false
+        underlineContainerView.isAccessibilityElement = false
+        underlineContainerView.layer.addSublayer(strokeCoverLayer)
+        underlineContainerView.addSubview(underlineImageView)
         // 로고 글자와 밑줄은 각 요소에 맞게 잘린 별도의 viewBox로 내보낸 이미지
         // scaleAspectFit의 세로 여백을 반영해 밑줄을 'ㅜ'의 가로획에 맞춤
         // 가로획의 중심은 로고 글자의 67 × 74 viewBox에서 y = 51.2
@@ -44,6 +50,9 @@ final class LaunchAnimationViewController: UIViewController {
             $0.top.equalTo(view.safeAreaLayoutGuide).offset(250)
             $0.width.equalTo(100)
             $0.height.equalTo(100 * 69.0 / 61.0)
+        }
+        underlineContainerView.snp.makeConstraints {
+            $0.edges.equalTo(titleImageView)
         }
         underlineImageView.snp.makeConstraints {
             $0.leading.equalTo(titleImageView).offset(100 * 4.0 / 61.0)
@@ -65,7 +74,8 @@ final class LaunchAnimationViewController: UIViewController {
 
         underlineMask.anchorPoint = .zero
         underlineMask.backgroundColor = UIColor.black.cgColor
-        underlineImageView.layer.mask = underlineMask
+        // 가림 영역과 갈색 선을 같은 마스크로 노출해 검은 획을 순서대로 덮습니다.
+        underlineContainerView.layer.mask = underlineMask
 
         NotificationCenter.default.rx.notification(UIAccessibility.reduceMotionStatusDidChangeNotification)
             .observe(on: MainScheduler.instance)
@@ -81,13 +91,40 @@ final class LaunchAnimationViewController: UIViewController {
         super.viewDidLayoutSubviews()
         CATransaction.begin()
         CATransaction.setDisableActions(true)
-        underlineMask.position = .zero
+        updateStrokeCover()
+        underlineMask.position = CGPoint(x: underlineImageView.frame.minX, y: 0)
         underlineMask.bounds = CGRect(
             origin: .zero,
             size: CGSize(width: hasStarted ? underlineImageView.bounds.width : 0,
-                         height: underlineImageView.bounds.height)
+                         height: underlineContainerView.bounds.height)
         )
         CATransaction.commit()
+    }
+
+    private func updateStrokeCover() {
+        // 로고 SVG의 좌표를 실제 이미지 표시 영역으로 변환합니다.
+        let bounds = titleImageView.bounds
+        let scale = min(bounds.width / 67, bounds.height / 74)
+        let imageOrigin = CGPoint(x: (bounds.width - 67 * scale) / 2,
+                                  y: (bounds.height - 74 * scale) / 2)
+        let coverRects = [
+            CGRect(x: 29.4, y: 49, width: 15.1, height: 4.2),
+            // 중앙은 짧게 가려 'ㅜ' 세로획과 갈색 선의 연결을 보존합니다.
+            CGRect(x: 44.5, y: 49, width: 2.2, height: 3),
+            CGRect(x: 46.7, y: 49, width: 14.5, height: 4.2)
+        ]
+        let path = UIBezierPath()
+        for rect in coverRects {
+            path.append(UIBezierPath(rect: CGRect(
+                x: imageOrigin.x + rect.minX * scale,
+                y: imageOrigin.y + rect.minY * scale,
+                width: rect.width * scale,
+                height: rect.height * scale
+            )))
+        }
+        strokeCoverLayer.frame = underlineContainerView.bounds
+        strokeCoverLayer.path = path.cgPath
+        strokeCoverLayer.fillColor = UIColor.background.resolvedColor(with: traitCollection).cgColor
     }
 
     override func viewDidAppear(_ animated: Bool) {
