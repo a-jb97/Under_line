@@ -5,7 +5,9 @@ import RxSwift
 import RxCocoa
 import Toast
 
-final class WishlistViewController: UIViewController, UITableViewDataSource, SFSafariViewControllerDelegate {
+final class WishlistViewController: AdaptiveViewController, UITableViewDataSource, SFSafariViewControllerDelegate {
+    override var avoidsKeyboard: Bool { true }
+
     func safariViewController(_ controller: SFSafariViewController, didCompleteInitialLoad didLoadSuccessfully: Bool) {
         guard !didLoadSuccessfully else { return }
         controller.dismiss(animated: true) { [weak self] in
@@ -125,8 +127,14 @@ final class WishlistViewController: UIViewController, UITableViewDataSource, SFS
         case .store(let store): purchaseMessage = "구매 버튼을 누르면 \(store.displayName)로 바로 연결돼요"
         }
         let steps = [
-            TutorialStep(targetFrame: searchBar.convert(searchBar.bounds, to: nil), message: "제목이나 저자로 위시리스트를 검색해요"),
-            TutorialStep(targetFrame: tableView.convert(tableView.bounds, to: nil), message: "도서를 탭해 책소개를 펼치고\n하트를 다시 눌러 목록에서 삭제할 수 있어요"),
+            TutorialStep(targetFrame: .zero, message: "제목이나 저자로 위시리스트를 검색해요", targetFrameProvider: { [weak self] in
+                guard let bar = self?.searchBar else { return .zero }
+                return bar.convert(bar.bounds, to: nil)
+            }),
+            TutorialStep(targetFrame: .zero, message: "도서를 탭해 책소개를 펼치고\n하트를 다시 눌러 목록에서 삭제할 수 있어요", targetFrameProvider: { [weak self] in
+                guard let table = self?.tableView else { return .zero }
+                return table.convert(table.bounds, to: nil)
+            }),
             TutorialStep(targetFrame: .zero, message: purchaseMessage + "\n상품 선택과 구매는 서점 웹페이지에서 진행해요", targetFrameProvider: { [weak self] in
                 guard let self, let button = TutorialSupport.target(in: self.tableView, identifier: "purchaseBookButton") else { return .zero }
                 return button.convert(button.bounds, to: nil)
@@ -154,14 +162,14 @@ final class WishlistViewController: UIViewController, UITableViewDataSource, SFS
         view.backgroundColor = UIColor.background
         [tableView, loadingIndicator, statusStack, searchBar].forEach { view.addSubview($0) }
         searchBar.snp.makeConstraints { make in
-            make.top.equalTo(view.safeAreaLayoutGuide).offset(8)
-            make.leading.trailing.equalTo(view.safeAreaLayoutGuide).inset(24)
+            make.top.equalTo(view.adaptiveContentLayoutGuide).offset(8)
+            make.leading.trailing.equalTo(view.adaptiveContentLayoutGuide).inset(24)
             make.height.equalTo(48)
         }
         tableView.snp.makeConstraints { make in
             make.top.equalTo(searchBar.snp.bottom).offset(8)
-            make.leading.trailing.equalTo(view.safeAreaLayoutGuide).inset(16)
-            make.bottom.equalTo(view.keyboardLayoutGuide.snp.top)
+            make.leading.trailing.equalTo(view.adaptiveContentLayoutGuide).inset(16)
+            make.bottom.equalTo(view.adaptiveContentLayoutGuide)
         }
         loadingIndicator.snp.makeConstraints { make in make.center.equalTo(tableView) }
         statusStack.snp.makeConstraints { make in

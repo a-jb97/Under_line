@@ -80,7 +80,7 @@ final class BookshelfLayoutTests: XCTestCase {
         }
     }
 
-    func test_fullyOpenPortrait_movesAllShelvesAndBooksDown24Points() {
+    func test_fullyOpenPortrait_movesAllShelvesAndBooksDown48Points() {
         let bounds = CGRect(x: 0, y: 0, width: 620, height: 800)
         let fold = CGRect(x: 0, y: 430, width: 620, height: 40)
         let folded = BookshelfLayout(container: ContainerLayout(bounds: bounds, reservedRegions: [
@@ -90,8 +90,8 @@ final class BookshelfLayoutTests: XCTestCase {
             .init(kind: .division, frame: fold, isActive: false)
         ], reservesInactiveDivisions: true)
         let open = BookshelfLayout(container: container)
-        XCTAssertEqual(open.boards, folded.boards.map { $0.offsetBy(dx: 0, dy: 24) })
-        XCTAssertEqual(open.slots, folded.slots.map { $0.offsetBy(dx: 0, dy: 24) })
+        XCTAssertEqual(open.boards, folded.boards.map { $0.offsetBy(dx: 0, dy: 48) })
+        XCTAssertEqual(open.slots, folded.slots.map { $0.offsetBy(dx: 0, dy: 48) })
         XCTAssertEqual(open.paginationFrame, folded.paginationFrame)
         assertGeometry(open, in: container)
     }
@@ -147,7 +147,7 @@ final class BookshelfLayoutTests: XCTestCase {
             ], reservesInactiveDivisions: true))
             let offset = open.boards[0].minY - folded.boards[0].minY
             XCTAssertGreaterThanOrEqual(offset, 0)
-            XCTAssertLessThanOrEqual(offset, 24)
+            XCTAssertLessThanOrEqual(offset, 48)
             if frame.height > frame.width { XCTAssertEqual(offset, 0) }
             XCTAssertEqual(open.boards, folded.boards.map { $0.offsetBy(dx: 0, dy: offset) })
             XCTAssertEqual(open.slots, folded.slots.map { $0.offsetBy(dx: 0, dy: offset) })

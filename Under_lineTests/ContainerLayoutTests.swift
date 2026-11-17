@@ -123,6 +123,63 @@ final class ContainerLayoutTests: XCTestCase {
         XCTAssertEqual(layout.verticalSizeClass, .compact)
     }
 
+    func test_readableContent_capsWidthAndCentersInsideSafeArea() {
+        let container = ContainerLayout(bounds: CGRect(x: 0, y: 0, width: 1200, height: 800),
+                                        safeAreaInsets: UIEdgeInsets(top: 40, left: 20, bottom: 30, right: 80))
+        let frame = ReadableContentLayout(container: container).frame
+        XCTAssertEqual(frame.width, 760)
+        XCTAssertEqual(frame.midX, container.safeBounds.midX)
+        XCTAssertEqual(frame.minY, 40)
+        XCTAssertEqual(frame.maxY, 770)
+    }
+
+    func test_readableContent_avoidsFoldAndCameraInBothAxes() {
+        let bounds = CGRect(x: 0, y: 0, width: 1000, height: 800)
+        for fold in [CGRect(x: 480, y: 0, width: 40, height: 800),
+                     CGRect(x: 0, y: 390, width: 1000, height: 40)] {
+            let container = ContainerLayout(bounds: bounds, reservedRegions: [
+                .init(kind: .division, frame: fold),
+                .init(kind: .occlusion, frame: CGRect(x: 900, y: 0, width: 100, height: 80))
+            ])
+            let frame = ReadableContentLayout(container: container).frame
+            XCTAssertTrue(container.safeBounds.contains(frame))
+            XCTAssertGreaterThan(frame.width, 300)
+            for region in container.reservedRegions { XCTAssertTrue(frame.intersection(region.frame).isEmpty) }
+        }
+    }
+
+    func test_readableContent_keyboardSelectsVisibleRegionWithoutCumulativeInsets() {
+        let container = ContainerLayout(bounds: CGRect(x: 0, y: 0, width: 800, height: 900), reservedRegions: [
+            .init(kind: .division, frame: CGRect(x: 0, y: 390, width: 800, height: 40))
+        ])
+        let before = ReadableContentLayout(container: container).frame
+        let keyboard = ReadableContentLayout(container: container, keyboardTop: 480).frame
+        XCTAssertEqual(keyboard.maxY, 390)
+        XCTAssertEqual(keyboard, ReadableContentLayout(container: container, keyboardTop: 480).frame)
+        XCTAssertEqual(before, ReadableContentLayout(container: container).frame)
+    }
+
+    func test_readableContent_smallAndFullyOccludedWindows_doNotExpand() {
+        let bounds = CGRect(x: 0, y: 0, width: 260, height: 160)
+        XCTAssertEqual(ReadableContentLayout(container: ContainerLayout(bounds: bounds)).frame, bounds)
+        let hidden = ContainerLayout(bounds: bounds, reservedRegions: [.init(kind: .occlusion, frame: bounds)])
+        XCTAssertTrue(ReadableContentLayout(container: hidden).frame.isEmpty)
+    }
+
+    func test_scrollableText_longBodyRemainsReachableAfterResizing() {
+        let label = UILabel()
+        label.numberOfLines = 0
+        label.text = String(repeating: "긴 문장과 메모를 끝까지 읽을 수 있어야 합니다. ", count: 80)
+        let scroll = ScrollableTextView(label: label)
+        scroll.frame = CGRect(x: 0, y: 0, width: 300, height: 180)
+        scroll.layoutIfNeeded()
+        XCTAssertGreaterThan(scroll.contentSize.height, scroll.bounds.height)
+        scroll.frame.size = CGSize(width: 500, height: 140)
+        scroll.layoutIfNeeded()
+        XCTAssertGreaterThan(scroll.contentSize.height, scroll.bounds.height)
+        XCTAssertEqual(label.text?.count, String(repeating: "긴 문장과 메모를 끝까지 읽을 수 있어야 합니다. ", count: 80).count)
+    }
+
     func test_repeatedLayout_notifiesOnlyWhenGeometryChanges() {
         let view = ContainerLayoutView(frame: bounds)
         var layouts: [ContainerLayout] = []

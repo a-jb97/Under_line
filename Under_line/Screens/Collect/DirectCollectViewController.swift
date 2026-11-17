@@ -12,7 +12,9 @@ import SnapKit
 import RxSwift
 import RxCocoa
 
-final class DirectCollectViewController: UIViewController {
+final class DirectCollectViewController: AdaptiveViewController {
+
+    override var avoidsKeyboard: Bool { true }
 
     private let disposeBag        = DisposeBag()
     private let bookISBN: String
@@ -216,6 +218,16 @@ final class DirectCollectViewController: UIViewController {
 
     // MARK: - Lifecycle
 
+    private var lastMemoViewport = CGRect.zero
+
+    override func viewDidLayoutSubviews() {
+        super.viewDidLayoutSubviews()
+        let viewport = view.adaptiveContentLayoutGuide.layoutFrame
+        guard viewport != lastMemoViewport else { return }
+        lastMemoViewport = viewport
+        if memoTextView.isFirstResponder { scrollToMemo() }
+    }
+
     override func viewDidLoad() {
         super.viewDidLoad()
         view.backgroundColor = UIColor.background
@@ -223,7 +235,6 @@ final class DirectCollectViewController: UIViewController {
         setupUI()
         setupConstraints()
         bindActions()
-        setupKeyboardHandling()
 
         if let text = initialSentence, !text.isEmpty {
             sentenceTextView.text        = text
@@ -249,48 +260,6 @@ final class DirectCollectViewController: UIViewController {
                 chip.isSelected = chip.emotion == sentence.emotion
             }
         }
-    }
-
-    override func viewWillDisappear(_ animated: Bool) {
-        super.viewWillDisappear(animated)
-        NotificationCenter.default.removeObserver(self)
-    }
-
-    // MARK: - Keyboard
-
-    private var isKeyboardVisible = false
-
-    private func setupKeyboardHandling() {
-        NotificationCenter.default.addObserver(
-            self,
-            selector: #selector(keyboardWillShow(_:)),
-            name: UIResponder.keyboardWillShowNotification,
-            object: nil
-        )
-        NotificationCenter.default.addObserver(
-            self,
-            selector: #selector(keyboardWillHide(_:)),
-            name: UIResponder.keyboardWillHideNotification,
-            object: nil
-        )
-    }
-
-    @objc private func keyboardWillShow(_ notification: Notification) {
-        isKeyboardVisible = true
-        guard let info = notification.userInfo,
-              let keyboardFrame = info[UIResponder.keyboardFrameEndUserInfoKey] as? CGRect,
-              let duration = info[UIResponder.keyboardAnimationDurationUserInfoKey] as? TimeInterval,
-              memoTextView.isFirstResponder
-        else { return }
-
-        let keyboardHeight = keyboardFrame.height - view.safeAreaInsets.bottom
-        UIView.animate(withDuration: duration) {
-            self.scrollView.contentOffset.y += keyboardHeight
-        }
-    }
-
-    @objc private func keyboardWillHide(_ notification: Notification) {
-        isKeyboardVisible = false
     }
 
     // MARK: - Sheet
@@ -346,23 +315,23 @@ final class DirectCollectViewController: UIViewController {
 
     private func setupConstraints() {
         handleView.snp.makeConstraints { make in
-            make.top.equalToSuperview().inset(12)
-            make.centerX.equalToSuperview()
+            make.top.equalTo(view.adaptiveContentLayoutGuide).inset(12)
+            make.centerX.equalTo(view.adaptiveContentLayoutGuide)
             make.width.equalTo(36)
             make.height.equalTo(5)
         }
 
         titleLabel.snp.makeConstraints { make in
             make.top.equalTo(handleView.snp.bottom).offset(11)
-            make.leading.equalToSuperview().inset(24)
+            make.leading.equalTo(view.adaptiveContentLayoutGuide).inset(24)
             make.height.equalTo(52)
         }
 
-        // keyboardLayoutGuide에 하단을 붙여 키보드가 올라오면 scrollView가 자동으로 줄어듦
+        // 공통 가용 영역이 keyboardLayoutGuide에 맞춰 줄어든다.
         scrollView.snp.makeConstraints { make in
             make.top.equalTo(titleLabel.snp.bottom)
-            make.leading.trailing.equalToSuperview()
-            make.bottom.equalTo(view.keyboardLayoutGuide.snp.top)
+            make.leading.trailing.equalTo(view.adaptiveContentLayoutGuide)
+            make.bottom.equalTo(view.adaptiveContentLayoutGuide)
         }
 
         formStack.snp.makeConstraints { make in
@@ -473,7 +442,7 @@ extension DirectCollectViewController: UITextViewDelegate {
     func textViewDidBeginEditing(_ textView: UITextView) {
         // 키보드가 이미 올라와 있는 상태에서 memoTextView로 전환하는 경우
         // (keyboardWillShow가 재발화하지 않으므로 여기서 처리)
-        guard textView === memoTextView, isKeyboardVisible else { return }
+        guard textView === memoTextView else { return }
         DispatchQueue.main.async { [weak self] in
             guard let self, self.memoTextView.isFirstResponder else { return }
             self.scrollToMemo()

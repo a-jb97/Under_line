@@ -11,7 +11,9 @@ import RxSwift
 import RxCocoa
 import Toast
 
-final class BookSearchViewController: UIViewController {
+final class BookSearchViewController: AdaptiveViewController {
+
+    override var avoidsKeyboard: Bool { true }
 
     // MARK: - Properties
 
@@ -301,27 +303,27 @@ final class BookSearchViewController: UIViewController {
 
     private func setupConstraints() {
         handleBar.snp.makeConstraints { make in
-            make.top.equalToSuperview().offset(12)
-            make.centerX.equalToSuperview()
+            make.top.equalTo(view.adaptiveContentLayoutGuide).offset(12)
+            make.centerX.equalTo(view.adaptiveContentLayoutGuide)
             make.width.equalTo(36)
             make.height.equalTo(5)
         }
 
         sheetTitleLabel.snp.makeConstraints { make in
             make.top.equalTo(handleBar.snp.bottom).offset(11)
-            make.leading.equalToSuperview().inset(24)
+            make.leading.equalTo(view.adaptiveContentLayoutGuide).inset(24)
             make.trailing.lessThanOrEqualTo(directRegisterButton.snp.leading).offset(-12)
             make.height.equalTo(52)
         }
 
         directRegisterButton.snp.makeConstraints { make in
-            make.trailing.equalToSuperview().inset(24)
+            make.trailing.equalTo(view.adaptiveContentLayoutGuide).inset(24)
             make.centerY.equalTo(sheetTitleLabel)
         }
 
         searchBarView.snp.makeConstraints { make in
             make.top.equalTo(sheetTitleLabel.snp.bottom)
-            make.leading.trailing.equalToSuperview().inset(24)
+            make.leading.trailing.equalTo(view.adaptiveContentLayoutGuide).inset(24)
             make.height.equalTo(48)
         }
 
@@ -330,8 +332,8 @@ final class BookSearchViewController: UIViewController {
             // 카드의 실제 좌우 여백은 24pt로 유지하면서 그림자 공간 8pt를
             // 테이블 내부에 둔다. 행 높이 변경 중 UIKit이 셀 경계를 클리핑해도
             // 그림자가 잘리지 않는다.
-            make.leading.trailing.equalToSuperview().inset(16)
-            make.bottom.equalTo(view.safeAreaLayoutGuide)
+            make.leading.trailing.equalTo(view.adaptiveContentLayoutGuide).inset(16)
+            make.bottom.equalTo(view.adaptiveContentLayoutGuide)
         }
 
         activityIndicator.snp.makeConstraints { make in
@@ -339,7 +341,7 @@ final class BookSearchViewController: UIViewController {
         }
 
         headerBackground.snp.makeConstraints { make in
-            make.top.leading.trailing.equalToSuperview()
+            make.top.leading.trailing.equalTo(view.adaptiveContentLayoutGuide)
             make.bottom.equalTo(searchBarView.snp.bottom)
         }
     }

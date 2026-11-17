@@ -12,7 +12,7 @@ import RxCocoa
 import UniformTypeIdentifiers
 import Toast
 
-final class SettingsViewController: UIViewController {
+final class SettingsViewController: AdaptiveViewController {
 
     private let viewModel = SettingsViewModel()
     private let restoreFilePickedRelay = PublishRelay<URL>()
@@ -148,8 +148,8 @@ final class SettingsViewController: UIViewController {
 
     private func setupConstraints() {
         scrollView.snp.makeConstraints { make in
-            make.top.equalTo(view.safeAreaLayoutGuide).offset(12)
-            make.leading.trailing.bottom.equalTo(view.safeAreaLayoutGuide)
+            make.top.equalTo(view.adaptiveContentLayoutGuide).offset(12)
+            make.leading.trailing.bottom.equalTo(view.adaptiveContentLayoutGuide)
         }
         scrollView.contentLayoutGuide.snp.makeConstraints { make in
             make.width.equalTo(scrollView.frameLayoutGuide)

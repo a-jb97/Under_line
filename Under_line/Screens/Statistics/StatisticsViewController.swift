@@ -12,7 +12,7 @@ import RxCocoa
 
 // MARK: - StatisticsViewController
 
-final class StatisticsViewController: UIViewController {
+final class StatisticsViewController: AdaptiveViewController {
 
     private let disposeBag  = DisposeBag()
     private let reloadRelay = PublishRelay<Void>()
@@ -136,9 +136,9 @@ final class StatisticsViewController: UIViewController {
 
     private func setupConstraints() {
         scrollView.snp.makeConstraints { make in
-            make.top.equalTo(view.safeAreaLayoutGuide)
-            make.leading.trailing.equalTo(view.safeAreaLayoutGuide)
-            make.bottom.equalTo(view.safeAreaLayoutGuide)
+            make.top.equalTo(view.adaptiveContentLayoutGuide)
+            make.leading.trailing.equalTo(view.adaptiveContentLayoutGuide)
+            make.bottom.equalTo(view.adaptiveContentLayoutGuide)
         }
 
         contentStack.snp.makeConstraints { make in

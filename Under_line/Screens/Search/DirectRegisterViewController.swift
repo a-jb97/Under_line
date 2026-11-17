@@ -11,7 +11,9 @@ import RxSwift
 import RxCocoa
 import Toast
 
-final class DirectRegisterViewController: UIViewController {
+final class DirectRegisterViewController: AdaptiveViewController {
+
+    override var avoidsKeyboard: Bool { true }
 
     private let disposeBag = DisposeBag()
     private let viewModel  = DirectRegisterViewModel(repository: AppContainer.shared.bookRepository)
@@ -122,8 +124,8 @@ final class DirectRegisterViewController: UIViewController {
     private func setupConstraints() {
         // Drag handle
         handleBar.snp.makeConstraints { make in
-            make.top.equalToSuperview().offset(12)
-            make.centerX.equalToSuperview()
+            make.top.equalTo(view.adaptiveContentLayoutGuide).offset(12)
+            make.centerX.equalTo(view.adaptiveContentLayoutGuide)
             make.width.equalTo(36)
             make.height.equalTo(5)
         }
@@ -131,15 +133,15 @@ final class DirectRegisterViewController: UIViewController {
         // Sheet header (height=52, padding=[0,24])
         sheetTitleLabel.snp.makeConstraints { make in
             make.top.equalTo(handleBar.snp.bottom).offset(11)
-            make.leading.trailing.equalToSuperview().inset(24)
+            make.leading.trailing.equalTo(view.adaptiveContentLayoutGuide).inset(24)
             make.height.equalTo(52)
         }
 
         // Form scroll (top offset=5, padding=[5,24,24,24])
         scrollView.snp.makeConstraints { make in
             make.top.equalTo(sheetTitleLabel.snp.bottom).offset(5)
-            make.leading.trailing.equalToSuperview()
-            make.bottom.equalTo(view.safeAreaLayoutGuide)
+            make.leading.trailing.equalTo(view.adaptiveContentLayoutGuide)
+            make.bottom.equalTo(view.adaptiveContentLayoutGuide)
         }
 
         formStackView.snp.makeConstraints { make in

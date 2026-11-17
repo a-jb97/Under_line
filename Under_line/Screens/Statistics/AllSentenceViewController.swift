@@ -10,7 +10,9 @@ import SnapKit
 import RxSwift
 import RxCocoa
 
-final class AllSentenceViewController: UIViewController {
+final class AllSentenceViewController: AdaptiveViewController {
+
+    override var avoidsKeyboard: Bool { true }
 
     private let disposeBag            = DisposeBag()
     private let viewWillAppearRelay   = PublishRelay<Void>()
@@ -117,8 +119,8 @@ final class AllSentenceViewController: UIViewController {
 
     private func setupConstraints() {
         searchBarView.snp.makeConstraints { make in
-            make.top.equalTo(view.safeAreaLayoutGuide).offset(8)
-            make.leading.trailing.equalTo(view.safeAreaLayoutGuide).inset(24)
+            make.top.equalTo(view.adaptiveContentLayoutGuide).offset(8)
+            make.leading.trailing.equalTo(view.adaptiveContentLayoutGuide).inset(24)
             make.height.equalTo(48)
         }
         searchIconView.snp.makeConstraints { make in
@@ -133,10 +135,10 @@ final class AllSentenceViewController: UIViewController {
         }
         tableView.snp.makeConstraints { make in
             make.top.equalTo(searchBarView.snp.bottom)
-            make.leading.trailing.bottom.equalTo(view.safeAreaLayoutGuide)
+            make.leading.trailing.bottom.equalTo(view.adaptiveContentLayoutGuide)
         }
         emptyLabel.snp.makeConstraints { make in
-            make.center.equalTo(view.safeAreaLayoutGuide)
+            make.center.equalTo(view.adaptiveContentLayoutGuide)
         }
     }
 

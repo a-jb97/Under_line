@@ -21,6 +21,8 @@ final class GenreAuthorCardView: UIView {
         return s
     }()
     private let disposeBag = DisposeBag()
+    private let segmentContainer = UIView()
+    private var usesCompactSegment: Bool?
 
     private var genreData  = SentenceDonutData.empty
     private var authorData = SentenceDonutData.empty
@@ -67,17 +69,9 @@ final class GenreAuthorCardView: UIView {
             ?? .systemFont(ofSize: 18, weight: .semibold)
         titleLabel.textColor = .accent
 
-        let segmentContainer = UIView()
         segmentContainer.addSubview(segmentControl)
-        if UIDevice.current.userInterfaceIdiom == .pad {
-            segmentControl.snp.makeConstraints { make in
-                make.top.bottom.trailing.equalToSuperview()
-                make.width.equalTo(200)
-            }
-        } else {
-            segmentControl.snp.makeConstraints { make in
-                make.edges.equalToSuperview()
-            }
+        segmentControl.snp.makeConstraints { make in
+            make.edges.equalToSuperview()
         }
 
         let vStack = UIStackView(arrangedSubviews: [titleLabel, segmentContainer, donutView, legendStack])
@@ -98,6 +92,18 @@ final class GenreAuthorCardView: UIView {
                 self?.donutView.animateIn()
             })
             .disposed(by: disposeBag)
+    }
+
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        let compact = bounds.width >= 500
+        guard compact != usesCompactSegment else { return }
+        usesCompactSegment = compact
+        segmentControl.snp.remakeConstraints { make in
+            make.top.bottom.trailing.equalToSuperview()
+            if compact { make.width.equalTo(200) }
+            else { make.leading.equalToSuperview() }
+        }
     }
 
     private func updateChart(for index: Int) {

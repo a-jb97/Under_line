@@ -11,7 +11,11 @@ import RxSwift
 import RxCocoa
 import Toast
 
-final class PageRecordViewController: UIViewController {
+final class PageRecordViewController: AdaptiveViewController {
+
+    private let formScrollView = ScrollableFormView()
+
+    override var avoidsKeyboard: Bool { true }
 
     var onProgressRecorded: ((ReadingProgress) -> Void)?
 
@@ -81,9 +85,11 @@ final class PageRecordViewController: UIViewController {
     }
 
     private func setupUI() {
+        view.addSubview(formScrollView)
+        formScrollView.snp.makeConstraints { $0.edges.equalTo(view.adaptiveContentLayoutGuide) }
         view.backgroundColor = UIColor.background
         [handleBar, sheetTitleLabel, itemPageLabel, itemPageContainer,
-         currentPageLabel, currentPageContainer, saveButton].forEach(view.addSubview)
+         currentPageLabel, currentPageContainer, saveButton].forEach(formScrollView.formContentView.addSubview)
         itemPageContainer.addSubview(itemPageTextField)
         currentPageContainer.addSubview(currentPageTextField)
     }
@@ -128,6 +134,7 @@ final class PageRecordViewController: UIViewController {
             make.top.equalTo(currentPageContainer.snp.bottom).offset(20)
             make.leading.trailing.equalToSuperview().inset(24)
             make.height.equalTo(52)
+            make.bottom.equalToSuperview().inset(24)
         }
     }
 
@@ -175,7 +182,7 @@ final class PageRecordViewController: UIViewController {
 
     private func configureSheet() {
         guard let sheet = sheetPresentationController else { return }
-        sheet.detents = [.custom { _ in 342 }]
+        sheet.detents = [.custom { min(342, $0.maximumDetentValue) }, .large()]
         sheet.prefersGrabberVisible = false
     }
 

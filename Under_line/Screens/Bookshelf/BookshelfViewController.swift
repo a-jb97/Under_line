@@ -738,7 +738,7 @@ final class BookshelfViewController: UIViewController {
                 vc.delegate = self
                 vc.modalPresentationStyle = .pageSheet
                 if let sheet = vc.sheetPresentationController {
-                    sheet.detents               = [.custom { _ in BookshelfFilterViewController.preferredSheetHeight }]
+                    sheet.detents               = [.custom { min(BookshelfFilterViewController.preferredSheetHeight, $0.maximumDetentValue) }, .large()]
                     sheet.prefersGrabberVisible = true
                     sheet.preferredCornerRadius = 52
                 }

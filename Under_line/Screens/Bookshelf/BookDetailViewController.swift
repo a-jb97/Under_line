@@ -12,7 +12,7 @@ import RxCocoa
 import Kingfisher
 import Toast
 
-final class BookDetailViewController: UIViewController {
+final class BookDetailViewController: AdaptiveViewController {
 
     private let book: Book
     private let disposeBag          = DisposeBag()
@@ -211,6 +211,16 @@ final class BookDetailViewController: UIViewController {
 
     // MARK: - Lifecycle
 
+    private var lastQuoteWidth: CGFloat = 0
+
+    override func viewDidLayoutSubviews() {
+        super.viewDidLayoutSubviews()
+        let width = quoteScrollView.bounds.width
+        guard width > 0, width != lastQuoteWidth else { return }
+        lastQuoteWidth = width
+        quoteScrollView.setContentOffset(CGPoint(x: CGFloat(pageControl.currentPage) * width, y: 0), animated: false)
+    }
+
     override func viewDidLoad() {
         super.viewDidLoad()
         setupUI()
@@ -280,9 +290,9 @@ final class BookDetailViewController: UIViewController {
     private func setupConstraints() {
         // Scroll container
         scrollView.snp.makeConstraints { make in
-            make.top.equalTo(view.safeAreaLayoutGuide)
-            make.leading.trailing.equalTo(view.safeAreaLayoutGuide)
-            make.bottom.equalTo(view.safeAreaLayoutGuide)
+            make.top.equalTo(view.adaptiveContentLayoutGuide)
+            make.leading.trailing.equalTo(view.adaptiveContentLayoutGuide)
+            make.bottom.equalTo(view.adaptiveContentLayoutGuide)
         }
         scrollView.contentInset.bottom = 80
 
@@ -292,11 +302,12 @@ final class BookDetailViewController: UIViewController {
         }
 
         // Quote Card (height: 266, padding: [24,24,20,24])
-        let quoteCardWidthInset: CGFloat = UIDevice.current.userInterfaceIdiom == .pad ? 100 : 24
+        let quoteCardWidthInset: CGFloat = 24
         quoteCard.snp.makeConstraints { make in
             make.top.equalToSuperview().offset(12)
             make.leading.trailing.equalToSuperview().inset(quoteCardWidthInset)
-            make.height.equalTo(quoteCard.snp.width).multipliedBy(0.7)
+            make.height.equalTo(quoteCard.snp.width).multipliedBy(0.7).priority(.high)
+            make.height.lessThanOrEqualTo(view.adaptiveContentLayoutGuide.snp.height).multipliedBy(0.65)
         }
 
         quoteScrollView.snp.makeConstraints { make in
@@ -370,13 +381,13 @@ final class BookDetailViewController: UIViewController {
 
         // FAB (52×52, trailing 24, bottom safeArea 16)
         fabButton.snp.makeConstraints { make in
-            make.trailing.equalTo(view.safeAreaLayoutGuide).inset(24)
-            make.bottom.equalTo(view.safeAreaLayoutGuide).inset(16)
+            make.trailing.equalTo(view.adaptiveContentLayoutGuide).inset(24)
+            make.bottom.equalTo(view.adaptiveContentLayoutGuide).inset(16)
             make.size.equalTo(52)
         }
 
         sentenceEditButton.snp.makeConstraints { make in
-            make.leading.equalTo(view.safeAreaLayoutGuide).offset(24)
+            make.leading.equalTo(view.adaptiveContentLayoutGuide).offset(24)
             make.centerY.equalTo(fabButton)
             make.size.equalTo(52)
         }
@@ -626,12 +637,9 @@ final class BookDetailViewController: UIViewController {
             )
         }
 
-        backView.addSubview(memoLabel)
-
-        memoLabel.snp.makeConstraints { make in
-            make.leading.trailing.equalToSuperview().inset(24)
-            make.center.equalToSuperview()
-        }
+        let memoScroll = ScrollableTextView(label: memoLabel)
+        backView.addSubview(memoScroll)
+        memoScroll.snp.makeConstraints { $0.edges.equalToSuperview().inset(12) }
 
         page.addSubview(backView)
         backView.snp.makeConstraints { make in make.edges.equalToSuperview() }

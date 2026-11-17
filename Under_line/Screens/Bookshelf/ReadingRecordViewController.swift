@@ -10,7 +10,7 @@ import SnapKit
 import RxSwift
 import RxCocoa
 
-final class ReadingRecordViewController: UIViewController {
+final class ReadingRecordViewController: AdaptiveViewController {
 
     var onProgressRecorded: ((ReadingProgress) -> Void)?
 
@@ -182,7 +182,7 @@ final class ReadingRecordViewController: UIViewController {
 
     private func setupConstraints() {
         scrollView.snp.makeConstraints { make in
-            make.edges.equalTo(view.safeAreaLayoutGuide)
+            make.edges.equalTo(view.adaptiveContentLayoutGuide)
         }
         contentView.snp.makeConstraints { make in
             make.edges.equalToSuperview()
