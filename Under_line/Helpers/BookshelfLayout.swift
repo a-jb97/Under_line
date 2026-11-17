@@ -82,6 +82,26 @@ struct BookshelfLayout: Equatable {
         rows.sort { $0.board.minY == $1.board.minY ? $0.board.minX < $1.board.minX : $0.board.minY < $1.board.minY }
         if container.reservedRegions.contains(where: { $0.kind == .division && $0.frame.width > $0.frame.height }) {
             rows = Self.evenlySpacedRows(rows, in: areas, contentBounds: contentBounds)
+            // 완전히 펼친 세로 화면에서는 도서까지 포함한 책장 묶음을 조금 낮춘다.
+            // 비활성 접힘 영역으로 분할 형태는 유지하되, 실제로 가리는 영역과 하단 여백은 침범하지 않는다.
+            let divisions = container.reservedRegions.filter { $0.kind == .division }
+            if divisions.allSatisfy({ !$0.isActive }) {
+                var offset: CGFloat = 48
+                for row in rows {
+                    let frame = row.slots.reduce(row.board) { $0.union($1) }
+                    offset = min(offset, contentBounds.maxY - frame.maxY)
+                    for region in container.reservedRegions where region.isActive {
+                        if frame.minX < region.frame.maxX, frame.maxX > region.frame.minX,
+                           region.frame.minY >= frame.maxY {
+                            offset = min(offset, region.frame.minY - frame.maxY)
+                        }
+                    }
+                }
+                let shift = max(0, offset)
+                rows = rows.map { row in
+                    (row.board.offsetBy(dx: 0, dy: shift), row.slots.map { $0.offsetBy(dx: 0, dy: shift) })
+                }
+            }
         }
         boards = rows.map(\.board)
         slots = rows.flatMap(\.slots)

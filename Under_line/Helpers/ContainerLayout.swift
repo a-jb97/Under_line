@@ -52,7 +52,7 @@ struct ContainerLayout: Equatable {
             guard region.isActive || (reservesInactiveDivisions && region.kind == .division) else { return nil }
             let frame = safeBounds.intersection(region.frame)
             guard !frame.isNull, !frame.isEmpty else { return nil }
-            return ReservedRegion(kind: region.kind, frame: frame)
+            return ReservedRegion(kind: region.kind, frame: frame, isActive: region.isActive)
         }.sorted { lhs, rhs in
             let left = [CGFloat(lhs.kind.rawValue), lhs.frame.minY, lhs.frame.minX, lhs.frame.width, lhs.frame.height]
             let right = [CGFloat(rhs.kind.rawValue), rhs.frame.minY, rhs.frame.minX, rhs.frame.width, rhs.frame.height]
