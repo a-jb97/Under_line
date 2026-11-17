@@ -21,7 +21,11 @@ final class BookshelfViewController: UIViewController {
     private let reorderRelay    = PublishRelay<[String]>()
 
     private var layoutReady = false
-    private let shelfContainerView = ContainerLayoutView()
+    private let shelfContainerView: ContainerLayoutView = {
+        let view = ContainerLayoutView()
+        view.reservesInactiveDivisions = true
+        return view
+    }()
     private var lastContainerLayout: ContainerLayout?
     private var shelfLayout: BookshelfLayout?
     private var shelfPages: [ShelfPageView] = []

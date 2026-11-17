@@ -102,6 +102,20 @@ final class BookshelfLayoutTests: XCTestCase {
         XCTAssertEqual(anchor.page(in: ids, capacity: 0), 0)
     }
 
+    func test_foldDeactivating_keepsTheSameShelfGeometry() {
+        for frame in [CGRect(x: 380, y: 0, width: 40, height: 700),
+                      CGRect(x: 0, y: 330, width: 800, height: 40)] {
+            let bounds = CGRect(x: 0, y: 0, width: 800, height: 700)
+            let folded = BookshelfLayout(container: ContainerLayout(bounds: bounds, reservedRegions: [
+                .init(kind: .division, frame: frame)
+            ], reservesInactiveDivisions: true))
+            let open = BookshelfLayout(container: ContainerLayout(bounds: bounds, reservedRegions: [
+                .init(kind: .division, frame: frame, isActive: false)
+            ], reservesInactiveDivisions: true))
+            XCTAssertEqual(open, folded)
+        }
+    }
+
     func test_foldDeactivating_reflowsWithoutLosingAnyBook() throws {
         let ids = (0..<70).map(String.init)
         let folded = BookshelfLayout(container: ContainerLayout(

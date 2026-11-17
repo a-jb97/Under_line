@@ -4,6 +4,12 @@ import UIKit
 final class ContainerLayoutView: UIView {
     private(set) var containerLayout: ContainerLayout?
     var onLayoutChange: ((ContainerLayout) -> Void)?
+    /// 완전히 펼쳐도 접힘 영역의 공간을 유지할 화면에서만 사용한다.
+    var reservesInactiveDivisions = false {
+        didSet {
+            if reservesInactiveDivisions != oldValue { setNeedsUpdateConstraints() }
+        }
+    }
 
     override var bounds: CGRect {
         didSet {
@@ -41,7 +47,7 @@ final class ContainerLayoutView: UIView {
     }
 
     private func updateContainerLayout() {
-        let layout = ContainerLayout(view: self)
+        let layout = ContainerLayout(view: self, reservesInactiveDivisions: reservesInactiveDivisions)
         guard layout != containerLayout else { return }
         containerLayout = layout
         onLayoutChange?(layout)

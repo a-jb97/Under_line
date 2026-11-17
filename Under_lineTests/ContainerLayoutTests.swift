@@ -44,6 +44,18 @@ final class ContainerLayoutTests: XCTestCase {
         XCTAssertEqual(layout.availableRects, [bounds])
     }
 
+    func test_preservingInactiveDivision_stillIgnoresInactiveOcclusion() {
+        let layout = ContainerLayout(bounds: bounds, reservedRegions: [
+            .init(kind: .division, frame: CGRect(x: 390, y: 0, width: 20, height: 600), isActive: false),
+            .init(kind: .occlusion, frame: CGRect(x: 0, y: 0, width: 100, height: 100), isActive: false)
+        ], reservesInactiveDivisions: true)
+        XCTAssertEqual(layout.availableRects, [
+            CGRect(x: 0, y: 0, width: 390, height: 600),
+            CGRect(x: 410, y: 0, width: 390, height: 600)
+        ])
+        XCTAssertEqual(layout.reservedRegions.count, 1)
+    }
+
     func test_cameraOverlappingCorner_clipsFrameWithoutAddingMargins() {
         let layout = ContainerLayout(bounds: bounds, reservedRegions: [
             .init(kind: .occlusion, frame: CGRect(x: 760, y: -10, width: 80, height: 60))

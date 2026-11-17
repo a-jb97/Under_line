@@ -30,7 +30,8 @@ struct ContainerLayout: Equatable {
         horizontalSizeClass: UIUserInterfaceSizeClass = .unspecified,
         verticalSizeClass: UIUserInterfaceSizeClass = .unspecified,
         displayScale: CGFloat = 1,
-        reservedRegions: [ReservedRegion] = []
+        reservedRegions: [ReservedRegion] = [],
+        reservesInactiveDivisions: Bool = false
     ) {
         self.bounds = bounds
         self.horizontalSizeClass = horizontalSizeClass
@@ -48,7 +49,7 @@ struct ContainerLayout: Equatable {
         )
         self.safeBounds = safeBounds
         self.reservedRegions = reservedRegions.compactMap { region in
-            guard region.isActive else { return nil }
+            guard region.isActive || (reservesInactiveDivisions && region.kind == .division) else { return nil }
             let frame = safeBounds.intersection(region.frame)
             guard !frame.isNull, !frame.isEmpty else { return nil }
             return ReservedRegion(kind: region.kind, frame: frame)
@@ -64,11 +65,11 @@ struct ContainerLayout: Equatable {
     }
 
     /// UIKit의 예약 영역 변경 추적을 위해 updateConstraints()에서 호출한다.
-    init(view: UIView) {
+    init(view: UIView, reservesInactiveDivisions: Bool = false) {
         var regions: [ReservedRegion] = []
         if #available(iOS 27.1, *) {
             // frame에 시스템 여백이 이미 포함되어 있으므로 margins를 다시 더하지 않는다.
-            regions = view.reservedRegions(kind: .division).map {
+            regions = view.reservedRegions(kind: .division, options: reservesInactiveDivisions ? .includeInactive : []).map {
                 ReservedRegion(kind: .division, frame: $0.frame, isActive: $0.isActive)
             } + view.reservedRegions(kind: .occlusion).map {
                 ReservedRegion(kind: .occlusion, frame: $0.frame, isActive: $0.isActive)
@@ -80,7 +81,8 @@ struct ContainerLayout: Equatable {
             horizontalSizeClass: view.traitCollection.horizontalSizeClass,
             verticalSizeClass: view.traitCollection.verticalSizeClass,
             displayScale: view.traitCollection.displayScale,
-            reservedRegions: regions
+            reservedRegions: regions,
+            reservesInactiveDivisions: reservesInactiveDivisions
         )
     }
 
