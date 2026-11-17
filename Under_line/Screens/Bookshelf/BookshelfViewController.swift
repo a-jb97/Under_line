@@ -21,15 +21,19 @@ final class BookshelfViewController: UIViewController {
     private let reorderRelay    = PublishRelay<[String]>()
 
     private var layoutReady = false
-    private var lastShelfSize = CGSize.zero
+    private let shelfContainerView = ContainerLayoutView()
+    private var lastContainerLayout: ContainerLayout?
+    private var shelfLayout: BookshelfLayout?
+    private var shelfPages: [ShelfPageView] = []
+    private var displayedBookIDs: [String] = []
+    private var isRebuildingShelf = false
     private var isEditMode = false
 
     // MARK: - Drag & Drop
 
     private struct DragState {
-        let book: Book
-        let fromIndex: Int
-        var currentIndex: Int
+        var order: BookshelfReorderDraft
+        var currentIndex: Int { order.currentIndex }
         let ghostView: UIView
         let touchOffsetInGhost: CGPoint
     }
@@ -56,7 +60,7 @@ final class BookshelfViewController: UIViewController {
 
     private var savedBooks: [Book] = [] {
         didSet {
-            guard layoutReady else { return }
+            guard layoutReady, !isRebuildingShelf else { return }
             rebuildShelfPages()
         }
     }
@@ -184,6 +188,9 @@ final class BookshelfViewController: UIViewController {
         setupConstraints()
         updateLogoPlacement()
         SystemNavigationStyle.observeBarPlacement(on: self)
+        shelfContainerView.onLayoutChange = { [weak self] _ in
+            self?.view.setNeedsLayout()
+        }
         bindActions()
     }
 
@@ -195,12 +202,14 @@ final class BookshelfViewController: UIViewController {
     override func viewDidLayoutSubviews() {
         super.viewDidLayoutSubviews()
 
-        let size = bookshelfScrollView.bounds.size
-        if size.width > 0, size.height > 0, !layoutReady || size != lastShelfSize {
-            layoutReady = true
-            lastShelfSize = size
-            rebuildShelfPages()
-        }
+        shelfContainerView.layoutIfNeeded()
+        guard let container = shelfContainerView.containerLayout,
+              container.bounds.width > 0, container.bounds.height > 0 else { return }
+        guard !layoutReady || container != lastContainerLayout else { return }
+        finishDrag(commit: false, rebuild: false)
+        lastContainerLayout = container
+        layoutReady = true
+        rebuildShelfPages(layout: BookshelfLayout(container: container))
     }
 
     override func viewDidAppear(_ animated: Bool) {
@@ -210,6 +219,7 @@ final class BookshelfViewController: UIViewController {
 
     override func viewWillDisappear(_ animated: Bool) {
         super.viewWillDisappear(animated)
+        finishDrag(commit: false)
         guard !(presentedViewController is TutorialOverlayViewController) else { return }
         tutorialSession = nil
         tutorialLoadTask?.cancel()
@@ -222,7 +232,8 @@ final class BookshelfViewController: UIViewController {
 
     override func viewWillTransition(to size: CGSize, with coordinator: UIViewControllerTransitionCoordinator) {
         super.viewWillTransition(to: size, with: coordinator)
-        layoutReady = false  // viewDidLayoutSubviews가 새 bounds로 rebuildShelfPages() 재실행
+        finishDrag(commit: false, rebuild: false)
+        layoutReady = false
     }
 
     // MARK: - Setup
@@ -234,9 +245,10 @@ final class BookshelfViewController: UIViewController {
 
         view.addSubview(logoHeaderView)
         logoHeaderView.addSubview(contentLogoView)
-        view.addSubview(bookshelfScrollView)
-        view.addSubview(shelfOverlayView)   // 스크롤뷰 위에 고정 선반 오버레이
-        view.addSubview(pageControl)
+        view.addSubview(shelfContainerView)
+        shelfContainerView.addSubview(bookshelfScrollView)
+        shelfContainerView.addSubview(shelfOverlayView)
+        shelfContainerView.addSubview(pageControl)
         view.addSubview(fabButton)
 
         view.addSubview(editButton)
@@ -282,15 +294,13 @@ final class BookshelfViewController: UIViewController {
             make.edges.equalToSuperview()
         }
 
-        pageControl.snp.makeConstraints { make in
-            make.centerX.equalTo(view.safeAreaLayoutGuide)
-            make.top.equalTo(shelfOverlayView)   // 초기 플레이스홀더, setupFixedShelfBoards에서 remakeConstraints
-        }
-
-        bookshelfScrollView.snp.makeConstraints { make in
+        shelfContainerView.snp.makeConstraints { make in
             make.top.equalTo(logoHeaderView.snp.bottom)
             make.leading.trailing.equalTo(view.safeAreaLayoutGuide).inset(24)
             make.bottom.equalTo(fabButton.snp.top).offset(-16)
+        }
+        bookshelfScrollView.snp.makeConstraints { make in
+            make.edges.equalToSuperview()
         }
 
         shelfOverlayView.snp.makeConstraints { make in
@@ -310,186 +320,85 @@ final class BookshelfViewController: UIViewController {
 
     // MARK: - Shelf Pages
 
-    private func rebuildShelfPages() {
-        let pageWidth  = bookshelfScrollView.bounds.width
-        let pageHeight = bookshelfScrollView.bounds.height
-        guard pageWidth > 0 else { return }
-
-        // 기존 페이지 및 선반 오버레이 제거
-        bookshelfScrollView.subviews.forEach { $0.removeFromSuperview() }
-        shelfOverlayView.subviews.forEach    { $0.removeFromSuperview() }
-
-        let isIPad = UIDevice.current.userInterfaceIdiom == .pad
-        let isLandscape = pageWidth > pageHeight
-        let booksPerRow: Int = isIPad ? (isLandscape ? 8 : (pageWidth >= 900 ? 5 : 4)) : 3
-        let bookWidth: CGFloat = isIPad
-            ? (pageWidth - 20.0 * CGFloat(booksPerRow - 1)) / CGFloat(booksPerRow) * 0.652
-            : 82
-        let bookHeight: CGFloat = min(ceil(bookWidth * 117.0 / 88.0), 180.0)
-
-        let rowsPerPage  = 3
-        let booksPerPage = booksPerRow * rowsPerPage
-        let displayBooks: [Book] = tutorialBooks.isEmpty ? savedBooks : Array(tutorialBooks.prefix(booksPerPage))
-        let pageCount    = max(1, Int(ceil(Double(displayBooks.count) / Double(booksPerPage))))
-
-        let currentPage = min(pageControl.currentPage, pageCount - 1)
-        pageControl.currentPage = currentPage
+    private func rebuildShelfPages(layout newLayout: BookshelfLayout? = nil) {
+        guard let layout = newLayout ?? shelfLayout else { return }
+        let anchor = BookshelfPageAnchor(bookIDs: displayedBookIDs, page: pageControl.currentPage,
+                                         capacity: shelfLayout?.capacity ?? 0)
+        isRebuildingShelf = true
+        defer { isRebuildingShelf = false }
+        shelfLayout = layout
+        let displayBooks = tutorialBooks.isEmpty ? savedBooks : Array(tutorialBooks.prefix(layout.capacity))
+        let ids = displayBooks.map(\.isbn13)
+        let pageCount = layout.pageCount(for: displayBooks.count)
+        let page = isDragging
+            ? min(pageControl.currentPage, pageCount - 1)
+            : anchor.page(in: ids, capacity: layout.capacity)
+        displayedBookIDs = ids
         pageControl.numberOfPages = pageCount
-        pageControl.isHidden = pageCount <= 1
+        pageControl.currentPage = page
+        pageControl.isHidden = pageCount <= 1 || layout.paginationFrame.isEmpty
+        pageControl.bounds.size = layout.paginationFrame.size
+        pageControl.center = CGPoint(x: layout.paginationFrame.midX, y: layout.paginationFrame.midY)
 
-        bookshelfScrollView.contentSize = CGSize(
-            width:  pageWidth * CGFloat(pageCount),
-            height: pageHeight
-        )
-
-        bookshelfScrollView.setContentOffset(CGPoint(x: pageWidth * CGFloat(currentPage), y: 0), animated: false)
-
-        let draggingIndex = dragState?.currentIndex
-
-        for pageIdx in 0..<pageCount {
-            var rows: [ShelfPageView.RowData] = []
-            for rowIdx in 0..<rowsPerPage {
-                let start = pageIdx * booksPerPage + rowIdx * booksPerRow
-                var rowBooks: [Book?] = start < displayBooks.count
-                    ? (start..<min(start + booksPerRow, displayBooks.count)).map { idx in
-                        if let di = draggingIndex, idx == di { return nil }
-                        return displayBooks[idx] as Book?
-                    }
-                    : []
-                while rowBooks.count < booksPerRow { rowBooks.append(nil) }
-                rows.append(ShelfPageView.RowData(books: rowBooks))
-            }
-            let pageView = ShelfPageView(rows: rows, bookWidth: bookWidth, isEditing: isEditMode, onDelete: { [weak self] book in
-                self?.deleteBook(book)
-            }, onTap: { [weak self] book in
-                guard let self else { return }
-                let vc = BookDetailViewController(book: book)
-                self.navigationController?.pushViewController(vc, animated: true)
+        shelfPages.forEach { $0.removeFromSuperview() }
+        shelfPages = []
+        shelfOverlayView.subviews.forEach { $0.removeFromSuperview() }
+        bookshelfScrollView.layer.removeAllAnimations()
+        bookshelfScrollView.contentSize = CGSize(width: layout.bounds.width * CGFloat(pageCount), height: layout.bounds.height)
+        bookshelfScrollView.setContentOffset(CGPoint(x: layout.bounds.width * CGFloat(page), y: 0), animated: false)
+        guard layout.capacity > 0 else {
+            bookSlotFrames = []
+            return
+        }
+        for pageIndex in 0..<pageCount {
+            let pageView = ShelfPageView(books: displayBooks, layout: layout, page: pageIndex,
+                                         hiddenBookIndex: dragState?.currentIndex, isEditing: isEditMode,
+                                         onDelete: { [weak self] book in self?.deleteBook(book) },
+                                         onTap: { [weak self] book in
+                self?.navigationController?.pushViewController(BookDetailViewController(book: book), animated: true)
             })
+            pageView.frame = CGRect(x: layout.bounds.width * CGFloat(pageIndex), y: 0,
+                                    width: layout.bounds.width, height: layout.bounds.height)
             bookshelfScrollView.addSubview(pageView)
-            pageView.frame = CGRect(
-                x:      pageWidth * CGFloat(pageIdx),
-                y:      0,
-                width:  pageWidth,
-                height: pageHeight
-            )
+            shelfPages.append(pageView)
         }
-
-        rebuildBookSlotFrames(
-            pageWidth: pageWidth, pageHeight: pageHeight,
-            bookWidth: bookWidth, bookHeight: bookHeight,
-            booksPerRow: booksPerRow, rowsPerPage: rowsPerPage,
-            booksPerPage: booksPerPage, pageCount: pageCount,
-            booksCount: displayBooks.count
-        )
-
-        setupFixedShelfBoards(pageHeight: pageHeight, bookHeight: bookHeight, isIPad: isIPad)
+        bookSlotFrames = displayBooks.indices.compactMap { index in
+            layout.frame(forBookAt: index).map { (globalIndex: index, frameInScrollView: $0) }
+        }
+        setupFixedShelfBoards(layout: layout)
     }
 
-    /// 스크롤과 무관하게 고정되는 선반 보드를 오버레이에 추가
-    private func setupFixedShelfBoards(pageHeight: CGFloat, bookHeight: CGFloat, isIPad: Bool = false) {
-        let rowHeight: CGFloat = 10 + bookHeight + 22
-        let rowCount: CGFloat  = 3
-        let rowsHeight = rowHeight * rowCount
-        let stackHeight = 0.5 * pageHeight + rowsHeight / 2
-        let stackMinY   = (pageHeight - stackHeight) / 2
-        let spacing     = rowCount > 1 ? (stackHeight - rowsHeight) / (rowCount - 1) : 0
-
-        var lastShelfMaxY: CGFloat = 0
-        for i in 0..<Int(rowCount) {
-            let rowMinY  = stackMinY + CGFloat(i) * (rowHeight + spacing)
-            // 선반 보드 Y = 행 시작 + top inset(10) + 책 높이
-            let shelfY   = rowMinY + 10 + bookHeight
-
-            let shelfWidth = isIPad
-                ? shelfOverlayView.bounds.width * 0.85
-                : shelfOverlayView.bounds.width
-            let shelfX = isIPad
-                ? shelfOverlayView.bounds.width * 0.075
-                : 0.0
-            let boardFrame = CGRect(
-                x:      shelfX,
-                y:      shelfY,
-                width:  shelfWidth,
-                height: 22
-            )
-
-            // 좌상단 광원 그림자 전용 뷰 (clipsToBounds 없음)
+    /// 페이지 이동과 무관하게 고정하는 선반. 도서와 동일한 계산 결과를 사용한다.
+    private func setupFixedShelfBoards(layout: BookshelfLayout) {
+        for (index, boardFrame) in layout.boards.enumerated() {
             let shadowView = UIView(frame: boardFrame)
-            shadowView.backgroundColor   = .clear
-            shadowView.layer.shadowColor   = UIColor.black.cgColor
+            shadowView.backgroundColor = .clear
+            shadowView.layer.shadowColor = UIColor.black.cgColor
             shadowView.layer.shadowOpacity = 0.28
-            shadowView.layer.shadowRadius  = 4
-            shadowView.layer.shadowOffset  = CGSize(width: 2, height: 3)
-            shadowView.layer.shadowPath    = UIBezierPath(
-                roundedRect: CGRect(origin: .zero, size: boardFrame.size),
-                cornerRadius: 5
-            ).cgPath
+            shadowView.layer.shadowRadius = 4
+            shadowView.layer.shadowOffset = CGSize(width: 2, height: 3)
+            shadowView.layer.shadowPath = UIBezierPath(roundedRect: CGRect(origin: .zero, size: boardFrame.size), cornerRadius: 5).cgPath
             shelfOverlayView.addSubview(shadowView)
-
-            let board = UIImageView()
-            board.image              = UIImage(named: "Bookshelf\(i + 1)")
-            board.contentMode        = .scaleToFill
+            let board = UIImageView(frame: boardFrame)
+            board.image = UIImage(named: "Bookshelf\(index % 3 + 1)")
+            board.contentMode = .scaleToFill
             board.layer.cornerRadius = 5
-            board.clipsToBounds      = true
+            board.clipsToBounds = true
             shelfOverlayView.addSubview(board)
-            board.frame = boardFrame
-            lastShelfMaxY = shelfY + 22
         }
-
-        // pageControl을 마지막 선반 하단에서 16pt 아래에 배치
-        pageControl.snp.remakeConstraints { make in
-            make.centerX.equalTo(view.safeAreaLayoutGuide)
-            make.top.equalTo(shelfOverlayView).offset(lastShelfMaxY + 16)
-        }
-    }
-
-    /// 책 위치 감지를 위한 슬롯 프레임 배열 재계산
-    private func rebuildBookSlotFrames(pageWidth: CGFloat, pageHeight: CGFloat, bookWidth: CGFloat, bookHeight: CGFloat, booksPerRow: Int, rowsPerPage: Int, booksPerPage: Int, pageCount: Int, booksCount: Int) {
-        var frames: [(globalIndex: Int, frameInScrollView: CGRect)] = []
-
-        // ShelfRowView 실제 높이 = top inset(2) + bookHeight + bottom inset(12)
-        let rowHeightActual: CGFloat = bookHeight + 14
-        let rowsHeightCalc: CGFloat  = CGFloat(rowsPerPage) * (10 + bookHeight + 22)
-        let stackHeight: CGFloat     = 0.5 * pageHeight + rowsHeightCalc / 2
-        let stackMinY: CGFloat       = (pageHeight - stackHeight) / 2
-        let spacing: CGFloat         = rowsPerPage > 1
-            ? (stackHeight - CGFloat(rowsPerPage) * rowHeightActual) / CGFloat(rowsPerPage - 1)
-            : 0
-
-        let totalBooksWidth = CGFloat(booksPerRow) * bookWidth + CGFloat(booksPerRow - 1) * 20
-
-        for pageIdx in 0..<pageCount {
-            let pageX  = pageWidth * CGFloat(pageIdx)
-            let startX = pageX + (pageWidth - totalBooksWidth) / 2
-
-            for rowIdx in 0..<rowsPerPage {
-                let rowTop  = stackMinY + CGFloat(rowIdx) * (rowHeightActual + spacing)
-                let bookTop = rowTop + 2
-
-                for colIdx in 0..<booksPerRow {
-                    let globalIndex = pageIdx * booksPerPage + rowIdx * booksPerRow + colIdx
-                    guard globalIndex < booksCount else { continue }
-                    let bookX = startX + CGFloat(colIdx) * (bookWidth + 20)
-                    frames.append((
-                        globalIndex: globalIndex,
-                        frameInScrollView: CGRect(x: bookX, y: bookTop, width: bookWidth, height: bookHeight)
-                    ))
-                }
-            }
-        }
-        bookSlotFrames = frames
     }
 
     // MARK: - Drag & Drop
 
     private func dragBegan(_ recognizer: UIGestureRecognizer) {
-        guard !isEditMode else { return }
+        guard !isEditMode, tutorialBooks.isEmpty else { return }
         guard activeFilterQuery == nil || activeFilterQuery!.isEmpty else { return }
 
         let touchInScrollView = recognizer.location(in: bookshelfScrollView)
         guard let slot = bookSlotFrames.first(where: { $0.frameInScrollView.contains(touchInScrollView) }) else { return }
 
+        guard savedBooks.indices.contains(slot.globalIndex),
+              let order = BookshelfReorderDraft(bookIDs: savedBooks.map(\.isbn13), index: slot.globalIndex) else { return }
         let book = savedBooks[slot.globalIndex]
         let slotFrameInView = bookshelfScrollView.convert(slot.frameInScrollView, to: view)
 
@@ -505,9 +414,7 @@ final class BookshelfViewController: UIViewController {
 
         isDragging = true
         dragState = DragState(
-            book: book,
-            fromIndex: slot.globalIndex,
-            currentIndex: slot.globalIndex,
+            order: order,
             ghostView: ghost,
             touchOffsetInGhost: touchOffset
         )
@@ -537,20 +444,19 @@ final class BookshelfViewController: UIViewController {
         let ghostInScrollView = view.convert(ghostCenter, to: bookshelfScrollView)
         if let target = bookSlotFrames.first(where: { $0.frameInScrollView.contains(ghostInScrollView) }),
            target.globalIndex != state.currentIndex {
-            var books = savedBooks
-            let moved = books.remove(at: state.currentIndex)
-            books.insert(moved, at: target.globalIndex)
-            state.currentIndex = target.globalIndex
+            state.order.move(to: target.globalIndex)
+            let booksByID = savedBooks.reduce(into: [String: Book]()) { $0[$1.isbn13] = $1 }
             dragState = state
-            savedBooks = books   // didSet → rebuildShelfPages (빈 슬롯 + 새 배치)
+            savedBooks = state.order.bookIDs.compactMap { booksByID[$0] }
         } else {
             dragState = state
         }
 
         // 가장자리 감지 → 페이지 플립 타이머
-        let svFrame = bookshelfScrollView.frame
+        let svFrame = bookshelfScrollView.convert(bookshelfScrollView.bounds, to: view)
         let ghostX = state.ghostView.center.x
         let pageWidth = bookshelfScrollView.bounds.width
+        guard pageWidth > 0 else { return }
         let currentPage = Int(round(bookshelfScrollView.contentOffset.x / pageWidth))
         let totalPages = pageControl.numberOfPages
 
@@ -563,23 +469,23 @@ final class BookshelfViewController: UIViewController {
         }
     }
 
-    private func dragEnded() {
+    private func finishDrag(commit: Bool, rebuild: Bool = true) {
         cancelPageFlipTimer()
         guard let state = dragState else { return }
-
-        UIView.animate(withDuration: 0.15, animations: {
-            state.ghostView.alpha = 0
-            state.ghostView.transform = .identity
-        }, completion: { _ in
-            state.ghostView.removeFromSuperview()
-        })
-
+        state.ghostView.removeFromSuperview()
         isDragging = false
         dragState = nil
         bookshelfScrollView.isScrollEnabled = true
-        rebuildShelfPages()   // 빈 슬롯 제거
-
-        reorderRelay.accept(savedBooks.map { $0.isbn13 })
+        // 드래그 중 도서가 추가·삭제됐다면 마지막 확정 목록을 다시 표시한다.
+        let result = state.order.finish(commit: commit, confirmedBookIDs: allBooks.map(\.isbn13))
+        if !result.shouldSave {
+            let wasReady = layoutReady
+            layoutReady = false
+            applyFilter()
+            layoutReady = wasReady
+        }
+        if rebuild { rebuildShelfPages() }
+        if result.shouldSave { reorderRelay.accept(result.bookIDs) }
     }
 
     private func startPageFlipTimer(direction: Int) {
@@ -600,6 +506,7 @@ final class BookshelfViewController: UIViewController {
     private func flipPage(direction: Int) {
         cancelPageFlipTimer()
         let pageWidth = bookshelfScrollView.bounds.width
+        guard pageWidth > 0 else { return }
         let currentPage = Int(round(bookshelfScrollView.contentOffset.x / pageWidth))
         let targetPage = currentPage + direction
         guard targetPage >= 0, targetPage < pageControl.numberOfPages else { return }
@@ -620,7 +527,7 @@ final class BookshelfViewController: UIViewController {
         ghost.layer.shadowOffset  = CGSize(width: 0, height: 8)
 
         let imageView = UIImageView()
-        imageView.contentMode    = .scaleAspectFill
+        imageView.contentMode    = .scaleAspectFit
         imageView.clipsToBounds  = true
         imageView.layer.cornerRadius = 3
         imageView.frame = CGRect(origin: .zero, size: size)
@@ -643,18 +550,10 @@ final class BookshelfViewController: UIViewController {
         return ghost
     }
 
-    /// 책장에 마지막으로 배치된 책 wrapper 뷰 반환 (새 도서 등장 애니메이션용)
-    /// ShelfPageView → UIStackView(vertical) → ShelfRowView → UIStackView(horizontal) → wrapper
+    /// 신규 도서 등장 애니메이션에 사용할 실제 도서 뷰.
     private func findLastBookView() -> UIView? {
-        guard let lastPage = bookshelfScrollView.subviews.last,
-              let vStack   = lastPage.subviews.first as? UIStackView else { return nil }
-        for rowView in vStack.arrangedSubviews.reversed() {
-            guard let hStack = rowView.subviews.first as? UIStackView else { continue }
-            for wrapper in hStack.arrangedSubviews.reversed() {
-                if wrapper.layer.shadowOpacity > 0 { return wrapper }
-            }
-        }
-        return nil
+        guard !displayedBookIDs.isEmpty else { return nil }
+        return shelfPages.last?.bookView(at: displayedBookIDs.count - 1)
     }
 
     // MARK: - Edit Mode
@@ -708,7 +607,8 @@ final class BookshelfViewController: UIViewController {
                 switch recognizer.state {
                 case .began:                      self.dragBegan(recognizer)
                 case .changed:                    self.dragMoved(recognizer)
-                case .ended, .cancelled, .failed: self.dragEnded()
+                case .ended:                      self.finishDrag(commit: true)
+                case .cancelled, .failed:          self.finishDrag(commit: false)
                 default: break
                 }
             })
@@ -768,18 +668,14 @@ final class BookshelfViewController: UIViewController {
             })
             .disposed(by: disposeBag)
 
-        // 스크롤 → 페이지 컨트롤 동기화
+        // 리사이즈 중의 임시 offset은 페이지 앵커에 반영하지 않는다.
         bookshelfScrollView.rx.contentOffset
-            .map { [weak self] offset -> Int in
-                guard let self else { return 0 }
-                let width = self.bookshelfScrollView.bounds.width
-                guard width > 0 else { return 0 }
-                return Int(round(offset.x / width))
-            }
-            .distinctUntilChanged()
-            .observe(on: MainScheduler.instance)
-            .subscribe(onNext: { [weak self] page in
-                self?.pageControl.currentPage = page
+            .subscribe(onNext: { [weak self] offset in
+                guard let self, !self.isRebuildingShelf, let layout = self.shelfLayout,
+                      layout.bounds.width > 0,
+                      layout.bounds.width == self.bookshelfScrollView.bounds.width else { return }
+                let page = Int(round(offset.x / layout.bounds.width))
+                self.pageControl.currentPage = min(max(0, page), self.pageControl.numberOfPages - 1)
             })
             .disposed(by: disposeBag)
 
