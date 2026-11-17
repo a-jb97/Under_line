@@ -194,14 +194,21 @@ final class QuoteCardEditorViewController: AdaptiveViewController {
 
     override func viewDidLayoutSubviews() {
         super.viewDidLayoutSubviews()
-        let layout = QuoteCardEditorLayout(availableBounds: view.adaptiveContentLayoutGuide.layoutFrame)
+        let layout = QuoteCardEditorLayout(availableBounds: view.adaptiveContentLayoutGuide.layoutFrame,
+                                           containerBounds: view.bounds,
+                                           showsColorSync: !colorSyncButton.isHidden)
         previewContainer.frame = layout.previewFrame
         previewCanvas.bounds = CGRect(origin: .zero, size: QuoteCardEditorLayout.canvasSize)
         previewCanvas.center = CGPoint(x: previewContainer.bounds.midX, y: previewContainer.bounds.midY)
         previewCanvas.transform = CGAffineTransform(scaleX: layout.previewScale, y: layout.previewScale)
+        let actionsChanged = actionsScrollView.frame != layout.actionsFrame || actionsScrollView.contentSize != layout.actionsContentSize
         actionsScrollView.frame = layout.actionsFrame
         actionsScrollView.contentSize = layout.actionsContentSize
-        for (cell, frame) in zip(actionCells, layout.actionFrames) { cell.frame = frame }
+        if actionsChanged { actionsScrollView.contentOffset = .zero }
+        for (cell, frame) in zip(actionCells, layout.actionFrames) {
+            cell.isHidden = frame.isEmpty
+            cell.frame = frame
+        }
         cardView.layoutIfNeeded()
         [bookTitleBlur].forEach { applyFadeMask(to: $0) }
         applyFadeMask(to: sentenceBlur, cornerRadius: 24)
@@ -454,6 +461,7 @@ final class QuoteCardEditorViewController: AdaptiveViewController {
     private func setColorSyncVisible(_ visible: Bool) {
         colorSyncButton.isHidden = !visible
         colorSyncLabel.isHidden  = !visible
+        view.setNeedsLayout()
     }
 
     // MARK: - Dominant Color

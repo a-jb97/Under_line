@@ -19,16 +19,24 @@ final class QuoteCardEditorLayoutTests: XCTestCase {
         }
     }
 
-    func test_lowWideWindow_placesActionsBesidePreview() {
-        let layout = QuoteCardEditorLayout(availableBounds: CGRect(x: 0, y: 0, width: 760, height: 300))
+    func test_landscape_centersCardAndRightAlignedActionGroup() {
+        let bounds = CGRect(x: 0, y: 0, width: 760, height: 600)
+        let safeBounds = CGRect(x: 0, y: 20, width: 660, height: 550)
+        let layout = QuoteCardEditorLayout(availableBounds: safeBounds, containerBounds: bounds)
         XCTAssertGreaterThan(layout.actionsFrame.minX, layout.previewFrame.maxX)
-        XCTAssertEqual(layout.actionFrames.count, 4)
+        XCTAssertEqual(layout.actionsFrame.maxY, layout.previewFrame.maxY, accuracy: 0.001)
+        let group = layout.previewFrame.union(layout.actionsFrame)
+        XCTAssertEqual(group.midX, bounds.midX, accuracy: 0.001)
+        XCTAssertEqual(group.midY, bounds.midY, accuracy: 0.001)
         XCTAssertEqual(layout.actionFrames[0].minY, layout.actionFrames[1].minY)
-        XCTAssertGreaterThan(layout.actionFrames[2].minY, layout.actionFrames[0].minY)
+        XCTAssertEqual(layout.actionFrames[0].minY, layout.actionFrames[3].minY)
+        XCTAssertEqual(layout.actionFrames[1].minX - layout.actionFrames[0].minX, 64)
+        XCTAssertEqual(layout.actionFrames[3].minX - layout.actionFrames[1].minX, 64)
+        XCTAssertTrue(layout.actionFrames[2].isEmpty)
     }
 
     func test_tinyWindow_keepsEveryActionInScrollableContent() {
-        let layout = QuoteCardEditorLayout(availableBounds: CGRect(x: 0, y: 0, width: 240, height: 200))
+        let layout = QuoteCardEditorLayout(availableBounds: CGRect(x: 0, y: 0, width: 200, height: 240), showsColorSync: true)
         let content = CGRect(origin: .zero, size: layout.actionsContentSize)
         XCTAssertGreaterThan(content.height, layout.actionsFrame.height)
         for frame in layout.actionFrames {
@@ -37,11 +45,40 @@ final class QuoteCardEditorLayoutTests: XCTestCase {
         }
     }
 
-    func test_narrowWindow_usesTwoColumnsAndShowsShareWithoutScrolling() {
-        let layout = QuoteCardEditorLayout(availableBounds: CGRect(x: 0, y: 62, width: 260, height: 338))
+    func test_compactPortrait_placesActionsAtBottomRightAndCentersCard() {
+        let bounds = CGRect(x: 0, y: 0, width: 375, height: 812)
+        let safeBounds = CGRect(x: 0, y: 62, width: 375, height: 716)
+        let layout = QuoteCardEditorLayout(availableBounds: safeBounds, containerBounds: bounds)
         XCTAssertEqual(layout.actionsFrame.height, layout.actionsContentSize.height)
-        XCTAssertEqual(layout.actionFrames[0].minY, layout.actionFrames[1].minY)
-        XCTAssertEqual(layout.actionFrames[2].minY, layout.actionFrames[3].minY)
+        XCTAssertEqual(layout.actionsFrame.maxX - 6, bounds.maxX - 24)
+        XCTAssertEqual(layout.actionFrames[0].minX, layout.actionFrames[1].minX)
+        XCTAssertEqual(layout.actionFrames[1].minX, layout.actionFrames[3].minX)
+        XCTAssertGreaterThan(layout.actionFrames[1].minY, layout.actionFrames[0].maxY)
+        XCTAssertGreaterThan(layout.actionFrames[3].minY, layout.actionFrames[1].maxY)
+        XCTAssertEqual(layout.previewFrame.midX, bounds.midX, accuracy: 0.001)
+        XCTAssertEqual(layout.previewFrame.midY, bounds.midY, accuracy: 0.001)
+        XCTAssertEqual(layout.actionsFrame.maxY, bounds.maxY - 16)
+        XCTAssertGreaterThan(layout.actionsFrame.minX, layout.previewFrame.maxX)
+    }
+
+    func test_unfoldedPortrait_keepsOriginalGapBetweenLogoAndBackground() {
+        let bounds = CGRect(x: 0, y: 0, width: 650, height: 900)
+        let layout = QuoteCardEditorLayout(availableBounds: bounds)
+        XCTAssertEqual(layout.actionFrames[1].minX - layout.actionFrames[0].minX - 52, 12)
+        XCTAssertEqual(layout.actionsFrame.minX + 6, bounds.minX + 24)
+        XCTAssertEqual(layout.actionsFrame.minX + layout.actionFrames[3].maxX - 6, bounds.maxX - 24)
+    }
+
+    func test_colorSyncVisibility_addsActionWithoutLeavingAnEmptySlot() {
+        for bounds in [CGRect(x: 0, y: 0, width: 375, height: 750),
+                       CGRect(x: 0, y: 0, width: 760, height: 300)] {
+            let hidden = QuoteCardEditorLayout(availableBounds: bounds)
+            let visible = QuoteCardEditorLayout(availableBounds: bounds, showsColorSync: true)
+            XCTAssertTrue(hidden.actionFrames[2].isEmpty)
+            XCTAssertFalse(visible.actionFrames[2].isEmpty)
+            XCTAssertGreaterThan(visible.actionsContentSize.width * visible.actionsContentSize.height,
+                                 hidden.actionsContentSize.width * hidden.actionsContentSize.height)
+        }
     }
 
     func test_foldAndCamera_keepPreviewAndActionsInOneUsableArea() {
@@ -53,7 +90,7 @@ final class QuoteCardEditorLayoutTests: XCTestCase {
                 .init(kind: .occlusion, frame: CGRect(x: 900, y: 0, width: 100, height: 80))
             ])
             let area = ReadableContentLayout(container: container).frame
-            let layout = QuoteCardEditorLayout(availableBounds: area)
+            let layout = QuoteCardEditorLayout(availableBounds: area, containerSize: bounds.size)
             for frame in [layout.previewFrame, layout.actionsFrame] {
                 XCTAssertTrue(area.contains(frame))
                 for region in container.reservedRegions { XCTAssertTrue(frame.intersection(region.frame).isEmpty) }
@@ -147,6 +184,7 @@ final class QuoteCardEditorLayoutTests: XCTestCase {
             add(attachment)
         }
         for (name, size) in [("세로 편집 화면", CGSize(width: 375, height: 750)),
+                             ("펼친 세로 편집 화면", CGSize(width: 650, height: 900)),
                              ("낮은 가로 편집 화면", CGSize(width: 760, height: 300)),
                              ("좁은 편집 화면", CGSize(width: 260, height: 400))] {
             resize(controller, to: size)
@@ -158,6 +196,11 @@ final class QuoteCardEditorLayoutTests: XCTestCase {
             attachment.lifetime = .keepAlways
             add(attachment)
         }
+        resize(controller, to: CGSize(width: 200, height: 240))
+        let toolbar = try XCTUnwrap(controller.view.subviews.compactMap { $0 as? UIScrollView }.first)
+        toolbar.contentOffset.y = 80
+        resize(controller, to: CGSize(width: 760, height: 300))
+        XCTAssertEqual(toolbar.contentOffset, .zero)
     }
 
     private func makeEditor() -> QuoteCardEditorViewController {
