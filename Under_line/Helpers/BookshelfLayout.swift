@@ -80,8 +80,53 @@ struct BookshelfLayout: Equatable {
             }
         }
         rows.sort { $0.board.minY == $1.board.minY ? $0.board.minX < $1.board.minX : $0.board.minY < $1.board.minY }
+        if container.reservedRegions.contains(where: { $0.kind == .division && $0.frame.width > $0.frame.height }) {
+            rows = Self.evenlySpacedRows(rows, in: areas, contentBounds: contentBounds)
+        }
         boards = rows.map(\.board)
         slots = rows.flatMap(\.slots)
+    }
+
+    /// 가로 접힘 위아래를 따로 채우면 가운데 선반이 치우친다.
+    /// 각 행이 속한 영역을 유지하면서 모든 선반에 같은 간격과 표지 높이를 적용한다.
+    private static func evenlySpacedRows(
+        _ rows: [(board: CGRect, slots: [CGRect])],
+        in areas: [CGRect],
+        contentBounds: CGRect
+    ) -> [(board: CGRect, slots: [CGRect])] {
+        guard rows.count >= 3,
+              let bookHeight = rows.compactMap({ $0.slots.first?.height }).min(),
+              let first = rows.first,
+              rows.allSatisfy({ $0.board.minX == first.board.minX && $0.board.width == first.board.width }) else { return rows }
+        let rowAreas = rows.compactMap { row in
+            areas.first { $0.contains(row.board) }
+        }
+        guard rowAreas.count == rows.count else { return rows }
+        let minimumPitch = bookHeight + 28 + 16
+        let maximumPitch = (contentBounds.height - bookHeight - 28) / CGFloat(rows.count - 1)
+        guard maximumPitch >= minimumPitch else { return rows }
+        // 가장 넓은 균등 간격부터 찾되, 모든 표지와 선반이 원래 가용 영역 안에 있어야 한다.
+        for pitch in stride(from: maximumPitch, through: minimumPitch, by: -1) {
+            var lower = -CGFloat.infinity
+            var upper = CGFloat.infinity
+            for (index, area) in rowAreas.enumerated() {
+                let offset = CGFloat(index) * pitch
+                lower = max(lower, area.minY + 6 + bookHeight - offset)
+                upper = min(upper, area.maxY - 22 - offset)
+            }
+            guard lower <= upper else { continue }
+            let centered = contentBounds.midY - 11 - CGFloat(rows.count - 1) * pitch / 2
+            let firstBoardY = min(upper, max(lower, centered))
+            return rows.enumerated().map { index, row in
+                let boardY = firstBoardY + CGFloat(index) * pitch
+                let board = CGRect(x: row.board.minX, y: boardY, width: row.board.width, height: 22)
+                let slots = row.slots.map {
+                    CGRect(x: $0.minX, y: boardY - bookHeight, width: $0.width, height: bookHeight)
+                }
+                return (board, slots)
+            }
+        }
+        return rows
     }
 
     func pageCount(for bookCount: Int) -> Int {

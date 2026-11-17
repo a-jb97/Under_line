@@ -54,6 +54,23 @@ final class BookshelfLayoutTests: XCTestCase {
         assertGeometry(BookshelfLayout(container: container), in: container)
     }
 
+    func test_portraitHorizontalFold_centersMiddleShelfBetweenOuterShelves() {
+        for active in [true, false] {
+            let container = ContainerLayout(
+                bounds: CGRect(x: 0, y: 0, width: 620, height: 800),
+                reservedRegions: [.init(kind: .division,
+                                        frame: CGRect(x: 0, y: 430, width: 620, height: 40),
+                                        isActive: active)],
+                reservesInactiveDivisions: true
+            )
+            let value = BookshelfLayout(container: container)
+            XCTAssertEqual(value.boards.count, 3)
+            XCTAssertEqual(value.boards[1].midY,
+                           (value.boards[0].midY + value.boards[2].midY) / 2, accuracy: 0.001)
+            assertGeometry(value, in: container)
+        }
+    }
+
     func test_geometryAcrossBoundarySizes_neverOverlapsOrLeavesBounds() {
         for width in [60, 98, 180, 300, 354, 375, 600, 601, 900, 1200] {
             for height in [106, 180, 300, 478, 620, 900] {
