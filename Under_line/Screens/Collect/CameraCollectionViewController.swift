@@ -34,7 +34,7 @@ final class CameraCollectionViewController: AdaptiveViewController {
 
     override func viewDidLoad() {
         super.viewDidLoad()
-        view.backgroundColor = UIColor(hex: "#1a1a1a")
+        view.backgroundColor = .background
         SystemNavigationStyle.configure(self, title: "밑줄 등록")
         navigationItem.leftBarButtonItem = closeItem
         SystemNavigationStyle.setTrailingItems([directItem], on: navigationItem)
@@ -73,6 +73,7 @@ final class CameraCollectionViewController: AdaptiveViewController {
     }
 
     private func setupUI() {
+        cameraSectionView.backgroundColor = UIColor(hex: "#1a1a1a")
         cameraSectionView.clipsToBounds = true
         cameraSectionView.layer.cornerRadius = 12
         controlsScrollView.backgroundColor = .background

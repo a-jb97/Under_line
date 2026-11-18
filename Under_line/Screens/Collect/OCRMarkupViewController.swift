@@ -34,7 +34,7 @@ final class OCRMarkupViewController: AdaptiveViewController {
 
     override func viewDidLoad() {
         super.viewDidLoad()
-        view.backgroundColor = UIColor(hex: "#1a1a1a")
+        view.backgroundColor = .background
         SystemNavigationStyle.configure(self, title: "밑줄 선택")
         navigationItem.leftBarButtonItem = cancelItem
         SystemNavigationStyle.setTrailingItems([confirmItem, clearItem], on: navigationItem)
@@ -54,10 +54,10 @@ final class OCRMarkupViewController: AdaptiveViewController {
         imageContainerView.addSubview(imageView)
         imageContainerView.addSubview(drawingOverlay)
         imageContainerView.addSubview(activityIndicator)
-        activityIndicator.color = .white
+        activityIndicator.color = .walnut
         activityIndicator.hidesWhenStopped = true
         hintLabel.font = UIFont(name: "GoyangIlsan R", size: 13) ?? .systemFont(ofSize: 13)
-        hintLabel.textColor = UIColor(white: 1, alpha: 0.7)
+        hintLabel.textColor = UIColor.appPrimary.withAlphaComponent(0.7)
         hintLabel.textAlignment = .center
         hintLabel.numberOfLines = 0
         view.addSubview(hintLabel)
