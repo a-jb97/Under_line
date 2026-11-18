@@ -18,6 +18,8 @@ final class QuoteCardEditorViewController: AdaptiveViewController {
     private let previewCanvas = UIView()
     private let actionsScrollView = UIScrollView()
     private var actionCells: [UIView] = []
+    private var usesFoldableLayout = false
+    private var hasHinge = false
     private struct MaskGeometry: Equatable {
         let size: CGSize
         let scale: CGFloat
@@ -190,12 +192,30 @@ final class QuoteCardEditorViewController: AdaptiveViewController {
         setupConstraints()
         configure()
         bindActions()
+        if #available(iOS 27.1, *) {
+            view.addInteraction(UIHingeInteraction { [weak self] _, update in
+                guard let self else { return }
+                let hasHinge = update.hinge != nil
+                guard self.hasHinge != hasHinge else { return }
+                self.hasHinge = hasHinge
+                self.view.setNeedsUpdateConstraints()
+                self.view.setNeedsLayout()
+            })
+        }
+    }
+
+    override func updateViewConstraints() {
+        // 접힌 Duo에서는 접힘 영역이 화면 밖에 있을 수 있으므로 힌지 정보도 확인한다.
+        let container = ContainerLayout(view: view, reservesInactiveDivisions: true)
+        usesFoldableLayout = hasHinge || container.reservedRegions.contains { $0.kind == .division }
+        super.updateViewConstraints()
     }
 
     override func viewDidLayoutSubviews() {
         super.viewDidLayoutSubviews()
         let layout = QuoteCardEditorLayout(availableBounds: view.adaptiveContentLayoutGuide.layoutFrame,
                                            containerBounds: view.bounds,
+                                           usesFoldableLayout: usesFoldableLayout,
                                            showsColorSync: !colorSyncButton.isHidden)
         previewContainer.frame = layout.previewFrame
         previewCanvas.bounds = CGRect(origin: .zero, size: QuoteCardEditorLayout.canvasSize)

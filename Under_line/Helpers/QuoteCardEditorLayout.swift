@@ -9,11 +9,12 @@ struct QuoteCardEditorLayout {
     let actionFrames: [CGRect]
     let actionsContentSize: CGSize
 
-    init(availableBounds: CGRect, containerSize: CGSize? = nil, containerBounds: CGRect? = nil, showsColorSync: Bool = false) {
+    init(availableBounds: CGRect, containerSize: CGSize? = nil, containerBounds: CGRect? = nil,
+         usesFoldableLayout: Bool = false, showsColorSync: Bool = false) {
         let size = containerSize ?? containerBounds?.size ?? availableBounds.size
-        let isLandscape = size.width > size.height
-        let isCompactPortrait = !isLandscape && size.width < 600
-        // 가로 펼침과 접힌 화면은 safe area 대신 전체 화면을 정렬 기준으로 사용한다.
+        let isLandscape = usesFoldableLayout && size.width > size.height
+        let isCompactPortrait = usesFoldableLayout && size.width <= size.height && size.width < 600
+        // 가로 펼침과 접힌 화면은 Safe Area 여백까지 포함한 전체 화면을 기준으로 정렬한다.
         let layoutBounds = (isLandscape || isCompactPortrait) ? (containerBounds ?? availableBounds) : availableBounds
         let padding = min(16, layoutBounds.width / 2, layoutBounds.height / 2)
         let area = layoutBounds.insetBy(dx: padding, dy: padding)

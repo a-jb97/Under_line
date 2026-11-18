@@ -4,6 +4,41 @@ import UIKit
 
 @MainActor
 final class QuoteCardEditorLayoutTests: XCTestCase {
+    func test_duoHierarchy_compactEditorReceivesHingeAndUsesVerticalActions() async throws {
+        guard #available(iOS 27.1, *),
+              ProcessInfo.processInfo.environment["SIMULATOR_DEVICE_NAME"]?.contains("Duo") == true else {
+            throw XCTSkip("Duo 시뮬레이터에서 힌지 전달을 검증합니다.")
+        }
+        let defaults = UserDefaults.standard
+        let tutorial = defaults.object(forKey: "tutorial.cardEditor")
+        defaults.set(true, forKey: "tutorial.cardEditor")
+        defer { defaults.set(tutorial, forKey: "tutorial.cardEditor") }
+        let scene = try XCTUnwrap(UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first)
+        let window = UIWindow(windowScene: scene)
+        let host = UIViewController()
+        window.rootViewController = host
+        window.isHidden = false
+        defer { window.isHidden = true }
+        let controller = makeEditor()
+        host.addChild(controller)
+        host.view.addSubview(controller.view)
+        controller.didMove(toParent: host)
+        let receivedHinge = expectation(description: "Duo의 힌지 정보 전달")
+        receivedHinge.assertForOverFulfill = false
+        controller.view.addInteraction(UIHingeInteraction { _, update in
+            if update.hinge != nil { receivedHinge.fulfill() }
+        })
+        await fulfillment(of: [receivedHinge], timeout: 3)
+        resize(controller, to: CGSize(width: 375, height: 812))
+        let logo = controller.removeLogoButton.convert(controller.removeLogoButton.bounds, to: controller.view)
+        let background = controller.backgroundButton.convert(controller.backgroundButton.bounds, to: controller.view)
+        let share = controller.saveButton.convert(controller.saveButton.bounds, to: controller.view)
+        XCTAssertEqual(logo.midX, background.midX, accuracy: 0.001)
+        XCTAssertEqual(background.midX, share.midX, accuracy: 0.001)
+        XCTAssertGreaterThan(background.minY, logo.maxY)
+        XCTAssertGreaterThan(share.minY, background.maxY)
+    }
+
     func test_previewFitsNarrowLowAndWideWindows_withoutUpscaling() {
         for size in [CGSize(width: 375, height: 650), CGSize(width: 300, height: 260),
                      CGSize(width: 760, height: 300), CGSize(width: 760, height: 1000),
@@ -19,10 +54,30 @@ final class QuoteCardEditorLayoutTests: XCTestCase {
         }
     }
 
+    func test_regularPhone_keepsBottomHorizontalActionsInBothOrientations() {
+        for size in [CGSize(width: 375, height: 667), CGSize(width: 393, height: 852),
+                     CGSize(width: 440, height: 956), CGSize(width: 852, height: 393)] {
+            let bounds = CGRect(origin: .zero, size: size)
+            let safeBounds = bounds.inset(by: UIEdgeInsets(top: 59, left: 0, bottom: 34, right: 0))
+            for showsColorSync in [false, true] {
+                let layout = QuoteCardEditorLayout(availableBounds: safeBounds, containerBounds: bounds,
+                                                   showsColorSync: showsColorSync)
+                XCTAssertEqual(layout.actionFrames[0].minY, layout.actionFrames[1].minY)
+                XCTAssertEqual(layout.actionFrames[1].minY, layout.actionFrames[3].minY)
+                XCTAssertEqual(layout.actionFrames[1].minX - layout.actionFrames[0].minX, 64)
+                XCTAssertEqual(layout.actionsFrame.minX + 6, safeBounds.minX + 24)
+                XCTAssertEqual(layout.actionsFrame.minX + layout.actionFrames[3].maxX - 6, safeBounds.maxX - 24)
+                XCTAssertEqual(layout.actionsFrame.maxY, safeBounds.maxY - 16)
+                XCTAssertTrue(layout.previewFrame.intersection(layout.actionsFrame).isEmpty)
+                XCTAssertEqual(layout.actionFrames[2].isEmpty, !showsColorSync)
+            }
+        }
+    }
+
     func test_landscape_centersCardAndRightAlignedActionGroup() {
         let bounds = CGRect(x: 0, y: 0, width: 760, height: 600)
         let safeBounds = CGRect(x: 0, y: 20, width: 660, height: 550)
-        let layout = QuoteCardEditorLayout(availableBounds: safeBounds, containerBounds: bounds)
+        let layout = QuoteCardEditorLayout(availableBounds: safeBounds, containerBounds: bounds, usesFoldableLayout: true)
         XCTAssertGreaterThan(layout.actionsFrame.minX, layout.previewFrame.maxX)
         XCTAssertEqual(layout.actionsFrame.maxY, layout.previewFrame.maxY, accuracy: 0.001)
         let group = layout.previewFrame.union(layout.actionsFrame)
@@ -36,7 +91,7 @@ final class QuoteCardEditorLayoutTests: XCTestCase {
     }
 
     func test_tinyWindow_keepsEveryActionInScrollableContent() {
-        let layout = QuoteCardEditorLayout(availableBounds: CGRect(x: 0, y: 0, width: 200, height: 240), showsColorSync: true)
+        let layout = QuoteCardEditorLayout(availableBounds: CGRect(x: 0, y: 0, width: 200, height: 240), usesFoldableLayout: true, showsColorSync: true)
         let content = CGRect(origin: .zero, size: layout.actionsContentSize)
         XCTAssertGreaterThan(content.height, layout.actionsFrame.height)
         for frame in layout.actionFrames {
@@ -47,8 +102,8 @@ final class QuoteCardEditorLayoutTests: XCTestCase {
 
     func test_compactPortrait_placesActionsAtBottomRightAndCentersCard() {
         let bounds = CGRect(x: 0, y: 0, width: 375, height: 812)
-        let safeBounds = CGRect(x: 0, y: 62, width: 375, height: 716)
-        let layout = QuoteCardEditorLayout(availableBounds: safeBounds, containerBounds: bounds)
+        let safeBounds = CGRect(x: 0, y: 62, width: 280, height: 716)
+        let layout = QuoteCardEditorLayout(availableBounds: safeBounds, containerBounds: bounds, usesFoldableLayout: true)
         XCTAssertEqual(layout.actionsFrame.height, layout.actionsContentSize.height)
         XCTAssertEqual(layout.actionsFrame.maxX - 6, bounds.maxX - 24)
         XCTAssertEqual(layout.actionFrames[0].minX, layout.actionFrames[1].minX)
@@ -58,6 +113,7 @@ final class QuoteCardEditorLayoutTests: XCTestCase {
         XCTAssertEqual(layout.previewFrame.midX, bounds.midX, accuracy: 0.001)
         XCTAssertEqual(layout.previewFrame.midY, bounds.midY, accuracy: 0.001)
         XCTAssertEqual(layout.actionsFrame.maxY, bounds.maxY - 16)
+        XCTAssertGreaterThan(layout.actionsFrame.minX, safeBounds.maxX)
         XCTAssertGreaterThan(layout.actionsFrame.minX, layout.previewFrame.maxX)
     }
 
@@ -72,8 +128,8 @@ final class QuoteCardEditorLayoutTests: XCTestCase {
     func test_colorSyncVisibility_addsActionWithoutLeavingAnEmptySlot() {
         for bounds in [CGRect(x: 0, y: 0, width: 375, height: 750),
                        CGRect(x: 0, y: 0, width: 760, height: 300)] {
-            let hidden = QuoteCardEditorLayout(availableBounds: bounds)
-            let visible = QuoteCardEditorLayout(availableBounds: bounds, showsColorSync: true)
+            let hidden = QuoteCardEditorLayout(availableBounds: bounds, usesFoldableLayout: true)
+            let visible = QuoteCardEditorLayout(availableBounds: bounds, usesFoldableLayout: true, showsColorSync: true)
             XCTAssertTrue(hidden.actionFrames[2].isEmpty)
             XCTAssertFalse(visible.actionFrames[2].isEmpty)
             XCTAssertGreaterThan(visible.actionsContentSize.width * visible.actionsContentSize.height,
