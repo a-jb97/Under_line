@@ -46,24 +46,24 @@ final class BookRowCell: UITableViewCell {
         let l = UILabel()
         l.font          = UIFont(name: "GowunBatang-Regular", size: 16)
             ?? .systemFont(ofSize: 16, weight: .medium)
-        l.textColor     = UIColor(hex: "#190e0b")
+        l.textColor     = UIColor.appPrimary
         l.numberOfLines = 2
         return l
     }()
 
     private let authorLabel: UILabel = {
         let l = UILabel()
-        l.font      = UIFont(name: "GowunBatang-Regular", size: 13)
-            ?? .systemFont(ofSize: 13)
+        l.font      = UIFont(name: "Goyangilsan R", size: 12)
+            ?? .systemFont(ofSize: 12)
         l.textColor = UIColor.walnut
         return l
     }()
 
     private let publisherLabel: UILabel = {
         let label = UILabel()
-        label.font = UIFont(name: "GowunBatang-Regular", size: 13)
-            ?? .systemFont(ofSize: 13)
-        label.textColor = UIColor.walnut
+        label.font = UIFont(name: "Goyangilsan R", size: 12)
+            ?? .systemFont(ofSize: 12)
+        label.textColor = UIColor.appPrimary
         return label
     }()
 
@@ -229,7 +229,7 @@ final class BookRowCell: UITableViewCell {
 
         let textStack = UIStackView(arrangedSubviews: [titleLabel, authorLabel, publisherLabel])
         textStack.axis    = .vertical
-        textStack.spacing = 3
+        textStack.spacing = 6
 
         let actionStack = UIStackView(arrangedSubviews: [registerButton, wishlistButton])
         actionStack.axis = .vertical

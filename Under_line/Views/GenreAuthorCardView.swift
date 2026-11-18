@@ -21,6 +21,8 @@ final class GenreAuthorCardView: UIView {
         return s
     }()
     private let disposeBag = DisposeBag()
+    private let segmentContainer = UIView()
+    private var usesCompactSegment: Bool?
 
     private var genreData  = SentenceDonutData.empty
     private var authorData = SentenceDonutData.empty
@@ -67,17 +69,9 @@ final class GenreAuthorCardView: UIView {
             ?? .systemFont(ofSize: 18, weight: .semibold)
         titleLabel.textColor = .accent
 
-        let segmentContainer = UIView()
         segmentContainer.addSubview(segmentControl)
-        if UIDevice.current.userInterfaceIdiom == .pad {
-            segmentControl.snp.makeConstraints { make in
-                make.top.bottom.trailing.equalToSuperview()
-                make.width.equalTo(200)
-            }
-        } else {
-            segmentControl.snp.makeConstraints { make in
-                make.edges.equalToSuperview()
-            }
+        segmentControl.snp.makeConstraints { make in
+            make.edges.equalToSuperview()
         }
 
         let vStack = UIStackView(arrangedSubviews: [titleLabel, segmentContainer, donutView, legendStack])
@@ -98,6 +92,18 @@ final class GenreAuthorCardView: UIView {
                 self?.donutView.animateIn()
             })
             .disposed(by: disposeBag)
+    }
+
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        let compact = bounds.width >= 500
+        guard compact != usesCompactSegment else { return }
+        usesCompactSegment = compact
+        segmentControl.snp.remakeConstraints { make in
+            make.top.bottom.trailing.equalToSuperview()
+            if compact { make.width.equalTo(200) }
+            else { make.leading.equalToSuperview() }
+        }
     }
 
     private func updateChart(for index: Int) {
@@ -216,11 +222,6 @@ final class NeumorphicSegmentView: UIView {
         updateSelection()
     }
 
-    override func layoutSubviews() {
-        super.layoutSubviews()
-        updateSelectorFrame()
-    }
-
     private func updateSelection() {
         guard !buttons.isEmpty else { return }
         for (i, btn) in buttons.enumerated() {
@@ -228,14 +229,15 @@ final class NeumorphicSegmentView: UIView {
             btn.tintColor = isSelected ? .background : UIColor.appPrimary
             btn.backgroundColor = isSelected ? .appPrimary : .clear
         }
-        updateSelectorFrame()
+        updateSelectorConstraints()
     }
 
-    private func updateSelectorFrame() {
-        guard !buttons.isEmpty, selectedIndex < buttons.count else { return }
-        let btn = buttons[selectedIndex]
-        let converted = btn.convert(btn.bounds, to: self)
-        selector.frame = converted
+    private func updateSelectorConstraints() {
+        guard buttons.indices.contains(selectedIndex) else { return }
+        // 스택의 재배치 순서와 관계없이 선택 배경이 실제 버튼 크기를 따라가게 한다.
+        selector.snp.remakeConstraints { make in
+            make.edges.equalTo(buttons[selectedIndex])
+        }
     }
 }
 

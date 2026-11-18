@@ -1,485 +1,236 @@
-//
-//  CameraCollectionViewController.swift
-//  Under_line
-//
-//  문장 수집 - 커스텀 카메라 뷰 (Node YNVWL)
-//  fabButton 탭 → fullScreen modal 로 present
-//
-
 import UIKit
 import AVFoundation
 import SnapKit
 import RxSwift
 import RxCocoa
 
-final class CameraCollectionViewController: UIViewController {
-
-    private let disposeBag = DisposeBag()
-
-    /// directCollectButton 탭 → dismiss 완료 후 호출
+final class CameraCollectionViewController: AdaptiveViewController {
     var onDirectCollect: (() -> Void)?
-
-    /// OCR 텍스트 선택 완료 → dismiss 완료 후 추출된 텍스트 전달
     var onOCRTextExtracted: ((String) -> Void)?
 
-    // MARK: - AVFoundation
-
-    private let captureSession = AVCaptureSession()
-    private let photoOutput    = AVCapturePhotoOutput()
+    private let disposeBag = DisposeBag()
+    private let viewModel = CameraCollectionViewModel()
+    private let appeared = PublishRelay<Void>()
+    private let disappeared = PublishRelay<Void>()
+    private var isVisible = false
     private var previewLayer: AVCaptureVideoPreviewLayer?
-    private var currentDevice: AVCaptureDevice?
-    private var currentInput: AVCaptureDeviceInput?
-    private var isFlashOn = false
-    private var usingFrontCamera = false
+    private var rotationCoordinator: AVCaptureDevice.RotationCoordinator?
+    private var rotationObservation: NSKeyValueObservation?
 
-    private var hasTripleCamera = false
-
-    // MARK: - Top Section
-
-    private let topSectionView: UIView = {
-        let v = UIView()
-        v.backgroundColor = UIColor.background
-        return v
-    }()
-
-    private lazy var closeButton: UIButton = {
-        let btn = UIButton(type: .system)
-        let cfg = UIImage.SymbolConfiguration(pointSize: 18, weight: .regular)
-        btn.setImage(UIImage(systemName: "xmark", withConfiguration: cfg), for: .normal)
-        btn.tintColor = UIColor.accent
-        btn.layer.cornerRadius = 20
-        btn.clipsToBounds = true
-        return btn
-    }()
-
-    private let navTitleLabel: UILabel = {
-        let l = UILabel()
-        l.text = "밑줄 등록"
-        l.font = UIFont(name: "GowunBatang-Bold", size: 18)
-            ?? .systemFont(ofSize: 18, weight: .semibold)
-        l.textColor = UIColor.accent
-        return l
-    }()
-
-    private lazy var directCollectButton: UIButton = {
-        var config = UIButton.Configuration.plain()
-        config.attributedTitle = AttributedString(
-            "직접 수집",
-            attributes: AttributeContainer([
-                .font: UIFont(name: "Goyangilsan R", size: 12)
-                    ?? UIFont.systemFont(ofSize: 12, weight: .semibold),
-                .foregroundColor: UIColor.appPrimary,
-            ])
-        )
-        config.baseForegroundColor = UIColor.appPrimary
-        config.background.backgroundColor = UIColor.background
-        config.background.cornerRadius = 12
-        config.contentInsets = NSDirectionalEdgeInsets(top: 0, leading: 14, bottom: 0, trailing: 14)
-        return UIButton(configuration: config)
-    }()
-
-    // MARK: - Camera Section
-
-    private let cameraSectionView: UIView = {
-        let v = UIView()
-        v.backgroundColor = UIColor(hex: "#1a1a1a")
-        v.clipsToBounds = true
-        return v
-    }()
-
-    private let scanInstructionLabel: UILabel = {
-        let l = UILabel()
-        l.text = "밑줄 칠 부분을 촬영해주세요"
-        l.font = UIFont(name: "GowunBatang-Regular", size: 14) ?? .systemFont(ofSize: 14)
-        l.textColor = UIColor(white: 1, alpha: 0.6)
-        l.textAlignment = .center
-        return l
-    }()
-
-    // MARK: - Bottom Section
-
-    private let bottomSectionView: UIView = {
-        let v = UIView()
-        v.backgroundColor = UIColor.background
-        return v
-    }()
-
-    private lazy var flashButton: UIButton = {
-        let btn = UIButton(type: .system)
-        let cfg = UIImage.SymbolConfiguration(pointSize: 18, weight: .regular)
-        btn.setImage(UIImage(systemName: "bolt", withConfiguration: cfg), for: .normal)
-        btn.tintColor = UIColor.appPrimary
-        return btn
-    }()
-
-    private lazy var captureButton: UIButton = {
-        var config = UIButton.Configuration.plain()
-        config.image = UIImage(
-            systemName: "camera",
-            withConfiguration: UIImage.SymbolConfiguration(pointSize: 20, weight: .regular)
-        )
-        config.attributedTitle = AttributedString(
-            "수집하기",
-            attributes: AttributeContainer([
-                .font: UIFont(name: "Goyangilsan R", size: 18)
-                    ?? UIFont.systemFont(ofSize: 18, weight: .semibold),
-            ])
-        )
-        config.imagePlacement = .leading
-        config.imagePadding = 10
-        config.baseForegroundColor = UIColor.appPrimary
-        let btn = UIButton(configuration: config)
-        return btn
-    }()
-
-    private lazy var switchCameraButton: UIButton = {
-        let btn = UIButton(type: .system)
-        let cfg = UIImage.SymbolConfiguration(pointSize: 18, weight: .regular)
-        btn.setImage(UIImage(systemName: "arrow.triangle.2.circlepath.camera", withConfiguration: cfg), for: .normal)
-        btn.tintColor = UIColor.appPrimary
-        return btn
-    }()
-
-    private let hintLabel: UILabel = {
-        let l = UILabel()
-        l.text = "촬영하고 나면 밑줄을 그을 수 있습니다"
-        l.font = UIFont(name: "GowunBatang-Regular", size: 12) ?? .systemFont(ofSize: 12)
-        l.textColor = UIColor.appPrimary.withAlphaComponent(0.6)
-        l.textAlignment = .center
-        l.numberOfLines = 0
-        return l
-    }()
-
-    // MARK: - Lifecycle
+    private let closeItem = SystemNavigationStyle.item(image: "xmark", label: "닫기", identifier: "closeCameraButton", priority: .high)
+    private let directItem = SystemNavigationStyle.item(image: "square.and.pencil", label: "직접 수집", identifier: "directCollectButton", priority: .high)
+    private let cameraSectionView = UIView()
+    private let controlsScrollView = ScrollableFormView()
+    private let actionRow = UIStackView()
+    private let statusStack = UIStackView()
+    private let statusLabel = UILabel()
+    private let retryButton = UIButton(type: .system)
+    private let settingsButton = UIButton(type: .system)
+    private let flashButton = UIButton(type: .system)
+    private let switchCameraButton = UIButton(type: .system)
+    private let captureButton = UIButton(type: .system)
+    private let instructionLabel = UILabel()
+    private let hintLabel = UILabel()
 
     override func viewDidLoad() {
         super.viewDidLoad()
-        view.backgroundColor = UIColor(hex: "#1a1a1a")
+        view.backgroundColor = .background
+        SystemNavigationStyle.configure(self, title: "밑줄 등록")
+        navigationItem.leftBarButtonItem = closeItem
+        SystemNavigationStyle.setTrailingItems([directItem], on: navigationItem)
         setupUI()
-        setupConstraints()
         bindActions()
-        requestCameraPermission()
+        let preview = AVCaptureVideoPreviewLayer(session: viewModel.session)
+        preview.videoGravity = .resizeAspectFill
+        cameraSectionView.layer.insertSublayer(preview, at: 0)
+        previewLayer = preview
+    }
+
+    override func viewWillAppear(_ animated: Bool) {
+        super.viewWillAppear(animated)
+        isVisible = true
+        appeared.accept(())
+    }
+
+    override func viewWillDisappear(_ animated: Bool) {
+        super.viewWillDisappear(animated)
+        isVisible = false
+        disappeared.accept(())
     }
 
     override func viewDidLayoutSubviews() {
         super.viewDidLayoutSubviews()
+        let layout = CaptureScreenLayout(availableBounds: view.adaptiveContentLayoutGuide.layoutFrame)
+        cameraSectionView.frame = layout.previewFrame
+        controlsScrollView.frame = layout.controlsFrame
+        let axis: NSLayoutConstraint.Axis = layout.usesSideControls ? .vertical : .horizontal
+        if actionRow.axis != axis { actionRow.axis = axis }
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
         previewLayer?.frame = cameraSectionView.bounds
+        CATransaction.commit()
+        updatePreviewRotation()
     }
 
-    override var preferredStatusBarStyle: UIStatusBarStyle { .darkContent }
-
-    // MARK: - Setup
-
     private func setupUI() {
-        view.addSubview(topSectionView)
-        topSectionView.addSubview(closeButton)
-        topSectionView.addSubview(navTitleLabel)
-        topSectionView.addSubview(directCollectButton)
-
-        view.addSubview(bottomSectionView)
-        bottomSectionView.addSubview(captureButton)
-        bottomSectionView.addSubview(flashButton)
-        bottomSectionView.addSubview(switchCameraButton)
-        bottomSectionView.addSubview(hintLabel)
-
+        cameraSectionView.backgroundColor = UIColor(hex: "#1a1a1a")
+        cameraSectionView.clipsToBounds = true
+        cameraSectionView.layer.cornerRadius = 12
+        controlsScrollView.backgroundColor = .background
+        controlsScrollView.layer.cornerRadius = 12
+        controlsScrollView.contentInsetAdjustmentBehavior = .never
         view.addSubview(cameraSectionView)
-        cameraSectionView.addSubview(scanInstructionLabel)
+        view.addSubview(controlsScrollView)
 
+        instructionLabel.text = "밑줄 칠 부분을 촬영해주세요"
+        instructionLabel.font = UIFont(name: "GowunBatang-Regular", size: 14) ?? .systemFont(ofSize: 14)
+        instructionLabel.textColor = .white
+        instructionLabel.textAlignment = .center
+        instructionLabel.numberOfLines = 0
+        cameraSectionView.addSubview(instructionLabel)
+        instructionLabel.snp.makeConstraints { make in
+            make.leading.trailing.bottom.equalToSuperview().inset(16)
+        }
+
+        statusStack.axis = .vertical
+        statusStack.spacing = 12
+        statusStack.alignment = .center
+        statusLabel.textColor = .white
+        statusLabel.textAlignment = .center
+        statusLabel.numberOfLines = 0
+        statusLabel.font = .systemFont(ofSize: 14)
+        retryButton.setTitle("다시 시도", for: .normal)
+        settingsButton.setTitle("설정 열기", for: .normal)
+        for button in [retryButton, settingsButton] {
+            button.setTitleColor(.white, for: .normal)
+            button.snp.makeConstraints { $0.height.greaterThanOrEqualTo(44) }
+        }
+        [statusLabel, retryButton, settingsButton].forEach(statusStack.addArrangedSubview)
+        statusLabel.snp.makeConstraints { $0.width.equalTo(statusStack) }
+        cameraSectionView.addSubview(statusStack)
+        statusStack.snp.makeConstraints { make in
+            make.center.equalToSuperview()
+            make.leading.trailing.equalToSuperview().inset(16)
+        }
+
+        flashButton.setImage(UIImage(systemName: "bolt"), for: .normal)
+        switchCameraButton.setImage(UIImage(systemName: "arrow.triangle.2.circlepath.camera"), for: .normal)
+        var capture = UIButton.Configuration.plain()
+        capture.title = "수집하기"
+        capture.image = UIImage(systemName: "camera")
+        capture.imagePadding = 8
+        capture.baseForegroundColor = .appPrimary
+        captureButton.configuration = capture
         SystemGlassButtonStyle.apply(to: flashButton, accessibilityLabel: "플래시")
         SystemGlassButtonStyle.apply(to: captureButton, accessibilityLabel: "수집하기")
         SystemGlassButtonStyle.apply(to: switchCameraButton, accessibilityLabel: "카메라 전환")
-    }
-
-    private func setupConstraints() {
-        // Top section: from screen top down to safeArea.top + 50pt nav header
-        topSectionView.snp.makeConstraints { make in
-            make.top.leading.trailing.equalToSuperview()
-            make.bottom.equalTo(view.safeAreaLayoutGuide.snp.top).offset(50)
-        }
-
-        closeButton.snp.makeConstraints { make in
-            make.leading.equalToSuperview().inset(20)
-            make.bottom.equalToSuperview().inset(5)
-            make.size.equalTo(40)
-        }
-
-        navTitleLabel.snp.makeConstraints { make in
-            make.centerX.equalToSuperview()
-            make.centerY.equalTo(closeButton)
-        }
-
-        directCollectButton.snp.makeConstraints { make in
-            make.trailing.equalToSuperview().inset(20)
-            make.centerY.equalTo(closeButton)
-            make.height.equalTo(30)
-            make.width.equalTo(76)
-        }
-
-        // Bottom section (anchored to screen bottom)
-        bottomSectionView.snp.makeConstraints { make in
-            make.leading.trailing.bottom.equalToSuperview()
-        }
-
-        // Camera section fills between top and bottom
-        cameraSectionView.snp.makeConstraints { make in
-            make.top.equalTo(topSectionView.snp.bottom)
-            make.leading.trailing.equalToSuperview()
-            make.bottom.equalTo(bottomSectionView.snp.top)
-        }
-
-        // 가이드 테두리 없이 기존 안내 문구 위치를 유지한다.
-        let instructionInset: CGFloat = UIDevice.current.userInterfaceIdiom == .pad ? 100 : 48
-        scanInstructionLabel.snp.makeConstraints { make in
-            make.centerX.equalToSuperview()
-            make.top.equalTo(cameraSectionView.snp.bottom).offset(12 - instructionInset)
-        }
-
-        // Capture button: centered, 20pt from bottom section top
+        actionRow.axis = .horizontal
+        actionRow.spacing = 12
+        actionRow.alignment = .center
+        [flashButton, captureButton, switchCameraButton].forEach(actionRow.addArrangedSubview)
+        for button in [flashButton, switchCameraButton] { button.snp.makeConstraints { $0.size.equalTo(48) } }
         captureButton.snp.makeConstraints { make in
-            make.top.equalToSuperview().inset(20)
-            make.centerX.equalToSuperview()
-            make.width.equalTo(200)
             make.height.equalTo(64)
+            make.width.greaterThanOrEqualTo(44)
+            make.width.equalTo(140).priority(.high)
         }
-
-        // Flash / Switch: 24pt gap from capture button edges
-        flashButton.snp.makeConstraints { make in
-            make.trailing.equalTo(captureButton.snp.leading).offset(-24)
-            make.centerY.equalTo(captureButton)
-            make.size.equalTo(48)
-        }
-
-        switchCameraButton.snp.makeConstraints { make in
-            make.leading.equalTo(captureButton.snp.trailing).offset(24)
-            make.centerY.equalTo(captureButton)
-            make.size.equalTo(48)
-        }
-
-        hintLabel.snp.makeConstraints { make in
-            make.top.equalTo(captureButton.snp.bottom).offset(20)
-            make.leading.trailing.equalToSuperview().inset(24)
-            make.bottom.equalTo(view.safeAreaLayoutGuide).inset(40)
-        }
+        hintLabel.text = "촬영하고 나면 밑줄을 그을 수 있습니다"
+        hintLabel.font = UIFont(name: "GowunBatang-Regular", size: 12) ?? .systemFont(ofSize: 12)
+        hintLabel.textColor = .appPrimary
+        hintLabel.textAlignment = .center
+        hintLabel.numberOfLines = 0
+        let stack = UIStackView(arrangedSubviews: [actionRow, hintLabel])
+        stack.axis = .vertical
+        stack.spacing = 16
+        controlsScrollView.formContentView.addSubview(stack)
+        stack.snp.makeConstraints { $0.edges.equalToSuperview().inset(12) }
     }
-
-    // MARK: - Camera
-
-    private func requestCameraPermission() {
-        switch AVCaptureDevice.authorizationStatus(for: .video) {
-        case .authorized:
-            setupCaptureSession()
-        case .notDetermined:
-            Task { [weak self] in
-                guard let self else { return }
-                let granted = await withCheckedContinuation { continuation in
-                    AVCaptureDevice.requestAccess(for: .video) { continuation.resume(returning: $0) }
-                }
-                if granted { self.setupCaptureSession() }
-                else { self.showPermissionDeniedAlert() }
-            }
-        default:
-            showPermissionDeniedAlert()
-        }
-    }
-
-    private func setupCaptureSession() {
-        captureSession.beginConfiguration()
-        captureSession.sessionPreset = .photo
-
-        let selectedDevice = usingFrontCamera
-            ? AVCaptureDevice.default(.builtInWideAngleCamera, for: .video, position: .front)
-            : bestBackCamera()
-        guard let device = selectedDevice,
-              let deviceInput = try? AVCaptureDeviceInput(device: device)
-        else {
-            captureSession.commitConfiguration()
-            return
-        }
-
-        if captureSession.canAddInput(deviceInput) {
-            captureSession.addInput(deviceInput)
-            currentDevice = device
-            currentInput  = deviceInput
-        }
-
-        if captureSession.canAddOutput(photoOutput) {
-            captureSession.addOutput(photoOutput)
-        }
-
-        captureSession.commitConfiguration()
-
-        let preview = AVCaptureVideoPreviewLayer(session: captureSession)
-        preview.videoGravity = .resizeAspectFill
-        preview.frame = cameraSectionView.bounds
-        cameraSectionView.layer.insertSublayer(preview, at: 0)
-        previewLayer = preview
-
-//        startLensPositionObservation()
-
-        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
-            self?.captureSession.startRunning()
-        }
-    }
-
-    private func showPermissionDeniedAlert() {
-        let alert = UIAlertController(
-            title: "카메라 권한 필요",
-            message: "카메라 접근 권한이 필요합니다.\n설정에서 허용해주세요.",
-            preferredStyle: .alert
-        )
-        alert.addAction(UIAlertAction(title: "설정으로", style: .default) { _ in
-            guard let url = URL(string: UIApplication.openSettingsURLString) else { return }
-            UIApplication.shared.open(url)
-        })
-        alert.addAction(UIAlertAction(title: "취소", style: .cancel) { [weak self] _ in
-            self?.dismiss(animated: true)
-        })
-        present(alert, animated: true)
-    }
-
-    // MARK: - Bindings
 
     private func bindActions() {
-        closeButton.rx.tap
-            .subscribe(onNext: { [weak self] in
-                DispatchQueue.global(qos: .userInitiated).async {
-                    self?.captureSession.stopRunning()
-                }
-                self?.dismiss(animated: true)
-            })
-            .disposed(by: disposeBag)
-
-        flashButton.rx.tap
-            .subscribe(onNext: { [weak self] in
-                self?.toggleFlash()
-            })
-            .disposed(by: disposeBag)
-
-        switchCameraButton.rx.tap
-            .subscribe(onNext: { [weak self] in
-                self?.switchCamera()
-            })
-            .disposed(by: disposeBag)
-
-        captureButton.rx.tap
-            .subscribe(onNext: { [weak self] in
-                self?.takePhoto()
-            })
-            .disposed(by: disposeBag)
-
-        directCollectButton.rx.tap
-            .subscribe(onNext: { [weak self] in
-                guard let self else { return }
-                let callback = self.onDirectCollect
-                DispatchQueue.global(qos: .userInitiated).async {
-                    self.captureSession.stopRunning()
-                }
-                self.dismiss(animated: true) { callback?() }
-            })
-            .disposed(by: disposeBag)
-    }
-
-    private func takePhoto() {
-        let settings = AVCapturePhotoSettings()
-        if let device = currentDevice, device.hasFlash {
-            settings.flashMode = isFlashOn ? .on : .off
-        }
-        photoOutput.capturePhoto(with: settings, delegate: self)
-    }
-
-    private func toggleFlash() {
-        guard let device = currentDevice, device.hasTorch else { return }
-        do {
-            try device.lockForConfiguration()
-            isFlashOn.toggle()
-            device.torchMode = isFlashOn ? .on : .off
-            device.unlockForConfiguration()
-        } catch {
-            print("Flash error: \(error)")
-            return
-        }
-        let iconName = isFlashOn ? "bolt.fill" : "bolt"
-        let cfg = UIImage.SymbolConfiguration(pointSize: 18, weight: .regular)
-        var configuration = flashButton.configuration
-        configuration?.image = SystemGlassButtonStyle.icon(UIImage(systemName: iconName, withConfiguration: cfg))
-        flashButton.configuration = configuration
-        flashButton.accessibilityValue = isFlashOn ? "켜짐" : "꺼짐"
-    }
-
-    private func switchCamera() {
-        guard let current = currentInput else { return }
-        usingFrontCamera.toggle()
-
-        let selectedDevice: AVCaptureDevice?
-        if usingFrontCamera {
-            hasTripleCamera = false
-            selectedDevice = AVCaptureDevice.default(.builtInWideAngleCamera, for: .video, position: .front)
-        } else {
-            selectedDevice = bestBackCamera()
-        }
-        guard let newDevice = selectedDevice,
-              let newInput  = try? AVCaptureDeviceInput(device: newDevice)
-        else { return }
-
-        captureSession.beginConfiguration()
-        captureSession.removeInput(current)
-        if captureSession.canAddInput(newInput) {
-            captureSession.addInput(newInput)
-            currentDevice = newDevice
-            currentInput  = newInput
-        }
-        captureSession.commitConfiguration()
-
-        // 전면 카메라는 플래시 없으므로 끄기
-        if usingFrontCamera && isFlashOn { toggleFlash() }
-    }
-
-    private func bestBackCamera() -> AVCaptureDevice? {
-        if let triple = AVCaptureDevice.default(.builtInTripleCamera, for: .video, position: .back) {
-            hasTripleCamera = true
-            return triple
-        }
-        hasTripleCamera = false
-        return AVCaptureDevice.default(.builtInWideAngleCamera, for: .video, position: .back)
-    }
-}
-
-// MARK: - AVCapturePhotoCaptureDelegate
-
-extension CameraCollectionViewController: AVCapturePhotoCaptureDelegate {
-    func photoOutput(
-        _ output: AVCapturePhotoOutput,
-        didFinishProcessingPhoto photo: AVCapturePhoto,
-        error: Error?
-    ) {
-        guard error == nil,
-              let data  = photo.fileDataRepresentation(),
-              let image = UIImage(data: data)
-        else {
-            DispatchQueue.main.async { [weak self] in
-                let alert = UIAlertController(
-                    title: "캡처 실패",
-                    message: "사진을 저장하지 못했습니다. 다시 시도해 주세요.",
-                    preferredStyle: .alert
-                )
-                alert.addAction(UIAlertAction(title: "확인", style: .default))
-                self?.present(alert, animated: true)
-            }
-            return
-        }
-
-        DispatchQueue.main.async { [weak self] in
+        let output = viewModel.transform(input: .init(
+            appeared: appeared.asObservable(), disappeared: disappeared.asObservable(),
+            capture: captureButton.rx.tap.map { [weak self] in
+                self?.rotationCoordinator?.videoRotationAngleForHorizonLevelCapture ?? 90
+            }, switchCamera: switchCameraButton.rx.tap.asObservable(),
+            toggleFlash: flashButton.rx.tap.asObservable(), retry: retryButton.rx.tap.asObservable()
+        ))
+        output.state.drive(onNext: { [weak self] state in
             guard let self else { return }
-            let markupVC = OCRMarkupViewController(image: image)
-            markupVC.onConfirm = { [weak self] extractedText in
+            self.statusLabel.text = state.message
+            self.statusStack.isHidden = state.message == nil
+            self.retryButton.isHidden = state.permissionDenied
+            self.settingsButton.isHidden = !state.permissionDenied
+            self.instructionLabel.isHidden = state.message != nil
+            self.captureButton.isEnabled = state.canCapture
+            self.switchCameraButton.isEnabled = state.canSwitch
+            self.flashButton.isEnabled = state.supportsFlash && state.canCapture
+            for button in [self.captureButton, self.switchCameraButton, self.flashButton] {
+                button.alpha = button.isEnabled ? 1 : 0.35
+            }
+            var config = self.flashButton.configuration
+            config?.image = SystemGlassButtonStyle.icon(UIImage(systemName: state.flashOn ? "bolt.fill" : "bolt"))
+            self.flashButton.configuration = config
+            self.flashButton.accessibilityValue = state.flashOn ? "켜짐" : "꺼짐"
+        }).disposed(by: disposeBag)
+        output.device.emit(onNext: { [weak self] in self?.configureRotation(device: $0) }).disposed(by: disposeBag)
+        output.photo.emit(onNext: { [weak self] data in
+            guard let self, let image = UIImage(data: data), self.presentedViewController == nil else { return }
+            let markup = OCRMarkupViewController(image: image)
+            markup.onConfirm = { [weak self] text in
                 guard let self else { return }
                 let callback = self.onOCRTextExtracted
-                DispatchQueue.global(qos: .userInitiated).async {
-                    self.captureSession.stopRunning()
-                }
-                self.dismiss(animated: true) { callback?(extractedText) }
+                (self.navigationController ?? self).dismiss(animated: true) { callback?(text) }
             }
-            self.present(markupVC, animated: true)
+            let navigation = UINavigationController(rootViewController: markup)
+            SystemNavigationStyle.configure(navigation)
+            navigation.modalPresentationStyle = .fullScreen
+            self.present(navigation, animated: true)
+        }).disposed(by: disposeBag)
+        output.error.emit(onNext: { [weak self] message in
+            guard let self, self.isVisible, self.presentedViewController == nil else { return }
+            let alert = UIAlertController(title: "촬영 안내", message: message, preferredStyle: .alert)
+            alert.addAction(UIAlertAction(title: "확인", style: .default))
+            self.present(alert, animated: true)
+        }).disposed(by: disposeBag)
+        closeItem.rx.tap.subscribe(onNext: { [weak self] in
+            guard let self else { return }
+            (self.navigationController ?? self).dismiss(animated: true)
+        }).disposed(by: disposeBag)
+        directItem.rx.tap.subscribe(onNext: { [weak self] in
+            guard let self else { return }
+            let callback = self.onDirectCollect
+            (self.navigationController ?? self).dismiss(animated: true) { callback?() }
+        }).disposed(by: disposeBag)
+        settingsButton.rx.tap.subscribe(onNext: {
+            guard let url = URL(string: UIApplication.openSettingsURLString) else { return }
+            UIApplication.shared.open(url)
+        }).disposed(by: disposeBag)
+        NotificationCenter.default.rx.notification(UIApplication.didBecomeActiveNotification)
+            .filter { [weak self] _ in self?.isVisible == true }
+            .subscribe(onNext: { [weak self] _ in self?.appeared.accept(()) }).disposed(by: disposeBag)
+        NotificationCenter.default.rx.notification(UIApplication.willResignActiveNotification)
+            .filter { [weak self] _ in self?.isVisible == true }
+            .subscribe(onNext: { [weak self] _ in self?.disappeared.accept(()) }).disposed(by: disposeBag)
+    }
+
+    private func configureRotation(device: AVCaptureDevice) {
+        guard let previewLayer else { return }
+        rotationObservation = nil
+        let coordinator = AVCaptureDevice.RotationCoordinator(device: device, previewLayer: previewLayer)
+        rotationCoordinator = coordinator
+        if let connection = previewLayer.connection, connection.isVideoMirroringSupported {
+            connection.automaticallyAdjustsVideoMirroring = false
+            connection.isVideoMirrored = device.position == .front
         }
+        // RotationCoordinator는 디스플레이 이동도 추적하고 메인 큐에서 KVO를 전달한다.
+        rotationObservation = coordinator.observe(\.videoRotationAngleForHorizonLevelPreview, options: [.initial, .new]) { [weak self] _, _ in
+            MainActor.assumeIsolated { self?.updatePreviewRotation() }
+        }
+    }
+
+    private func updatePreviewRotation() {
+        guard let angle = rotationCoordinator?.videoRotationAngleForHorizonLevelPreview,
+              let connection = previewLayer?.connection, connection.isVideoRotationAngleSupported(angle) else { return }
+        connection.videoRotationAngle = angle
     }
 }

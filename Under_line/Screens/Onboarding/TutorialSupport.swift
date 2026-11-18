@@ -20,11 +20,21 @@ enum TutorialSupport {
         controller.present(overlay, animated: true)
     }
 
-    static func navigationStep(on controller: UIViewController, message: String) -> TutorialStep {
-        TutorialStep(targetFrame: .zero, message: message, targetFrameProvider: { [weak controller] in
-            guard let bar = controller?.navigationController?.navigationBar,
-                  bar.window != nil, !bar.isHidden else { return .zero }
-            return bar.convert(bar.bounds, to: nil)
+    static func viewStep(target: UIView, message: String) -> TutorialStep {
+        TutorialStep(targetFrame: .zero, message: message, targetFrameProvider: { [weak target] in
+            guard let target, target.window != nil else { return .zero }
+            return target.convert(target.bounds, to: nil)
+        })
+    }
+
+    static func barButtonStep(item: UIBarButtonItem, on controller: UIViewController, message: String) -> TutorialStep {
+        TutorialStep(targetFrame: .zero, message: message, targetFrameProvider: { [weak item, weak controller] in
+            guard let controller, let item, let window = controller.viewIfLoaded?.window else { return .zero }
+            if let frame = item.frame(in: window), !frame.isEmpty, !frame.isNull {
+                return frame
+            }
+            // 버튼이 overflow로 이동했다면 시스템 메뉴의 위치를 안내한다.
+            return controller.navigationItem.overflowPresentationSource?.frame(in: window) ?? .zero
         })
     }
 

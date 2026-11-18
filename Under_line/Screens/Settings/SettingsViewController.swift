@@ -12,7 +12,7 @@ import RxCocoa
 import UniformTypeIdentifiers
 import Toast
 
-final class SettingsViewController: UIViewController {
+final class SettingsViewController: AdaptiveViewController {
 
     private let viewModel = SettingsViewModel()
     private let restoreFilePickedRelay = PublishRelay<URL>()
@@ -44,16 +44,6 @@ final class SettingsViewController: UIViewController {
 
     // MARK: - UI
 
-    private let titleLabel: UILabel = {
-        let l = UILabel()
-        l.text = "설정"
-        l.font = UIFont(name: "GowunBatang-Bold", size: 26)
-            ?? .systemFont(ofSize: 26, weight: .bold)
-        l.textColor = .accent
-        l.accessibilityTraits.insert(.header)
-        return l
-    }()
-
     private let tableSection: UIView = {
         let v = UIView()
         v.backgroundColor = .clear
@@ -79,7 +69,13 @@ final class SettingsViewController: UIViewController {
         view.backgroundColor = .background
         setupUI()
         setupConstraints()
+        SystemNavigationStyle.observeBarPlacement(on: self)
         bindActions()
+    }
+
+    override func viewWillLayoutSubviews() {
+        super.viewWillLayoutSubviews()
+        SystemNavigationStyle.setSectionTitle("설정", leadingInset: 10, on: self)
     }
 
     override func viewDidAppear(_ animated: Bool) {
@@ -100,17 +96,7 @@ final class SettingsViewController: UIViewController {
 
     private func setupUI() {
         SystemNavigationStyle.configure(self, title: "")
-        let titleContainer = UIView()
-        titleContainer.addSubview(titleLabel)
-        titleLabel.snp.makeConstraints { make in
-            make.leading.equalToSuperview().offset(10)
-            make.top.bottom.trailing.equalToSuperview()
-        }
-        let titleItem = UIBarButtonItem(customView: titleContainer)
-        if #available(iOS 26.0, *) {
-            titleItem.hidesSharedBackground = true
-        }
-        navigationItem.leftBarButtonItem = titleItem
+        SystemNavigationStyle.setSectionTitle("설정", leadingInset: 10, on: self)
         view.addSubview(scrollView)
         scrollView.addSubview(tableSection)
 
@@ -162,8 +148,8 @@ final class SettingsViewController: UIViewController {
 
     private func setupConstraints() {
         scrollView.snp.makeConstraints { make in
-            make.top.equalTo(view.safeAreaLayoutGuide).offset(12)
-            make.leading.trailing.bottom.equalTo(view.safeAreaLayoutGuide)
+            make.top.equalTo(view.adaptiveContentLayoutGuide).offset(12)
+            make.leading.trailing.bottom.equalTo(view.adaptiveContentLayoutGuide)
         }
         scrollView.contentLayoutGuide.snp.makeConstraints { make in
             make.width.equalTo(scrollView.frameLayoutGuide)

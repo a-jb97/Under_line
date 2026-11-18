@@ -12,7 +12,7 @@ import SnapKit
 import RxSwift
 import RxCocoa
 
-final class RandomUnderLineViewController: UIViewController {
+final class RandomUnderLineViewController: AdaptiveViewController {
 
     private let disposeBag = DisposeBag()
     private let sentence: Sentence
@@ -96,9 +96,14 @@ final class RandomUnderLineViewController: UIViewController {
         view.addSubview(dimView)
         view.addSubview(cardView)
 
-        cardView.addSubview(textLabel)
+        let textScroll = ScrollableTextView(label: textLabel)
+        cardView.addSubview(textScroll)
         cardView.addSubview(pageLabel)
         cardView.addSubview(emotionImageView)
+        textScroll.snp.makeConstraints { make in
+            make.top.leading.trailing.equalToSuperview()
+            make.bottom.equalTo(pageLabel.snp.top).offset(-8)
+        }
     }
 
     private func setupConstraints() {
@@ -106,14 +111,10 @@ final class RandomUnderLineViewController: UIViewController {
         dimView.snp.makeConstraints { make in make.edges.equalToSuperview() }
 
         cardView.snp.makeConstraints { make in
-            make.leading.trailing.equalToSuperview().inset(32)
-            make.height.equalTo(cardView.snp.width).multipliedBy(0.7)
-            make.center.equalToSuperview()
-        }
-
-        textLabel.snp.makeConstraints { make in
-            make.leading.trailing.equalToSuperview().inset(24)
-            make.center.equalToSuperview()
+            make.leading.trailing.equalTo(view.adaptiveContentLayoutGuide).inset(32)
+            make.height.equalTo(cardView.snp.width).multipliedBy(0.7).priority(.high)
+            make.height.lessThanOrEqualTo(view.adaptiveContentLayoutGuide.snp.height).offset(-32)
+            make.center.equalTo(view.adaptiveContentLayoutGuide)
         }
 
         pageLabel.snp.makeConstraints { make in

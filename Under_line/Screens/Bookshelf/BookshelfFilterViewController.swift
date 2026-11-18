@@ -15,7 +15,12 @@ protocol BookshelfFilterDelegate: AnyObject {
     func bookshelfFilterDidRequestShowAll()
 }
 
-final class BookshelfFilterViewController: UIViewController {
+final class BookshelfFilterViewController: AdaptiveViewController {
+
+    private let formScrollView = ScrollableFormView()
+
+    override var avoidsKeyboard: Bool { true }
+    override var ignoresHorizontalSafeArea: Bool { true }
 
     weak var delegate: BookshelfFilterDelegate?
 
@@ -110,15 +115,18 @@ final class BookshelfFilterViewController: UIViewController {
     // MARK: - Setup
 
     private func setupUI() {
+        formScrollView.contentInsetAdjustmentBehavior = .never
+        view.addSubview(formScrollView)
+        formScrollView.snp.makeConstraints { $0.edges.equalTo(view.adaptiveContentLayoutGuide) }
         view.backgroundColor = UIColor.background
 
         searchBarView.addSubview(searchIconView)
         searchBarView.addSubview(searchTextField)
 
-        view.addSubview(titleLabel)
-        view.addSubview(searchBarView)
-        view.addSubview(divider)
-        view.addSubview(showAllButton)
+        formScrollView.formContentView.addSubview(titleLabel)
+        formScrollView.formContentView.addSubview(searchBarView)
+        formScrollView.formContentView.addSubview(divider)
+        formScrollView.formContentView.addSubview(showAllButton)
     }
 
     private func bindActions() {
@@ -140,7 +148,7 @@ final class BookshelfFilterViewController: UIViewController {
 
     private func setupConstraints() {
         titleLabel.snp.makeConstraints { make in
-            make.top.equalTo(view.safeAreaLayoutGuide).offset(20)
+            make.top.equalToSuperview().offset(20)
             make.leading.trailing.equalToSuperview().inset(24)
         }
 
@@ -172,6 +180,7 @@ final class BookshelfFilterViewController: UIViewController {
             make.top.equalTo(divider.snp.bottom).offset(16)
             make.leading.trailing.equalToSuperview().inset(24)
             make.height.equalTo(48)
+            make.bottom.equalToSuperview().inset(24)
         }
     }
 

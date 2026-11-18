@@ -58,7 +58,7 @@ final class ProgressSectionView: UIView {
     }()
 
     private let progressBarFill: UIView = {
-        let v = UIView()
+        let v = ReadingProgressFillView()
         v.layer.cornerRadius = 4
         v.clipsToBounds      = true
         return v
@@ -72,7 +72,9 @@ final class ProgressSectionView: UIView {
         return l
     }()
 
-    private var gradientLayer: CAGradientLayer?
+    private var progressRatio: CGFloat = 0
+    private var pendingProgressRatio: CGFloat?
+    private var isProgressAnimationScheduled = false
 
     // MARK: - Init
 
@@ -80,16 +82,27 @@ final class ProgressSectionView: UIView {
         super.init(frame: frame)
         setupView()
         setupConstraints()
-        setupGradient()
     }
 
     required init?(coder: NSCoder) { fatalError() }
 
-    // MARK: - Layout
+    override func didMoveToWindow() {
+        super.didMoveToWindow()
+        if window != nil, pendingProgressRatio != nil { setNeedsLayout() }
+    }
 
     override func layoutSubviews() {
         super.layoutSubviews()
-        gradientLayer?.frame = progressBarFill.bounds
+        guard pendingProgressRatio != nil, window != nil, progressBarBg.bounds.width > 0,
+              !isProgressAnimationScheduled else { return }
+        isProgressAnimationScheduled = true
+        // 최초 레이아웃을 끝낸 다음 0에서 목표 진행률로 애니메이션한다.
+        DispatchQueue.main.async { [weak self] in
+            guard let self else { return }
+            self.isProgressAnimationScheduled = false
+            guard self.window != nil, let ratio = self.pendingProgressRatio else { return }
+            self.updateProgressBar(ratio: ratio, animated: true)
+        }
     }
 
     // MARK: - Private Setup
@@ -134,16 +147,6 @@ final class ProgressSectionView: UIView {
         }
     }
 
-    private func setupGradient() {
-        let grad = CAGradientLayer()
-        grad.colors       = [UIColor.appPrimary.cgColor, UIColor(hex: "#8D6E63").cgColor]
-        grad.startPoint   = CGPoint(x: 0, y: 0.5)
-        grad.endPoint     = CGPoint(x: 1, y: 0.5)
-        grad.cornerRadius = 4
-        progressBarFill.layer.addSublayer(grad)
-        gradientLayer = grad
-    }
-
     // MARK: - Public
 
     func configure(itemPage: Int?, currentPage: Int?) {
@@ -183,16 +186,41 @@ final class ProgressSectionView: UIView {
 
     private func updateProgressBar(ratio: CGFloat, animated: Bool) {
         let normalizedRatio = min(max(ratio, 0), 1)
+        pendingProgressRatio = nil
+        guard normalizedRatio != progressRatio else { return }
+        if animated && (window == nil || progressBarBg.bounds.width <= 0) {
+            pendingProgressRatio = normalizedRatio
+            setNeedsLayout()
+            return
+        }
+        let shouldAnimate = animated && window != nil && progressBarBg.bounds.width > 0
+        if shouldAnimate { progressBarBg.layoutIfNeeded() }
+        progressRatio = normalizedRatio
         progressBarFill.snp.remakeConstraints { make in
             make.leading.top.bottom.equalToSuperview()
             make.width.equalToSuperview().multipliedBy(normalizedRatio)
         }
-        guard animated else {
-            progressBarBg.layoutIfNeeded()
+        guard shouldAnimate else {
+            setNeedsLayout()
             return
         }
         UIView.animate(withDuration: 0.4) {
             self.progressBarBg.layoutIfNeeded()
         }
     }
+}
+
+/// 진행바 자체의 레이어를 사용해 부모·자식의 레이아웃 순서와 무관하게 크기를 맞춘다.
+private final class ReadingProgressFillView: UIView {
+    override class var layerClass: AnyClass { CAGradientLayer.self }
+
+    override init(frame: CGRect) {
+        super.init(frame: frame)
+        let gradient = layer as! CAGradientLayer
+        gradient.colors = [UIColor.appPrimary.cgColor, UIColor(hex: "#8D6E63").cgColor]
+        gradient.startPoint = CGPoint(x: 0, y: 0.5)
+        gradient.endPoint = CGPoint(x: 1, y: 0.5)
+    }
+
+    required init?(coder: NSCoder) { fatalError() }
 }
