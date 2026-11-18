@@ -426,6 +426,8 @@ final class WishlistViewController: AdaptiveViewController, UITableViewDataSourc
         table.deselectRow(at: indexPath, animated: false)
         let index = indexPath.row + (table === trailingTableView ? leadingItemCount : 0)
         guard items.indices.contains(index) else { return }
+        tableView.setEditing(false, animated: true)
+        trailingTableView.setEditing(false, animated: true)
         let isbn13 = items[index].isbn13
         expandedISBN = expandedISBN == isbn13 ? nil : isbn13
         for case let cell as BookRowCell in tableView.visibleCells + trailingTableView.visibleCells {
