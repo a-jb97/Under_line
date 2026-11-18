@@ -11,11 +11,14 @@ final class BookSearchViewModel {
     enum BookListType: Equatable {
         case popular
         case trending
+
+        var recommendation: RecommendedBookList { self == .popular ? .popular : .trending }
     }
 
     struct ListUpdate {
         enum Change {
             case replace
+            case refresh
             case append(from: Int)
             case update(rows: [Int])
         }
@@ -23,6 +26,8 @@ final class BookSearchViewModel {
         // 전체 snapshot도 제공해 구독 재연결 시 안전하게 복원할 수 있다.
         let books: [Book]
         let change: Change
+        var requestID: UUID? = nil
+        var startedAt: TimeInterval? = nil
     }
 
     private enum DisplayMode {
@@ -50,6 +55,7 @@ final class BookSearchViewModel {
         let registerBook: Observable<Book>
         let screenAppeared: Observable<Void>
         let toggleWishlist: Observable<Book>
+        var retry: Observable<Void> = .empty()
     }
 
     struct WishlistState: Equatable {
@@ -59,7 +65,15 @@ final class BookSearchViewModel {
         var isRefreshing = false
     }
 
+    struct RecommendationState {
+        var fetchedAt: Date?
+        var isRefreshing = false
+        var message: String?
+        var canRetry = false
+    }
+
     struct Output {
+        let recommendationState: Driver<RecommendationState>
         let books: Driver<[Book]>
         let listUpdates: Driver<ListUpdate>
         let isLoading: Driver<Bool>
@@ -72,6 +86,12 @@ final class BookSearchViewModel {
         let registeredISBNs: Driver<Set<String>>
     }
 
+    private let recommendationState = BehaviorRelay<RecommendationState>(value: .init())
+    private var showingCachedRecommendation = false
+    private var requestStartedAt = ProcessInfo.processInfo.systemUptime
+    #if DEBUG
+    private var firstListSpan: BookSearchPerformance.Span?
+    #endif
     private let repository: BookRepositoryProtocol
     private let registeredISBNs = BehaviorRelay<Set<String>>(value: [])
     private let wishlistRepository: WishlistRepositoryProtocol
@@ -138,6 +158,13 @@ final class BookSearchViewModel {
         .subscribe(onNext: { [weak self] in self?.start($0) })
         .disposed(by: disposeBag)
 
+        input.retry
+            .subscribe(onNext: { [weak self] in
+                guard let self, let mode = self.mode else { return }
+                self.start(mode, forceRefresh: true)
+            })
+            .disposed(by: disposeBag)
+
         input.loadNextPage
             .subscribe(onNext: { [weak self] in self?.loadNextPage() })
             .disposed(by: disposeBag)
@@ -172,6 +199,7 @@ final class BookSearchViewModel {
             .disposed(by: disposeBag)
 
         return Output(
+            recommendationState: recommendationState.asDriver(),
             books: updates.map(\.books).asDriver(onErrorJustReturn: []),
             listUpdates: updates.asDriver(),
             isLoading: isLoading.asDriver(),
@@ -276,7 +304,9 @@ final class BookSearchViewModel {
         if needsWishlistRefresh, state.pendingISBNs.isEmpty { refreshWishlist() }
     }
 
-    private func start(_ mode: DisplayMode) {
+    private func start(_ mode: DisplayMode, forceRefresh: Bool = false) {
+        if case .list(let list) = mode, case .list(let current) = self.mode,
+           list == current, isLoading.value || recommendationState.value.isRefreshing { return }
         // 동일 검색의 첫 페이지·다음 페이지 요청이 진행 중이면 그대로 유지한다.
         if case .search(let query) = mode,
            case .search(let currentQuery) = self.mode,
@@ -287,6 +317,17 @@ final class BookSearchViewModel {
 
         // 같은 검색어·같은 탭으로 돌아와도 이전 응답과 구분한다.
         generation = UUID()
+        requestStartedAt = ProcessInfo.processInfo.systemUptime
+        #if DEBUG
+        firstListSpan?.finish(.superseded)
+        let source: BookSearchPerformance.Source
+        switch mode {
+        case .list(.popular): source = .popular
+        case .list(.trending): source = .trending
+        case .search: source = .search
+        }
+        firstListSpan = BookSearchPerformance.Span(.firstListReceived, source: source, id: generation, startedAt: requestStartedAt)
+        #endif
         cancelEnrichment()
         descriptionTask?.cancel()
         descriptionTask = nil
@@ -295,8 +336,22 @@ final class BookSearchViewModel {
         currentPage = 0
         totalCount = 0
         hasMorePages = false
+        showingCachedRecommendation = false
+        recommendationState.accept(.init())
         isLoading.accept(true)
         isLoadingMore.accept(false)
+        if case .list(let list) = mode {
+            if let snapshot = BookSearchTrace.$requestID.withValue(generation, operation: { repository.cachedRecommendation(list.recommendation) }) {
+                receive(BookSearchPage(books: snapshot.books, totalResults: snapshot.books.count, isEnd: true), mode: mode, page: 1, fromCache: true)
+                showingCachedRecommendation = true
+                let refresh = forceRefresh || !snapshot.isFresh(at: Date())
+                recommendationState.accept(.init(fetchedAt: snapshot.fetchedAt, isRefreshing: refresh,
+                    message: snapshot.books.isEmpty ? "표시할 도서가 없습니다." : nil))
+                if !refresh { return }
+            } else {
+                emit(.init(books: [], change: .replace))
+            }
+        }
         request(mode: mode, page: 1, generation: generation)
     }
 
@@ -305,46 +360,80 @@ final class BookSearchViewModel {
         if case .search(let query) = mode, query != latestQuery { return }
         // UI 이벤트가 반복되어도 응답 전에는 한 페이지만 요청한다.
         isLoadingMore.accept(true)
+        requestStartedAt = ProcessInfo.processInfo.systemUptime
         request(mode: mode, page: currentPage + 1, generation: generation)
     }
 
     private func request(mode: DisplayMode, page: Int, generation: UUID) {
         let request: Observable<BookSearchPage> = rxAsync { [repository] in
-            switch mode {
-            case .list(.popular):
-                let books = try await repository.fetchPopularBooks()
-                return BookSearchPage(books: books, totalResults: books.count, isEnd: true)
-            case .list(.trending):
-                let books = try await repository.fetchTrendingBooks()
-                return BookSearchPage(books: books, totalResults: books.count, isEnd: true)
-            case .search(let query):
-                return try await repository.searchBooks(query: query, page: page)
+            try await BookSearchTrace.$requestID.withValue(generation) {
+                switch mode {
+                case .list(.popular):
+                    let snapshot = try await repository.refreshRecommendation(.popular)
+                    return BookSearchPage(books: snapshot.books, totalResults: snapshot.books.count, isEnd: true)
+                case .list(.trending):
+                    let snapshot = try await repository.refreshRecommendation(.trending)
+                    return BookSearchPage(books: snapshot.books, totalResults: snapshot.books.count, isEnd: true)
+                case .search(let query):
+                    return try await repository.searchBooks(query: query, page: page)
+                }
             }
         }
         pageRequest.disposable = request.subscribe(
             onNext: { [weak self] result in
                 guard let self, self.generation == generation else { return }
+                if case .list(let list) = mode {
+                    self.recommendationState.accept(.init(
+                        fetchedAt: self.repository.cachedRecommendation(list.recommendation)?.fetchedAt ?? Date(),
+                        message: result.books.isEmpty ? "표시할 도서가 없습니다." : nil
+                    ))
+                }
                 self.receive(result, mode: mode, page: page)
             },
             onError: { [weak self] error in
                 guard let self, self.generation == generation else { return }
                 // 실패 시 currentPage와 hasMorePages를 유지해 동일 페이지 재시도를 허용한다.
-                if page == 1 {
-                    self.updates.accept(.init(books: [], change: .replace))
+                if page == 1 && !self.showingCachedRecommendation {
+                    self.emit(.init(books: [], change: .replace))
                 }
                 self.isLoading.accept(false)
                 self.isLoadingMore.accept(false)
+                #if DEBUG
+                self.firstListSpan?.finish(error is CancellationError ? .cancelled : .failed)
+                self.firstListSpan = nil
+                #endif
                 if !(error is CancellationError) {
-                    self.errorMessage.accept(error.localizedDescription)
+                    if case .list = mode {
+                        var state = self.recommendationState.value
+                        state.isRefreshing = false
+                        state.canRetry = true
+                        state.message = self.showingCachedRecommendation
+                            ? "최신 목록을 불러오지 못했습니다. 이전 목록을 표시합니다."
+                            : error.localizedDescription
+                        self.recommendationState.accept(state)
+                    } else { self.errorMessage.accept(error.localizedDescription) }
                 }
             }
         )
     }
 
-    private func receive(_ result: BookSearchPage, mode: DisplayMode, page: Int) {
+    private func emit(_ update: ListUpdate) {
+        var update = update
+        update.requestID = generation
+        update.startedAt = requestStartedAt
+        updates.accept(update)
+    }
+
+    private func receive(_ result: BookSearchPage, mode: DisplayMode, page: Int, fromCache: Bool = false) {
         if page == 1 { totalCount = min(max(result.totalResults, 0), mode.maximumCount) }
         let previous = page == 1 ? [] : updates.value.books
-        let combined = Array((previous + result.books).prefix(totalCount))
+        var combined = Array((previous + result.books).prefix(totalCount))
+        if showingCachedRecommendation, page == 1 {
+            let existing = Dictionary(updates.value.books.map { ($0.isbn13, $0) }, uniquingKeysWith: { first, _ in first })
+            combined = combined.map { book in
+                existing[book.isbn13].map { book.mergingListMetadata(from: BookListMetadata(book: $0)) } ?? book
+            }
+        }
         currentPage = page
         hasMorePages = !result.books.isEmpty
             && combined.count < totalCount
@@ -359,10 +448,18 @@ final class BookSearchViewModel {
             hasMorePages = hasMorePages && !result.isEnd
         }
         // 상태 계산과 snapshot 반영 중 발생하는 UI 요청은 로딩 상태로 차단한다.
+        #if DEBUG
+        firstListSpan?.finish(count: combined.count, cache: fromCache ? .memory : .none)
+        firstListSpan = nil
+        #endif
         if page == 1 {
-            updates.accept(.init(books: combined, change: .replace))
+            if showingCachedRecommendation, updates.value.books.map(\.isbn13) == combined.map(\.isbn13) {
+                emit(.init(books: combined, change: .update(rows: Array(combined.indices))))
+            } else {
+                emit(.init(books: combined, change: showingCachedRecommendation ? .refresh : .replace))
+            }
         } else if combined.count > previous.count {
-            updates.accept(.init(books: combined, change: .append(from: previous.count)))
+            emit(.init(books: combined, change: .append(from: previous.count)))
         }
         isLoading.accept(false)
         isLoadingMore.accept(false)
@@ -425,7 +522,7 @@ final class BookSearchViewModel {
                 changedRows.append(index)
             }
             if !changedRows.isEmpty {
-                updates.accept(.init(books: books, change: .update(rows: changedRows)))
+                emit(.init(books: books, change: .update(rows: changedRows)))
             }
         }
 
@@ -457,7 +554,7 @@ final class BookSearchViewModel {
                     changedRows.append(index)
                 }
                 if !changedRows.isEmpty {
-                    self.updates.accept(.init(books: books, change: .update(rows: changedRows)))
+                    self.emit(.init(books: books, change: .update(rows: changedRows)))
                 }
             }
             self.descriptionReady.accept(book.isbn13)

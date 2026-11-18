@@ -374,6 +374,18 @@ final class BookRowCell: UITableViewCell {
     func updateMetadata(content: BookRowContent, displayScale: CGFloat, updateDescription: Bool = true) {
         guard let previous = currentContent, previous.isbn13 == content.isbn13 else { return }
         currentContent = content
+        titleLabel.text = content.title
+        authorLabel.text = content.authorText
+        let publisher = content.publisher.trimmingCharacters(in: .whitespacesAndNewlines)
+        publisherLabel.text = publisher
+        publisherLabel.isHidden = publisher.isEmpty
+        rankLabel.text = content.rank.map { "\($0)" }
+        let showRank = content.rank != nil
+        if showRank != rankVisible {
+            rankVisible = showRank
+            rankLabel.isHidden = !showRank
+            updateThumbnailLeading(showRank: showRank)
+        }
         if previous.coverURL != content.coverURL {
             loadCover(content: content, displayScale: displayScale)
         }

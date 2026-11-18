@@ -1,11 +1,21 @@
-#if DEBUG
 import Foundation
+
+nonisolated enum BookSearchTrace {
+    @TaskLocal static var requestID: UUID?
+}
+
+#if DEBUG
 import OSLog
 
 /// DEBUG 전용 구간 측정. 검색어, URL, 응답, 오류 설명은 기록하지 않는다.
 @MainActor
 enum BookSearchPerformance {
     enum Stage: String {
+        case cacheLookup
+        case firstListReceived
+        case responseReceived
+        case decoding
+        case trendingAttempt
         case responseDecoded
         case domainMapping
         case firstCellWillDisplay
@@ -30,20 +40,21 @@ enum BookSearchPerformance {
         let id: UUID
         private let stage: Stage
         private let source: Source
-        private let startedAt = ProcessInfo.processInfo.systemUptime
+        private let startedAt: TimeInterval
         private var isFinished = false
 
-        init(_ stage: Stage, source: Source, id: UUID = UUID()) {
+        init(_ stage: Stage, source: Source, id: UUID = BookSearchTrace.requestID ?? UUID(), startedAt: TimeInterval? = nil) {
+            self.startedAt = startedAt ?? ProcessInfo.processInfo.systemUptime
             self.id = id
             self.stage = stage
             self.source = source
         }
 
-        func finish(_ outcome: Outcome = .success, count: Int = 0, cache: Cache = .notApplicable) {
+        func finish(_ outcome: Outcome = .success, count: Int = 0, cache: Cache = .notApplicable, attempt: Int = 0, responseDays: Int = 0) {
             guard !isFinished else { return }
             let milliseconds = (ProcessInfo.processInfo.systemUptime - startedAt) * 1_000
             isFinished = true
-            logger.notice("id=\(self.id.uuidString, privacy: .public) stage=\(self.stage.rawValue, privacy: .public) source=\(self.source.rawValue, privacy: .public) ms=\(milliseconds, format: .fixed(precision: 3)) outcome=\(outcome.rawValue, privacy: .public) count=\(count) cache=\(cache.rawValue, privacy: .public)")
+            logger.notice("id=\(self.id.uuidString, privacy: .public) stage=\(self.stage.rawValue, privacy: .public) source=\(self.source.rawValue, privacy: .public) ms=\(milliseconds, format: .fixed(precision: 3)) outcome=\(outcome.rawValue, privacy: .public) count=\(count) cache=\(cache.rawValue, privacy: .public) attempt=\(attempt) responseDays=\(responseDays)")
         }
     }
 

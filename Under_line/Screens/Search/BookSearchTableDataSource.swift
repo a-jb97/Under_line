@@ -12,6 +12,9 @@ final class BookSearchTableDataSource: NSObject, UITableViewDataSource {
     }
 
     func apply(_ update: BookSearchViewModel.ListUpdate, to tableView: UITableView) {
+        let anchorPath = tableView.indexPathsForVisibleRows?.sorted().first
+        let anchorISBN = anchorPath.flatMap { books.indices.contains($0.row) ? books[$0.row].isbn13 : nil }
+        let anchorOffset = anchorPath.map { tableView.contentOffset.y - tableView.rectForRow(at: $0).minY } ?? 0
         let previousCount = books.count
         books = update.books
         switch update.change {
@@ -24,6 +27,15 @@ final class BookSearchTableDataSource: NSObject, UITableViewDataSource {
                 tableView.endUpdates()
                 tableView.setContentOffset(offset, animated: false)
             }
+        case .refresh:
+            tableView.reloadData()
+            tableView.layoutIfNeeded()
+            if let anchorISBN, let row = books.firstIndex(where: { $0.isbn13 == anchorISBN }) {
+                let y = tableView.rectForRow(at: IndexPath(row: row, section: 0)).minY + anchorOffset
+                let minimum = -tableView.adjustedContentInset.top
+                let maximum = max(minimum, tableView.contentSize.height - tableView.bounds.height + tableView.adjustedContentInset.bottom)
+                tableView.setContentOffset(CGPoint(x: 0, y: min(max(y, minimum), maximum)), animated: false)
+            } else { tableView.setContentOffset(.zero, animated: false) }
         case .update(let rows):
             for row in Set(rows) where books.indices.contains(row) {
                 let indexPath = IndexPath(row: row, section: 0)

@@ -8,6 +8,7 @@ protocol Data4LibraryServiceProtocol {
 }
 
 enum Data4LibraryError: LocalizedError, Equatable {
+    case timedOut
     case missingAPIKey
     case invalidISBN
     case invalidDate
@@ -17,6 +18,8 @@ enum Data4LibraryError: LocalizedError, Equatable {
 
     var errorDescription: String? {
         switch self {
+        case .timedOut:
+            return "도서 목록을 불러오는 데 시간이 오래 걸립니다. 다시 시도해주세요."
         case .missingAPIKey:
             return "도서관 정보나루 API 키가 설정되지 않았습니다."
         case .invalidISBN:
@@ -96,6 +99,8 @@ final class Data4LibraryService: Data4LibraryServiceProtocol {
         case popular, trending, detail
     }
 
+    private let listRequestTimeout: TimeInterval
+    private let listTotalTimeout: TimeInterval
     private let apiKey: String
     private let session: Session
     private let decoder: JSONDecoder
@@ -107,8 +112,12 @@ final class Data4LibraryService: Data4LibraryServiceProtocol {
         session: Session = .default,
         decoder: JSONDecoder = JSONDecoder(),
         calendar: Calendar = Data4LibraryService.koreanCalendar(),
-        now: @escaping () -> Date = Date.init
+        now: @escaping () -> Date = Date.init,
+        listRequestTimeout: TimeInterval = 10,
+        listTotalTimeout: TimeInterval = 15
     ) {
+        self.listRequestTimeout = listRequestTimeout
+        self.listTotalTimeout = listTotalTimeout
         self.apiKey = apiKey
         self.session = session
         self.decoder = decoder
@@ -126,7 +135,8 @@ final class Data4LibraryService: Data4LibraryServiceProtocol {
         )
         let decoded: Data4LibraryPopularResponse = try await execute(
             request,
-            source: .popular
+            source: .popular,
+            deadline: ProcessInfo.processInfo.systemUptime + listTotalTimeout
         )
 
         #if DEBUG
@@ -142,18 +152,31 @@ final class Data4LibraryService: Data4LibraryServiceProtocol {
     func fetchTrendingBooks() async throws -> [Book] {
         try Task.checkCancellation()
 
+        let deadline = ProcessInfo.processInfo.systemUptime + listTotalTimeout
+        let referenceDate = now()
         for daysAgo in 1...7 {
-            guard let date = calendar.date(byAdding: .day, value: -daysAgo, to: now()) else {
+            try Task.checkCancellation()
+            guard ProcessInfo.processInfo.systemUptime < deadline else { throw Data4LibraryError.timedOut }
+            guard let date = calendar.date(byAdding: .day, value: -daysAgo, to: referenceDate) else {
                 throw Data4LibraryError.invalidDate
             }
             let request = try Data4LibraryRequestBuilder.makeTrendingRequest(
                 apiKey: apiKey,
                 searchDate: format(date)
             )
+            #if DEBUG
+            let attemptSpan = BookSearchPerformance.Span(.trendingAttempt, source: .trending)
+            defer { attemptSpan.finish(Task.isCancelled ? .cancelled : .failed, attempt: daysAgo) }
+            #endif
             let decoded: Data4LibraryHotTrendResponse = try await execute(
                 request,
-                source: .trending
+                source: .trending,
+                deadline: deadline
             )
+            #if DEBUG
+            attemptSpan.finish(count: decoded.response.results.reduce(0) { $0 + $1.documents.count },
+                               attempt: daysAgo, responseDays: decoded.response.results.count)
+            #endif
             guard decoded.response.results.contains(where: { !$0.documents.isEmpty }) else {
                 continue
             }
@@ -212,7 +235,8 @@ final class Data4LibraryService: Data4LibraryServiceProtocol {
 
     private func execute<Response: Decodable>(
         _ request: URLRequest,
-        source: RequestSource
+        source: RequestSource,
+        deadline: TimeInterval? = nil
     ) async throws -> Response {
         try Task.checkCancellation()
 
@@ -229,12 +253,36 @@ final class Data4LibraryService: Data4LibraryServiceProtocol {
         defer { responseSpan.finish(Task.isCancelled ? .cancelled : .failed) }
         #endif
 
-        let response = await session.request(request)
-            .validate(statusCode: 200..<300)
-            .serializingData()
-            .response
+        var request = request
+        let remaining = deadline.map { $0 - ProcessInfo.processInfo.systemUptime }
+        if let remaining, remaining <= 0 { throw Data4LibraryError.timedOut }
+        let limit = remaining.map { min(listRequestTimeout, $0) }
+        if let limit { request.timeoutInterval = limit }
+        let dataRequest = session.request(request).validate(statusCode: 200..<300)
+        // A hard cap also covers servers that keep the idle timeout alive by sending bytes.
+        var timeoutReached = false
+        let timeoutTask = limit.map { limit in
+            Task {
+                do {
+                    try await Task.sleep(for: .seconds(limit))
+                    timeoutReached = true
+                    dataRequest.cancel()
+                } catch { }
+            }
+        }
+        defer { timeoutTask?.cancel() }
+        #if DEBUG
+        let networkSpan = BookSearchPerformance.Span(.responseReceived, source: performanceSource)
+        #endif
+        let response = await dataRequest.serializingData().response
+        #if DEBUG
+        networkSpan.finish(Task.isCancelled ? .cancelled : response.error == nil ? .success : .failed)
+        #endif
 
         try Task.checkCancellation()
+        if timeoutReached || (limit != nil && (response.error?.underlyingError as? URLError)?.code == .timedOut) {
+            throw Data4LibraryError.timedOut
+        }
         let embeddedError = response.data.flatMap(Data4LibraryAPIErrorPayload.find)
         let statusCode = response.response?.statusCode
         if let embeddedError {
@@ -254,9 +302,14 @@ final class Data4LibraryService: Data4LibraryServiceProtocol {
         if let error = response.error { throw error }
         guard let data = response.data else { throw Data4LibraryError.invalidResponse }
 
+        #if DEBUG
+        let decodingSpan = BookSearchPerformance.Span(.decoding, source: performanceSource)
+        defer { decodingSpan.finish(.failed) }
+        #endif
         do {
             let decoded = try decoder.decode(Response.self, from: data)
             #if DEBUG
+            decodingSpan.finish()
             responseSpan.finish()
             #endif
             return decoded

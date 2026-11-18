@@ -6,6 +6,8 @@ import XCTest
 final class Data4LibraryServiceTests: XCTestCase {
     override func tearDown() {
         Data4LibraryStubURLProtocol.handler = nil
+        Data4LibraryHangingURLProtocol.started = nil
+        Data4LibraryHangingURLProtocol.stopped = nil
         super.tearDown()
     }
 
@@ -224,6 +226,58 @@ final class Data4LibraryServiceTests: XCTestCase {
         catch { XCTFail("예상하지 못한 오류: \(error)") }
     }
 
+    func test_popularRequest_hardTimeoutCancelsTransport() async throws {
+        let stopped = expectation(description: "transport cancelled")
+        Data4LibraryHangingURLProtocol.stopped = { stopped.fulfill() }
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [Data4LibraryHangingURLProtocol.self]
+        let service = Data4LibraryService(apiKey: "test-key", session: Session(configuration: configuration),
+                                          listRequestTimeout: 0.1, listTotalTimeout: 1)
+        let start = ProcessInfo.processInfo.systemUptime
+        do { _ = try await service.fetchPopularBooks(); XCTFail("Expected timeout") }
+        catch { XCTAssertEqual(error as? Data4LibraryError, .timedOut) }
+        XCTAssertLessThan(ProcessInfo.processInfo.systemUptime - start, 1)
+        await fulfillment(of: [stopped], timeout: 2)
+    }
+
+    func test_trendingRequest_totalBudgetIncludesPreviousEmptyDates() async throws {
+        var count = 0
+        var limits: [TimeInterval] = []
+        Data4LibraryStubURLProtocol.handler = { request in
+            count += 1
+            limits.append(request.timeoutInterval)
+            Thread.sleep(forTimeInterval: 0.05)
+            return (Self.response(for: request), Self.emptyTrendingResponse)
+        }
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [Data4LibraryStubURLProtocol.self]
+        let service = Data4LibraryService(apiKey: "test-key", session: Session(configuration: configuration),
+                                          listRequestTimeout: 1, listTotalTimeout: 0.12)
+        let start = ProcessInfo.processInfo.systemUptime
+        do { _ = try await service.fetchTrendingBooks(); XCTFail("Expected total timeout") }
+        catch { XCTAssertEqual(error as? Data4LibraryError, .timedOut) }
+        XCTAssertLessThan(count, 7)
+        XCTAssertGreaterThanOrEqual(count, 2)
+        XCTAssertLessThan(try XCTUnwrap(limits.last), try XCTUnwrap(limits.first))
+        XCTAssertLessThan(ProcessInfo.processInfo.systemUptime - start, 1)
+    }
+
+    func test_trendingRequest_cancellationStopsTransportWithoutTryingOlderDate() async throws {
+        let started = expectation(description: "request started")
+        let stopped = expectation(description: "request stopped")
+        Data4LibraryHangingURLProtocol.started = { started.fulfill() }
+        Data4LibraryHangingURLProtocol.stopped = { stopped.fulfill() }
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [Data4LibraryHangingURLProtocol.self]
+        let service = Data4LibraryService(apiKey: "test-key", session: Session(configuration: configuration))
+        let task = Task { try await service.fetchTrendingBooks() }
+        await fulfillment(of: [started], timeout: 2)
+        task.cancel()
+        do { _ = try await task.value; XCTFail("Expected cancellation") }
+        catch is CancellationError { }
+        await fulfillment(of: [stopped], timeout: 2)
+    }
+
     private func makeService() -> Data4LibraryService {
         let configuration = URLSessionConfiguration.ephemeral
         configuration.protocolClasses = [Data4LibraryStubURLProtocol.self]
@@ -394,4 +448,13 @@ private final class Data4LibraryStubURLProtocol: URLProtocol, @unchecked Sendabl
     }
 
     override func stopLoading() { }
+}
+
+private final class Data4LibraryHangingURLProtocol: URLProtocol, @unchecked Sendable {
+    nonisolated(unsafe) static var started: (() -> Void)?
+    nonisolated(unsafe) static var stopped: (() -> Void)?
+    override class func canInit(with request: URLRequest) -> Bool { true }
+    override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
+    override func startLoading() { Self.started?() }
+    override func stopLoading() { Self.stopped?() }
 }

@@ -73,6 +73,161 @@ final class BookSearchViewModelTests: XCTestCase {
         XCTAssertEqual(cell.isbn13, "1")
     }
 
+    func test_reselectingLoadingList_keepsOriginalRequest() async {
+        let h = Harness()
+        let request = await requested(h) { h.list.onNext(.popular) }
+        h.list.onNext(.popular)
+        await drain()
+        XCTAssertEqual(h.repository.requests.count, 1)
+        await finish(request, .success((makeBooks(0..<2), 2)))
+        XCTAssertFalse(request.wasCancelled)
+        XCTAssertEqual(h.books.count, 2)
+    }
+
+    func test_recommendationScreen_restoredDiskCacheRendersBeforeNetworkCompletes() async throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        for age in [0.0, 301.0] {
+            let fetchedAt = Date().addingTimeInterval(-age)
+            _ = RecommendedBookCache(directory: directory, now: { fetchedAt }).insert(makeBooks(0..<50), for: .popular)
+            for sample in 1...5 {
+                let start = ProcessInfo.processInfo.systemUptime
+                let repository = ControlledRepository()
+                repository.cached[.popular] = RecommendedBookCache(directory: directory).snapshot(for: .popular)
+                let vm = BookSearchViewModel(repository: repository, wishlistRepository: ControlledWishlistRepository())
+                let controller = BookSearchViewController(viewModel: vm)
+                controller.loadViewIfNeeded()
+                controller.view.frame = CGRect(x: 0, y: 0, width: 390, height: 844)
+                controller.view.layoutIfNeeded()
+                let table = try XCTUnwrap(descendants(of: controller.view).compactMap { $0 as? UITableView }.first)
+                table.layoutIfNeeded()
+                XCTAssertNotNil(table.cellForRow(at: IndexPath(row: 0, section: 0)))
+                XCTAssertEqual(table.numberOfRows(inSection: 0), 50)
+                let ms = (ProcessInfo.processInfo.systemUptime - start) * 1000
+                print("RecommendationCacheRender age=\(Int(age)) sample=\(sample) ms=\(ms)")
+                // No network completion is necessary to render the cached first row.
+                await drain()
+                if age == 0 { XCTAssertTrue(repository.requests.isEmpty) }
+                else {
+                    XCTAssertEqual(repository.requests.count, 1)
+                    repository.requests[0].continuation.resume(throwing: NSError(domain: "offline", code: 1))
+                    await drain()
+                }
+            }
+        }
+    }
+
+    func test_recommendationScreen_rendersStaleFailureAndRetryWithoutClipping() async throws {
+        let repository = ControlledRepository()
+        repository.cached[.popular] = .init(books: makeBooks(0..<10), fetchedAt: Date().addingTimeInterval(-600))
+        let viewModel = BookSearchViewModel(repository: repository, wishlistRepository: ControlledWishlistRepository())
+        let controller = BookSearchViewController(viewModel: viewModel)
+        controller.loadViewIfNeeded()
+        await drain()
+        repository.requests[0].continuation.resume(throwing: NSError(domain: "offline", code: 1))
+        await drain()
+        for width in [320.0, 390.0, 768.0] {
+            controller.view.frame = CGRect(x: 0, y: 0, width: width, height: 844)
+            controller.view.setNeedsLayout()
+            controller.view.layoutIfNeeded()
+            let table = try XCTUnwrap(descendants(of: controller.view).compactMap { $0 as? UITableView }.first)
+            table.layoutIfNeeded()
+            let header = try XCTUnwrap(table.tableHeaderView)
+            let label = try XCTUnwrap(descendants(of: header).compactMap { $0 as? UILabel }.first(where: {
+                $0.text?.contains("이전 목록") == true
+            }))
+            let retry = try XCTUnwrap(descendants(of: header).compactMap { $0 as? UIButton }.first(where: {
+                $0.title(for: .normal) == "다시 시도"
+            }))
+            XCTAssertFalse(retry.isHidden)
+            XCTAssertLessThanOrEqual(label.frame.maxX, retry.frame.minX)
+            XCTAssertLessThanOrEqual(label.frame.maxY, header.bounds.height)
+            XCTAssertGreaterThanOrEqual(label.frame.height + 1, label.sizeThatFits(
+                CGSize(width: label.frame.width, height: .greatestFiniteMagnitude)
+            ).height)
+            XCTAssertEqual(table.numberOfRows(inSection: 0), 10)
+            let renderer = UIGraphicsImageRenderer(bounds: controller.view.bounds)
+            let image = renderer.image { _ in controller.view.drawHierarchy(in: controller.view.bounds, afterScreenUpdates: true) }
+            let attachment = XCTAttachment(image: image)
+            attachment.name = "Recommendation-failure-\(Int(width))"
+            attachment.lifetime = .keepAlways
+            add(attachment)
+        }
+    }
+
+    func test_staleRecommendation_displaysImmediatelyRetainsOnFailureAndRetries() async {
+        let h = Harness()
+        let books = makeBooks(0..<2)
+        h.repository.cached[.popular] = .init(books: books, fetchedAt: Date().addingTimeInterval(-301))
+        h.list.onNext(.popular)
+        XCTAssertEqual(h.books.map(\.isbn13), ["0", "1"])
+        XCTAssertFalse(h.loading)
+        XCTAssertTrue(h.recommendationState.isRefreshing)
+        await drain()
+        h.list.onNext(.popular)
+        XCTAssertEqual(h.repository.requests.count, 1)
+        h.repository.requests[0].continuation.resume(throwing: NSError(domain: "test", code: 1))
+        await drain()
+        XCTAssertEqual(h.books.count, 2)
+        XCTAssertTrue(h.recommendationState.canRetry)
+        XCTAssertFalse(h.recommendationState.isRefreshing)
+        h.retry.onNext(())
+        await drain()
+        XCTAssertEqual(h.repository.requests.count, 2)
+        h.repository.requests[1].continuation.resume(returning: .init(books: [], totalResults: 0, isEnd: true))
+        await drain()
+        XCTAssertTrue(h.books.isEmpty)
+        XCTAssertFalse(h.recommendationState.canRetry)
+    }
+
+    func test_backgroundRefresh_reordersWithoutRestartingInFlightEnrichment() async {
+        let h = Harness()
+        h.repository.holdsMetadataRequests = true
+        let books = makeBooks(0..<3)
+        h.repository.cached[.popular] = .init(books: books, fetchedAt: Date().addingTimeInterval(-301))
+        h.list.onNext(.popular)
+        await drain()
+        h.visibleRows.onNext([0])
+        await drain()
+        XCTAssertEqual(h.repository.metadataRequests.count, 3)
+        h.repository.requests[0].continuation.resume(returning: .init(books: Array(books.reversed()), totalResults: 3, isEnd: true))
+        await drain()
+        h.visibleRows.onNext([0, 1, 2])
+        await drain()
+        XCTAssertEqual(h.repository.metadataRequests.count, 3)
+        for request in h.repository.metadataRequests {
+            await finishMetadata(request, .success(metadataBook(isbn13: request.isbn13)))
+        }
+        XCTAssertEqual(h.books.map(\.isbn13), ["2", "1", "0"])
+        XCTAssertTrue(h.books.allSatisfy { $0.description == "보완 설명" })
+    }
+
+    func test_recommendationWithoutCache_failureOffersRetryAndStopsLoading() async {
+        let h = Harness()
+        let request = await requested(h) { h.list.onNext(.popular) }
+        await finish(request, .failure(StubError.failed))
+        XCTAssertFalse(h.loading)
+        XCTAssertTrue(h.books.isEmpty)
+        XCTAssertTrue(h.recommendationState.canRetry)
+        XCTAssertNotNil(h.recommendationState.message)
+    }
+
+    func test_freshRecommendation_skipsNetworkAndTabWithoutCacheClearsOldRows() async {
+        let h = Harness()
+        h.repository.cached[.popular] = .init(books: makeBooks(0..<2), fetchedAt: Date())
+        h.list.onNext(.popular)
+        await drain()
+        XCTAssertEqual(h.books.count, 2)
+        XCTAssertTrue(h.repository.requests.isEmpty)
+        h.list.onNext(.trending)
+        XCTAssertTrue(h.books.isEmpty)
+        XCTAssertTrue(h.loading)
+        await drain()
+        h.repository.requests[0].continuation.resume(returning: .init(books: [], totalResults: 0, isEnd: true))
+        await drain()
+        XCTAssertFalse(h.loading)
+    }
+
     private func descendants(of view: UIView) -> [UIView] {
         view.subviews.flatMap { [$0] + descendants(of: $0) }
     }
@@ -606,7 +761,9 @@ final class BookSearchViewModelTests: XCTestCase {
     func test_reselectingList_ignoresPreviousResponse() async {
         let h = Harness()
         let first = await requested(h) { h.list.onNext(.trending) }
+        let intermediate = await requested(h) { h.list.onNext(.popular) }
         let replacement = await requested(h) { h.list.onNext(.trending) }
+        await finish(intermediate, .failure(StubError.failed))
         await finish(first, .success((makeBooks(0..<10), 10)))
         XCTAssertTrue(first.wasCancelled)
         XCTAssertTrue(h.books.isEmpty)
@@ -1051,6 +1208,8 @@ private final class Harness {
     let trigger = PublishSubject<Void>()
     let list = PublishSubject<BookSearchViewModel.BookListType>()
     let next = PublishSubject<Void>()
+    let retry = PublishSubject<Void>()
+    var recommendationState = BookSearchViewModel.RecommendationState()
     let visibleRows = PublishSubject<[Int]>()
     let description = PublishSubject<Book>()
     let register = PublishSubject<Book>()
@@ -1073,8 +1232,9 @@ private final class Harness {
             searchTrigger: trigger, loadNextPage: next,
             visibleRows: visibleRows,
             descriptionBook: description, registerBook: register,
-            screenAppeared: appeared, toggleWishlist: wishlistTap
+            screenAppeared: appeared, toggleWishlist: wishlistTap, retry: retry
         ))
+        output.recommendationState.drive(onNext: { [weak self] in self?.recommendationState = $0 }).disposed(by: bag)
         output.wishlistState.drive(onNext: { [weak self] in self?.wishlistState = $0 }).disposed(by: bag)
         output.registeredISBNs.drive(onNext: { [weak self] in self?.registeredISBNs = $0 }).disposed(by: bag)
         output.wishlistMessage.emit(onNext: { [weak self] in self?.wishlistMessages.append($0) }).disposed(by: bag)
@@ -1136,6 +1296,8 @@ private final class PendingRegistration {
 @MainActor
 private final class ControlledRepository: BookRepositoryProtocol {
     let savedBooks = BehaviorRelay<[Book]>(value: [])
+    var cached: [RecommendedBookList: RecommendedBookSnapshot] = [:]
+    func cachedRecommendation(_ list: RecommendedBookList) -> RecommendedBookSnapshot? { cached[list] }
     var requests: [PendingRequest] = []
     var metadataRequests: [PendingMetadataRequest] = []
     var registrations: [PendingRegistration] = []

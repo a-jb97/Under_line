@@ -62,6 +62,25 @@ final class BookSearchTableDataSourceTests: XCTestCase {
         XCTAssertEqual(table.contentOffset, offset)
     }
 
+    func test_refresh_reorderedRowsPreserveVisibleISBNAndRelativeOffset() throws {
+        let table = RecordingTableView(frame: CGRect(x: 0, y: 0, width: 320, height: 240))
+        table.rowHeight = 80
+        let source = BookSearchTableDataSource { _, _, _ in UITableViewCell() }
+        table.dataSource = source
+        let original = books(50)
+        source.apply(.init(books: original, change: .replace), to: table)
+        table.layoutIfNeeded()
+        table.setContentOffset(CGPoint(x: 0, y: 410), animated: false)
+        table.layoutIfNeeded()
+        let anchor = try XCTUnwrap(table.indexPathsForVisibleRows?.sorted().first)
+        let isbn = original[anchor.row].isbn13
+        let delta = table.contentOffset.y - table.rectForRow(at: anchor).minY
+        let reordered = Array(original.reversed())
+        source.apply(.init(books: reordered, change: .refresh), to: table)
+        let row = try XCTUnwrap(reordered.firstIndex(where: { $0.isbn13 == isbn }))
+        XCTAssertEqual(table.contentOffset.y - table.rectForRow(at: IndexPath(row: row, section: 0)).minY, delta, accuracy: 1)
+    }
+
     func test_appendWithoutPreviousSnapshot_fallsBackToReplacement() {
         let table = RecordingTableView()
         let dataSource = BookSearchTableDataSource { _, _, _ in UITableViewCell() }

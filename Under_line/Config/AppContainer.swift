@@ -39,7 +39,8 @@ final class AppContainer {
         bookRepository = BookRepository(
             bookSearchService: KakaoBookSearchService(apiKey: KakaoAPIKey.restAPIKey),
             data4LibraryService: Data4LibraryService(apiKey: Data4LibraryAPIKey.authKey),
-            modelContext: modelContainer.mainContext
+            modelContext: modelContainer.mainContext,
+            recommendedCache: .persistent()
         )
         sentenceRepository = SentenceRepository(modelContext: modelContainer.mainContext)
         readingSessionRepository = ReadingSessionRepository(modelContext: modelContainer.mainContext)
