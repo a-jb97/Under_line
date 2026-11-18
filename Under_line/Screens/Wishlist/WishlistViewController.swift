@@ -394,7 +394,7 @@ final class WishlistViewController: AdaptiveViewController, UITableViewDataSourc
         let index = indexPath.row + (tableView === trailingTableView ? leadingItemCount : 0)
         guard items.indices.contains(index), !tutorialActive, !state.isLoading else { return nil }
         let isbn13 = items[index].isbn13
-        guard !state.pendingISBNs.contains(isbn13) else { return nil }
+        guard expandedISBN != isbn13, !state.pendingISBNs.contains(isbn13) else { return nil }
         let delete = UIContextualAction(style: .destructive, title: "삭제") { [weak self] _, _, completion in
             guard let self, !self.state.isLoading,
                   !self.state.pendingISBNs.contains(isbn13),
