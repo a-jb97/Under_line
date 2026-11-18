@@ -539,7 +539,11 @@ final class BookshelfViewController: UIViewController {
         ghost.bounds = CGRect(origin: .zero, size: size)
 
         if let url = book.coverURL {
-            imageView.kf.setImage(with: url)
+            let originalURL = ShelfCoverImageSource.originalURL(for: url)
+            let options: KingfisherOptionsInfo = originalURL == nil ? [] : [
+                .alternativeSources([.network(KF.ImageResource(downloadURL: url))])
+            ]
+            imageView.kf.setImage(with: originalURL ?? url, options: options)
         } else {
             imageView.backgroundColor = UIColor.appPrimary
             let label = UILabel()
