@@ -115,8 +115,8 @@ final class WishlistViewController: AdaptiveViewController, UITableViewDataSourc
     override func viewDidLayoutSubviews() {
         super.viewDidLayoutSubviews()
         let width = listContainer.bounds.width
-        // 펼친 iPhone의 가용 너비에서만 두 열을 사용한다. 기존 iPad 목록은 유지한다.
-        let twoColumns = traitCollection.userInterfaceIdiom == .phone && width >= 568
+        // 펼친 Duo와 iPad 모두 같은 가용 너비에서 두 열과 공통 스크롤을 사용한다.
+        let twoColumns = width >= 568
         guard width > 0 else { return }
         let gap: CGFloat = twoColumns ? 16 : 0
         let columnWidth = twoColumns ? (width - gap) / 2 : width
