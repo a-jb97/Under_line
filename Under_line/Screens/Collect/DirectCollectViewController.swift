@@ -268,12 +268,13 @@ final class DirectCollectViewController: AdaptiveViewController {
         guard let sheet = sheetPresentationController else { return }
         sheet.detents = [.large()]
         sheet.prefersGrabberVisible = false
-        sheet.preferredCornerRadius = 24
     }
 
     // MARK: - Setup
 
     private func setupUI() {
+        // 스크롤 영역 자체가 safe area 안에 있으므로 자동 인셋은 추가하지 않는다.
+        scrollView.contentInsetAdjustmentBehavior = .never
         view.addSubview(handleView)
         view.addSubview(titleLabel)
         view.addSubview(scrollView)

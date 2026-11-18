@@ -87,6 +87,8 @@ final class DirectRegisterViewController: AdaptiveViewController {
     // MARK: - Setup
 
     private func setupUI() {
+        // 스크롤 영역 자체가 safe area 안에 있으므로 자동 인셋은 추가하지 않는다.
+        scrollView.contentInsetAdjustmentBehavior = .never
         view.backgroundColor = UIColor.background
 
         view.addSubview(handleBar)

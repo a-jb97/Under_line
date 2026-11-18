@@ -262,6 +262,8 @@ final class BookSearchViewController: AdaptiveViewController {
     // MARK: - Setup
 
     private func setupUI() {
+        // 가용 영역에 safe area가 반영되어 있으므로 스크롤 인셋을 중복 적용하지 않는다.
+        tableView.contentInsetAdjustmentBehavior = .never
         view.backgroundColor = UIColor.background
 
         view.addSubview(tableView)
@@ -565,7 +567,6 @@ final class BookSearchViewController: AdaptiveViewController {
                 if let sheet = vc.sheetPresentationController {
                     sheet.detents              = [.large()]
                     sheet.prefersGrabberVisible = false
-                    sheet.preferredCornerRadius = 24
                 }
                 self?.present(vc, animated: true)
             })

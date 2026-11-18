@@ -692,7 +692,6 @@ final class BookshelfViewController: UIViewController {
                 if let sheet = vc.sheetPresentationController {
                     sheet.detents               = [.large()]
                     sheet.prefersGrabberVisible = false   // 커스텀 핸들바 사용
-                    sheet.preferredCornerRadius = 24
                 }
                 self.present(vc, animated: true)
             })
