@@ -534,16 +534,30 @@ final class BookshelfViewController: UIViewController {
         imageView.contentMode    = .scaleAspectFit
         imageView.clipsToBounds  = true
         imageView.layer.cornerRadius = 3
-        imageView.frame = CGRect(origin: .zero, size: size)
         ghost.addSubview(imageView)
         ghost.bounds = CGRect(origin: .zero, size: size)
+
+        let fitCover: (CGSize) -> Void = { [weak ghost, weak imageView] imageSize in
+            guard imageSize.width > 0, imageSize.height > 0 else { return }
+            let scale = min(size.width / imageSize.width, size.height / imageSize.height)
+            let coverSize = CGSize(width: floor(imageSize.width * scale), height: floor(imageSize.height * scale))
+            let coverFrame = CGRect(x: (size.width - coverSize.width) / 2,
+                                    y: size.height - coverSize.height,
+                                    width: coverSize.width, height: coverSize.height)
+            imageView?.frame = coverFrame
+            ghost?.layer.shadowPath = UIBezierPath(roundedRect: coverFrame, cornerRadius: 3).cgPath
+        }
+        fitCover(CGSize(width: 88, height: 117))
 
         if let url = book.coverURL {
             let originalURL = ShelfCoverImageSource.originalURL(for: url)
             let options: KingfisherOptionsInfo = originalURL == nil ? [] : [
                 .alternativeSources([.network(KF.ImageResource(downloadURL: url))])
             ]
-            imageView.kf.setImage(with: originalURL ?? url, options: options)
+            imageView.kf.setImage(with: originalURL ?? url, options: options) { result in
+                guard case .success(let value) = result else { return }
+                fitCover(value.image.size)
+            }
         } else {
             imageView.backgroundColor = UIColor.appPrimary
             let label = UILabel()
