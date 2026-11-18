@@ -1,0 +1,81 @@
+# iPhone Duo 대응 검토 기록
+
+## 범위와 현재 상태
+
+- 기록일: 2026-11-18
+- 검토 기준 커밋: `a0641a5` — 화면 전환 중 촬영과 OCR 선택 상태 유지
+- 1~6단계 구현에 대한 코드 검토와 앱·위젯 빌드 결과를 기록한다.
+- 사용자의 테스트 실행 제외 요청에 따라 자동 테스트, 시뮬레이터 UI 조작, 실기기 검증은 진행하지 않았다. 아래의 코드 확인은 실행 결과를 의미하지 않는다.
+- 7단계의 대응 기록은 작성했으나, 통합 회귀 검증은 미완료다. 화면별 실제 배치, 입력·저장 흐름, 카메라 동작과 비교 스크린샷은 후속 확인이 필요하다.
+
+## 환경과 빌드
+
+| 항목 | 내용 |
+| --- | --- |
+| Xcode | 27.2 (`27B52`) |
+| 대상 | `Under_line` scheme, generic iOS Simulator |
+| 앱·위젯 최소 지원 버전 | iOS 17.6 |
+| 서명 | `CODE_SIGNING_ALLOWED=NO` |
+| 이번 단계 빌드 결과 | 앱·위젯 빌드 성공 (`BUILD SUCCEEDED`, 종료 코드 0) |
+| 자동 테스트 | 실행하지 않음 |
+| 시뮬레이터·실기기 UI 검증 | 실행하지 않음 |
+| 스크린샷·녹화 | 생성하지 않음 |
+
+빌드 명령:
+
+```sh
+xcodebuild -project Under_line.xcodeproj \
+  -scheme Under_line \
+  -destination 'generic/platform=iOS Simulator' \
+  -derivedDataPath /private/tmp/underline-duo-stage1 \
+  -clonedSourcePackagesDirPath /private/tmp/underline-search-tutorial-build/SourcePackages \
+  CODE_SIGNING_ALLOWED=NO build
+```
+
+위 임시 경로는 이번 작업 환경에서 사용한 캐시 위치다. 다른 환경에서는 해당 옵션을 생략하거나 로컬 경로로 바꾼다. 빌드는 UI 배치, 카메라 이용 가능 여부, 데이터 보존을 보증하지 않는다.
+
+## 코드에서 확인한 대응
+
+| 영역 | 확인 내용 | 주요 근거 |
+| --- | --- | --- |
+| 방향 정책 | 앱의 Debug·Release iPhone 방향은 세로만 선언하고, iPad는 네 방향을 유지한다. Duo 내부 화면의 실제 회전 동작은 미검증이다. | `Under_line.xcodeproj/project.pbxproj` |
+| 공통 영역 | bounds·safe area·traits·예약 영역으로 가용 공간을 계산한다. 새 예약 영역 API는 iOS 27.1 가용성 검사 안에서 호출한다. 단일 폼·목록은 연속된 영역과 최대 너비를 사용한다. | `ContainerLayout`, `ContainerLayoutView`, `ReadableContentLayout`, `AdaptiveContentView` |
+| 내비게이션 | 표준 액션과 표시 우선순위를 사용한다. 세로 막대 trait에서만 제목·로고 배치를 바꾸고, 가로 막대에서는 기존 왼쪽 제목 방식을 유지한다. | `SystemNavigationStyle`, `BookshelfViewController` |
+| 책장 | 선반·도서·드래그 슬롯을 같은 계산 결과로 배치한다. 완전 펼침에도 비활성 접힘 영역을 포함해 분할 형태를 유지하며, 세로 선반 간격과 아래쪽 위치 조정이 반영되어 있다. | `BookshelfLayout`, `ContainerLayoutView.reservesInactiveDivisions` |
+| 책장 상태 | 재배치 전 도서 ID로 페이지 앵커를 만들고, 크기 변경 시 드래그를 확정 저장하지 않고 종료한다. 페이지 인디케이터는 하단의 사용 가능한 영역 중앙으로 계산한다. | `BookshelfViewController.rebuildShelfPages`, `BookshelfPageAnchor`, `BookshelfLayout.paginationFrame` |
+| 조회·목록·통계 | 검색·위시리스트·상세·밑줄·통계·설정에서 공통 콘텐츠 가이드를 사용한다. 상세 카드 높이를 제한하고 통계 선택기는 카드 너비로 배치를 결정한다. | 각 화면의 `AdaptiveViewController` 적용, `GenreAuthorCardView` |
+| 입력 | 직접 등록·직접 수집·페이지 기록·필터에서 키보드 회피를 활성화한다. 크기 변경 시 기존 화면을 재생성하지 않고 스크롤 위치 복원을 시도한다. | `avoidsKeyboard`, `AdaptiveViewController`, `ScrollableFormView` |
+| 감정 시트 | 좌우 제약을 시트 전체 너비에 연결하고 스크롤 뷰의 자동 인셋을 끈다. 위아래 safe area와 내부 고정 여백은 유지한다. | `RandomUnderLineEmotionViewController` |
+| 카드 편집 | 낮은 가로 화면에서는 카드 오른쪽에 버튼을 한 줄로 두고 하단을 맞춘 묶음을 전체 화면 중앙에 배치한다. 좁은 세로 화면은 카드가 전체 화면 중앙, 버튼이 오른쪽 아래 세로 배치다. 넓은 세로 화면은 로고·배경 버튼 사이 기존 간격을 유지한다. | `QuoteCardEditorLayout` |
+| 공유 | 미리보기 배율과 별개로 311pt × (311 × 1.586)pt 캔버스와 현재 display scale로 렌더링한다. 팝오버 기준은 현재 공유 버튼이다. | `QuoteCardEditorViewController.renderedCardImage`, `makeShareController` |
+| 촬영 | 세션 구성·시작·중지·전환은 직렬 큐에서 처리한다. 낮은 화면에서는 조작부를 옆으로 옮긴다. 회전 coordinator를 이용하며 전면 미리보기만 반전하고 OCR 원본은 반전하지 않도록 구성한다. | `CameraCaptureService`, `CameraCollectionViewModel`, `CaptureScreenLayout`, `CameraCollectionViewController` |
+| 촬영 중단 | 연결 변경·중단·런타임 오류의 안내와 재시도를 제공한다. 종료·중단된 촬영 ID의 늦은 결과는 무시한다. | `CameraCaptureService.activeCaptureID`, 세션·장치 알림 처리 |
+| OCR | 이미지 방향을 정규화하고 인식은 한 번 수행한다. 밑줄은 이미지 기준 0~1 좌표로 보관하며 재배치할 때 표시 영역에 투영한다. 닫기·지우기·확인을 표준 내비게이션에 둔다. | `OCRImageGeometry`, `OCRMarkupViewModel`, `OCRMarkupViewController` |
+
+카드 편집의 가로·좁은 세로 배치와 감정 시트의 좌우 배치는 사용자가 요청한 전체 화면 기준 정책이다. 다른 화면의 safe area 기준과 구분해서 유지한다. 공통 가용 영역이 분할되면 단일 폼은 더 넓게 사용할 수 있는 한 영역을 선택하므로, 화면 전체 중앙과 항상 일치하는 것은 아니다.
+
+## 실행 확인이 남은 항목
+
+다음 항목은 모두 **미실행**이다. 체크박스는 실제 실행과 결과 기록 후에만 완료로 바꾼다.
+
+- [ ] 일반 iPhone: 회전해도 세로 유지, 책장 로고와 통계·설정의 기존 왼쪽 제목 배치 유지.
+- [ ] Duo 외부 화면: 세로 유지, 탭·내비게이션·촬영 액션 접근 가능.
+- [ ] Duo 내부 완전 펼침·부분 접힘의 세로·가로: 예약 영역 회피와 연속 크기 변경, 세로 막대의 좌우 배치 및 overflow 액션 접근.
+- [ ] Split View 좌우 배치와 작은 창: 콘텐츠·버튼 잘림 및 Auto Layout 충돌 여부.
+- [ ] 책장: 빈 상태·한 페이지 경계·여러 페이지·필터·편집 상태에서 동일 도서 유지, 누락·중복 여부, 드래그 중 전환 시 임시 순서 미저장.
+- [ ] 펼친 책장: 세로에서 도서를 포함한 선반 묶음의 간격·위치, 가로에서 페이지 인디케이터의 시각적 중앙.
+- [ ] 검색·등록·상세·수집: 긴 제목·본문·메모, 오류·재시도, 펼친 항목·입력·스크롤 유지, 키보드 표시 중 회전과 완료 액션 접근.
+- [ ] 감정 시트: 좌우 safe area가 비대칭일 때 콘텐츠 중심, 낮은 시트에서 스크롤·감정 선택 접근.
+- [ ] 카드 편집: 전체 화면 기준 카드·버튼 정렬, 배경·색상 동기화·로고·마스크 유지, 공유 전후 출력 크기·비율·내용 일치.
+- [ ] 카메라 실기기: 접기·펼치기·회전 중 미리보기와 촬영 결과 방향, 전후면 전환·반전·플래시, 권한 거부·복귀, 중단·재개·오류 후 재촬영.
+- [ ] OCR: 한국어·영어 및 회전된 사진의 인식, 밑줄 도중 크기 변경, 완료 선택 유지·지우기·취소·재촬영, 수집 폼으로 텍스트 전달 및 중복 저장 여부.
+- [ ] 전체 흐름: 책장 → 검색·등록 → 상세 → 수집·OCR → 카드 공유, 통계·설정 왕복 시 화면·입력 상태 유지.
+- [ ] iPad: 기존 회전·시트·공유 팝오버 및 제목·액션 중복 여부.
+- [ ] 위젯·Live Activity: 표시 크기별 내용, 독서 타이머 시작·갱신·종료와 앱 복귀 동작.
+- [ ] 기존 자동 테스트: 실행이 허용된 후 결과 기록. 이번 단계에서는 새 테스트도 추가하지 않음.
+
+후속 실행 결과는 기기·OS·화면 상태·재현 절차·관찰 결과·스크린샷 경로를 함께 기록한다. 문제가 발견되면 기능 수정 커밋을 문서 커밋과 분리한다.
+
+## 이번 단계 결론
+
+코드 검토에서 확인한 구현과 실행 확인이 남은 범위를 문서화했고 앱·위젯 빌드가 통과했다. 이번 단계에서는 제품 코드를 변경하지 않았다. 통합 회귀 검증 통과 또는 실기기 대응 완료로 해석하면 안 된다.
