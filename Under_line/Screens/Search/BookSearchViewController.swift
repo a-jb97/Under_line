@@ -67,7 +67,7 @@ final class BookSearchViewController: AdaptiveViewController {
             isExpanded: self?.expandedRow == indexPath.row,
             isDescriptionLoading: self?.descriptionLoadingISBN == book.isbn13,
             primaryAction: .registration(isRegistered: self?.registeredISBNs.contains(book.isbn13.trimmingCharacters(in: .whitespacesAndNewlines)) ?? false),
-            wishlistAction: self?.wishlistAction(for: book.isbn13) ?? .wishlist(isSaved: false, isEnabled: false)
+            secondaryAction: self?.wishlistAction(for: book.isbn13) ?? .wishlist(isSaved: false, isEnabled: false)
         )
         cell.onPrimaryAction = { [weak self] isbn13 in
             guard let self, let book = self.bookDataSource.books.first(where: {
@@ -75,7 +75,7 @@ final class BookSearchViewController: AdaptiveViewController {
             }) else { return }
             self.registerBookRelay.accept(book)
         }
-        cell.onToggleWishlist = { [weak self] isbn13 in
+        cell.onSecondaryAction = { [weak self] isbn13 in
             guard let self, let book = self.bookDataSource.books.first(where: {
                 $0.isbn13.trimmingCharacters(in: .whitespacesAndNewlines) == isbn13
             }) else { return }
@@ -462,7 +462,7 @@ final class BookSearchViewController: AdaptiveViewController {
                 guard let self else { return }
                 self.wishlistState = state
                 for case let cell as BookRowCell in self.tableView.visibleCells {
-                    cell.setWishlistAction(self.wishlistAction(for: cell.isbn13 ?? ""))
+                    cell.setSecondaryAction(self.wishlistAction(for: cell.isbn13 ?? ""))
                 }
             })
             .disposed(by: disposeBag)

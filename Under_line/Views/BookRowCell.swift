@@ -125,7 +125,7 @@ final class BookRowCell: UITableViewCell {
     #endif
 
     var onPrimaryAction: ((String) -> Void)?
-    var onToggleWishlist: ((String) -> Void)?
+    var onSecondaryAction: ((String) -> Void)?
     private var currentContent: BookRowContent?
     var isbn13: String? { currentContent?.isbn13 }
     private let disposeBag = DisposeBag()
@@ -163,7 +163,7 @@ final class BookRowCell: UITableViewCell {
         wishlistButton.rx.tap
             .subscribe(onNext: { [weak self] in
                 guard let self, self.wishlistButton.isEnabled, let content = self.currentContent else { return }
-                self.onToggleWishlist?(content.isbn13)
+                self.onSecondaryAction?(content.isbn13)
             })
             .disposed(by: disposeBag)
     }
@@ -179,8 +179,8 @@ final class BookRowCell: UITableViewCell {
         descriptionUpdateDeferred = false
         setPrimaryAction(.registration(isRegistered: false))
         onPrimaryAction = nil
-        onToggleWishlist = nil
-        setWishlistAction(.wishlist(isSaved: false, isEnabled: false))
+        onSecondaryAction = nil
+        setSecondaryAction(.wishlist(isSaved: false, isEnabled: false))
         rankLabel.text = nil
         titleLabel.text = nil
         authorLabel.text = nil
@@ -315,8 +315,10 @@ final class BookRowCell: UITableViewCell {
         registerButton.accessibilityIdentifier = action.symbolName == "cart" ? "purchaseBookButton" : "registerBookButton"
     }
 
-    func setWishlistAction(_ action: BookRowAction) {
+    func setSecondaryAction(_ action: BookRowAction) {
         apply(action, to: wishlistButton)
+        wishlistButton.accessibilityIdentifier = action.symbolName.hasPrefix("books.vertical")
+            ? "moveToBookshelfButton" : "wishlistButton"
     }
 
     private func apply(_ action: BookRowAction, to button: UIButton) {
@@ -338,12 +340,12 @@ final class BookRowCell: UITableViewCell {
         isExpanded: Bool,
         isDescriptionLoading: Bool,
         primaryAction: BookRowAction,
-        wishlistAction: BookRowAction
+        secondaryAction: BookRowAction
     ) {
         currentContent = content
         descriptionUpdateDeferred = false
         setPrimaryAction(primaryAction)
-        setWishlistAction(wishlistAction)
+        setSecondaryAction(secondaryAction)
         rankLabel.text   = content.rank.map { "\($0)" }
         titleLabel.text  = content.title
         authorLabel.text = content.authorText

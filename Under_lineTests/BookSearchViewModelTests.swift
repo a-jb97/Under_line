@@ -46,7 +46,7 @@ final class BookSearchViewModelTests: XCTestCase {
             isbn13: original.isbn13, coverURL: nil, description: "보완된 소개"
         ))
         var tapped: [String] = []
-        cell.onToggleWishlist = { tapped.append($0) }
+        cell.onSecondaryAction = { tapped.append($0) }
         cell.updateMetadata(content: BookRowContent(book: enriched), displayScale: 1)
         cell.layoutIfNeeded()
         XCTAssertTrue(textView.text.isEmpty)
@@ -399,15 +399,15 @@ final class BookSearchViewModelTests: XCTestCase {
         XCTAssertTrue(heart.isSelected)
         XCTAssertEqual(heart.accessibilityLabel, "위시리스트에서 삭제")
         var tapped: [String] = []
-        cell.onToggleWishlist = { tapped.append($0) }
+        cell.onSecondaryAction = { tapped.append($0) }
         cell.prepareForReuse()
         XCTAssertFalse(heart.isSelected)
         XCTAssertFalse(heart.isEnabled)
-        XCTAssertNil(cell.onToggleWishlist)
+        XCTAssertNil(cell.onSecondaryAction)
 
         cell.configure(book: books[1], displayScale: 1, descriptionWidth: 272,
                        isExpanded: true, isDescriptionLoading: false, wishlistState: state)
-        cell.onToggleWishlist = { tapped.append($0) }
+        cell.onSecondaryAction = { tapped.append($0) }
         heart.sendActions(for: .touchUpInside)
         XCTAssertEqual(tapped, ["1"])
         XCTAssertFalse(heart.isSelected)
@@ -1209,7 +1209,7 @@ private extension BookRowCell {
         configure(content: content, displayScale: displayScale, descriptionWidth: descriptionWidth,
                   isExpanded: isExpanded, isDescriptionLoading: isDescriptionLoading,
                   primaryAction: .registration(isRegistered: registeredISBNs.contains(content.isbn13)),
-                  wishlistAction: .wishlist(isSaved: wishlistState.savedISBNs.contains(content.isbn13),
+                  secondaryAction: .wishlist(isSaved: wishlistState.savedISBNs.contains(content.isbn13),
                       isEnabled: wishlistState.isLoaded && !wishlistState.isRefreshing,
                       isPending: wishlistState.pendingISBNs.contains(content.isbn13)))
     }
@@ -1219,7 +1219,7 @@ private extension BookRowCell {
     }
 
     func setWishlistState(_ state: BookSearchViewModel.WishlistState) {
-        setWishlistAction(.wishlist(isSaved: isbn13.map { state.savedISBNs.contains($0) } ?? false,
+        setSecondaryAction(.wishlist(isSaved: isbn13.map { state.savedISBNs.contains($0) } ?? false,
             isEnabled: state.isLoaded && !state.isRefreshing,
             isPending: isbn13.map { state.pendingISBNs.contains($0) } ?? false))
     }
