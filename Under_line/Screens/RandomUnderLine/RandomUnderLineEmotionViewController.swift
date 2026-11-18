@@ -79,7 +79,12 @@ final class RandomUnderLineEmotionViewController: AdaptiveViewController {
 
     private func setupUI() {
         view.addSubview(formScrollView)
-        formScrollView.snp.makeConstraints { $0.edges.equalTo(view.adaptiveContentLayoutGuide) }
+        // 좌우는 시트 전체 너비를 사용하고, 스크롤 뷰가 safe area 인셋을 다시 더하지 않게 한다.
+        formScrollView.contentInsetAdjustmentBehavior = .never
+        formScrollView.snp.makeConstraints { make in
+            make.leading.trailing.equalToSuperview()
+            make.top.bottom.equalTo(view.safeAreaLayoutGuide)
+        }
         formScrollView.formContentView.addSubview(titleLabel)
 
         for emotion in Emotion.allCases {

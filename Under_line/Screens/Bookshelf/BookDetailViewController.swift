@@ -733,7 +733,9 @@ final class BookDetailViewController: AdaptiveViewController {
             .subscribe(onNext: { [weak self] in
                 guard let self else { return }
                 let cameraVC = CameraCollectionViewController()
-                cameraVC.modalPresentationStyle = .fullScreen
+                let cameraNavigation = UINavigationController(rootViewController: cameraVC)
+                SystemNavigationStyle.configure(cameraNavigation)
+                cameraNavigation.modalPresentationStyle = .fullScreen
 
                 // 직접 수집 버튼 → OCR 없이 빈 폼으로 present
                 cameraVC.onDirectCollect = { [weak self] in
@@ -756,7 +758,7 @@ final class BookDetailViewController: AdaptiveViewController {
                     self.present(directVC, animated: true)
                 }
 
-                self.present(cameraVC, animated: true)
+                self.present(cameraNavigation, animated: true)
             })
             .disposed(by: disposeBag)
 
