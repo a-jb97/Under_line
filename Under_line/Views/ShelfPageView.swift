@@ -84,7 +84,8 @@ private final class ShelfBookView: UIView {
                    onDelete: @escaping (Book) -> Void, onTap: @escaping (Book) -> Void) {
         disposeBag = DisposeBag()
         imageView.kf.cancelDownloadTask()
-        imageView.image = nil
+        // 디스크 캐시 조회가 늦게 완료되어도 이전 표지가 적용되지 않게 요청을 초기화한다.
+        imageView.kf.setImage(with: Optional<URL>.none)
         self.slotSize = slotSize
         titleLabel.text = book.displayTitle
         titleLabel.isHidden = false
@@ -98,7 +99,11 @@ private final class ShelfBookView: UIView {
         tapButton.rx.tap.subscribe(onNext: { onTap(book) }).disposed(by: disposeBag)
         deleteButton.rx.tap.subscribe(onNext: { onDelete(book) }).disposed(by: disposeBag)
         if let url = book.coverURL {
-            imageView.kf.setImage(with: url) { [weak self] result in
+            let originalURL = ShelfCoverImageSource.originalURL(for: url)
+            let options: KingfisherOptionsInfo = originalURL == nil ? [] : [
+                .alternativeSources([.network(KF.ImageResource(downloadURL: url))])
+            ]
+            imageView.kf.setImage(with: originalURL ?? url, options: options) { [weak self] result in
                 guard let self, case .success(let value) = result else { return }
                 self.titleLabel.isHidden = true
                 self.fitCover(imageSize: value.image.size)
