@@ -5,10 +5,12 @@ import SnapKit
 final class AdaptiveContentView: UIView {
     let contentLayoutGuide = UILayoutGuide()
     private let avoidsKeyboard: Bool
+    private let ignoresHorizontalSafeArea: Bool
     private var lastFrame: CGRect?
 
-    init(avoidsKeyboard: Bool = false) {
+    init(avoidsKeyboard: Bool = false, ignoresHorizontalSafeArea: Bool = false) {
         self.avoidsKeyboard = avoidsKeyboard
+        self.ignoresHorizontalSafeArea = ignoresHorizontalSafeArea
         super.init(frame: .zero)
         addLayoutGuide(contentLayoutGuide)
         contentLayoutGuide.snp.makeConstraints { make in
@@ -52,7 +54,8 @@ final class AdaptiveContentView: UIView {
         let keyboard = keyboardLayoutGuide.layoutFrame
         let keyboardTop = avoidsKeyboard && keyboard.height > safeAreaInsets.bottom && keyboard.width > 0
             ? keyboard.minY : nil
-        let frame = ReadableContentLayout(container: ContainerLayout(view: self), keyboardTop: keyboardTop).frame
+        let container = ContainerLayout(view: self, ignoresHorizontalSafeArea: ignoresHorizontalSafeArea)
+        let frame = ReadableContentLayout(container: container, keyboardTop: keyboardTop).frame
         guard frame != lastFrame else { return }
         lastFrame = frame
         contentLayoutGuide.snp.remakeConstraints { make in
@@ -72,6 +75,8 @@ extension UIView {
 
 class AdaptiveViewController: UIViewController {
     var avoidsKeyboard: Bool { false }
+    /// 시트 자체가 좌우 끝까지 표시될 때 내부 콘텐츠에도 같은 너비 기준을 적용한다.
+    var ignoresHorizontalSafeArea: Bool { false }
     private var lastContentFrame: CGRect?
     private var scrollPositions: [ScrollPosition] = []
 
@@ -81,7 +86,8 @@ class AdaptiveViewController: UIViewController {
     }
 
     override func loadView() {
-        view = AdaptiveContentView(avoidsKeyboard: avoidsKeyboard)
+        view = AdaptiveContentView(avoidsKeyboard: avoidsKeyboard,
+                                   ignoresHorizontalSafeArea: ignoresHorizontalSafeArea)
     }
 
     override func viewDidLayoutSubviews() {

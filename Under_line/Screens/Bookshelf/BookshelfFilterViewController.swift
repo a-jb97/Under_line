@@ -20,6 +20,7 @@ final class BookshelfFilterViewController: AdaptiveViewController {
     private let formScrollView = ScrollableFormView()
 
     override var avoidsKeyboard: Bool { true }
+    override var ignoresHorizontalSafeArea: Bool { true }
 
     weak var delegate: BookshelfFilterDelegate?
 
@@ -114,6 +115,7 @@ final class BookshelfFilterViewController: AdaptiveViewController {
     // MARK: - Setup
 
     private func setupUI() {
+        formScrollView.contentInsetAdjustmentBehavior = .never
         view.addSubview(formScrollView)
         formScrollView.snp.makeConstraints { $0.edges.equalTo(view.adaptiveContentLayoutGuide) }
         view.backgroundColor = UIColor.background

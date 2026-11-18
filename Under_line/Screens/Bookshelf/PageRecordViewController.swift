@@ -16,6 +16,7 @@ final class PageRecordViewController: AdaptiveViewController {
     private let formScrollView = ScrollableFormView()
 
     override var avoidsKeyboard: Bool { true }
+    override var ignoresHorizontalSafeArea: Bool { true }
 
     var onProgressRecorded: ((ReadingProgress) -> Void)?
 
@@ -85,6 +86,7 @@ final class PageRecordViewController: AdaptiveViewController {
     }
 
     private func setupUI() {
+        formScrollView.contentInsetAdjustmentBehavior = .never
         view.addSubview(formScrollView)
         formScrollView.snp.makeConstraints { $0.edges.equalTo(view.adaptiveContentLayoutGuide) }
         view.backgroundColor = UIColor.background

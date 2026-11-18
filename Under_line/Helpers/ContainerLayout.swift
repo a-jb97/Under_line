@@ -65,7 +65,7 @@ struct ContainerLayout: Equatable {
     }
 
     /// UIKit의 예약 영역 변경 추적을 위해 updateConstraints()에서 호출한다.
-    init(view: UIView, reservesInactiveDivisions: Bool = false) {
+    init(view: UIView, reservesInactiveDivisions: Bool = false, ignoresHorizontalSafeArea: Bool = false) {
         var regions: [ReservedRegion] = []
         if #available(iOS 27.1, *) {
             // frame에 시스템 여백이 이미 포함되어 있으므로 margins를 다시 더하지 않는다.
@@ -75,9 +75,14 @@ struct ContainerLayout: Equatable {
                 ReservedRegion(kind: .occlusion, frame: $0.frame, isActive: $0.isActive)
             }
         }
+        var safeAreaInsets = view.safeAreaInsets
+        if ignoresHorizontalSafeArea {
+            safeAreaInsets.left = 0
+            safeAreaInsets.right = 0
+        }
         self.init(
             bounds: view.bounds,
-            safeAreaInsets: view.safeAreaInsets,
+            safeAreaInsets: safeAreaInsets,
             horizontalSizeClass: view.traitCollection.horizontalSizeClass,
             verticalSizeClass: view.traitCollection.verticalSizeClass,
             displayScale: view.traitCollection.displayScale,
