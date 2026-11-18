@@ -222,11 +222,6 @@ final class NeumorphicSegmentView: UIView {
         updateSelection()
     }
 
-    override func layoutSubviews() {
-        super.layoutSubviews()
-        updateSelectorFrame()
-    }
-
     private func updateSelection() {
         guard !buttons.isEmpty else { return }
         for (i, btn) in buttons.enumerated() {
@@ -234,14 +229,15 @@ final class NeumorphicSegmentView: UIView {
             btn.tintColor = isSelected ? .background : UIColor.appPrimary
             btn.backgroundColor = isSelected ? .appPrimary : .clear
         }
-        updateSelectorFrame()
+        updateSelectorConstraints()
     }
 
-    private func updateSelectorFrame() {
-        guard !buttons.isEmpty, selectedIndex < buttons.count else { return }
-        let btn = buttons[selectedIndex]
-        let converted = btn.convert(btn.bounds, to: self)
-        selector.frame = converted
+    private func updateSelectorConstraints() {
+        guard buttons.indices.contains(selectedIndex) else { return }
+        // 스택의 재배치 순서와 관계없이 선택 배경이 실제 버튼 크기를 따라가게 한다.
+        selector.snp.remakeConstraints { make in
+            make.edges.equalTo(buttons[selectedIndex])
+        }
     }
 }
 
