@@ -184,7 +184,8 @@ final class PageRecordViewController: AdaptiveViewController {
 
     private func configureSheet() {
         guard let sheet = sheetPresentationController else { return }
-        sheet.detents = [.custom { min(342, $0.maximumDetentValue) }, .large()]
+        sheet.detents = [.custom { min(342, $0.maximumDetentValue) }]
+        sheet.prefersScrollingExpandsWhenScrolledToEdge = false
         sheet.prefersGrabberVisible = false
     }
 
