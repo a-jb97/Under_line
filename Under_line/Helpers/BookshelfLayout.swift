@@ -38,18 +38,27 @@ struct BookshelfLayout: Equatable {
         }
         // 카메라 옆의 얇은 조각보다 정상 크기의 표지를 놓을 수 있는 공간을 우선한다.
         let fullSizeAreas = candidates.filter { $0.width >= 98 && $0.height >= 138 }
-        let areas = fullSizeAreas.isEmpty ? candidates : fullSizeAreas
-        let hasVerticalDivision = container.reservedRegions.contains {
+        var areas = fullSizeAreas.isEmpty ? candidates : fullSizeAreas
+        let verticalDivision = container.reservedRegions.first {
             $0.kind == .division && $0.frame.height > $0.frame.width
+        }?.frame
+        let hasSideBySideAreas = verticalDivision.map { division in
+            areas.count == 2 && areas.contains { $0.maxX <= division.minX }
+                && areas.contains { $0.minX >= division.maxX }
+        } ?? false
+        if hasSideBySideAreas {
+            let width = min(areas[0].width, areas[1].width)
+            areas = areas.map { area in
+                CGRect(x: area.midX - width / 2, y: area.minY, width: width, height: area.height)
+            }
         }
         let columns = areas.map { area -> Int in
             let count = max(1, min(8, Int((area.width - 16 + 20) / (82 + 20))))
             return count > 3 && count % 2 != 0 ? count - 1 : count
         }
-        let balancedColumns = hasVerticalDivision && areas.count == 2 ? columns.min() : nil
         var rows: [(board: CGRect, slots: [CGRect])] = []
         for (index, area) in areas.enumerated() {
-            let columnCount = balancedColumns ?? columns[index]
+            let columnCount = columns[index]
             let bookWidth = min(82, (area.width - 16 - CGFloat(columnCount - 1) * 20) / CGFloat(columnCount))
             let preferredBookHeight = ceil(bookWidth * 117 / 88)
             var rowCount = 1
