@@ -37,6 +37,7 @@ final class BookDetailViewController: AdaptiveViewController {
     }()
 
     private let contentView = UIView()
+    private let viewportLayoutGuide = UILayoutGuide()
     private let columnsLayoutGuide = UILayoutGuide()
 
     init(book: Book) {
@@ -272,6 +273,7 @@ final class BookDetailViewController: AdaptiveViewController {
         view.backgroundColor = UIColor.background
 
         // Scroll container
+        view.addLayoutGuide(viewportLayoutGuide)
         view.addSubview(scrollView)
         scrollView.addSubview(contentView)
         contentView.addLayoutGuide(columnsLayoutGuide)
@@ -309,6 +311,9 @@ final class BookDetailViewController: AdaptiveViewController {
     private func setupConstraints() {
         // Scroll container
         updateContentConstraints()
+        scrollView.snp.makeConstraints { make in
+            make.edges.equalTo(viewportLayoutGuide)
+        }
 
         quoteScrollView.snp.makeConstraints { make in
             make.edges.equalToSuperview()
@@ -368,13 +373,13 @@ final class BookDetailViewController: AdaptiveViewController {
 
         // FAB (52×52, trailing 24, bottom safeArea 16)
         fabButton.snp.makeConstraints { make in
-            make.trailing.equalTo(scrollView.frameLayoutGuide).inset(24)
-            make.bottom.equalTo(scrollView.frameLayoutGuide).inset(16)
+            make.trailing.equalTo(viewportLayoutGuide).inset(24)
+            make.bottom.equalTo(viewportLayoutGuide).inset(16)
             make.size.equalTo(52)
         }
 
         sentenceEditButton.snp.makeConstraints { make in
-            make.leading.equalTo(scrollView.frameLayoutGuide).offset(24)
+            make.leading.equalTo(viewportLayoutGuide).offset(24)
             make.centerY.equalTo(fabButton)
             make.size.equalTo(52)
         }
@@ -404,10 +409,10 @@ final class BookDetailViewController: AdaptiveViewController {
 
     private func updateContentConstraints() {
         scrollView.contentInset.bottom = columns == nil ? 80 : 0
-        scrollView.snp.remakeConstraints { make in
+        viewportLayoutGuide.snp.remakeConstraints { make in
             if let columns {
-                make.left.equalToSuperview().offset(columns.viewport.minX)
-                make.top.equalToSuperview().offset(columns.viewport.minY)
+                make.left.equalTo(view).offset(columns.viewport.minX)
+                make.top.equalTo(view).offset(columns.viewport.minY)
                 make.width.equalTo(columns.viewport.width)
                 make.height.equalTo(columns.viewport.height)
             } else {

@@ -6,6 +6,38 @@ import UIKit
 final class ContainerLayoutTests: XCTestCase {
     private let bounds = CGRect(x: 0, y: 0, width: 800, height: 600)
 
+    func test_bookDetailWhenScrolled_keepsBottomButtonsFixed() throws {
+        let book = Book(title: "책", author: "저자", isbn13: "", coverURL: nil,
+                        publisher: "", publishDate: nil, category: nil, bestRank: nil,
+                        description: "", itemPage: nil, currentPage: nil)
+
+        for size in [CGSize(width: 390, height: 620), bounds.size] {
+            let controller = BookDetailViewController(book: book)
+            let view = try XCTUnwrap(controller.view)
+            view.frame = CGRect(origin: .zero, size: size)
+            view.layoutIfNeeded()
+
+            let scrollView = try XCTUnwrap(view.subviews.compactMap { $0 as? UIScrollView }.first)
+            let buttons = try ["밑줄 편집", "밑줄 추가"].map { label in
+                try XCTUnwrap(view.subviews.first { $0.accessibilityLabel == label } as? UIButton)
+            }
+            let initialFrames = buttons.map(\.frame)
+            for button in buttons {
+                XCTAssertEqual(button.frame.maxY, scrollView.frame.maxY - 16, accuracy: 0.5)
+            }
+
+            let initialOffset = scrollView.contentOffset.y
+            // The offset can exceed the content bounds during a scroll bounce.
+            for displacement: CGFloat in [40, -30] {
+                scrollView.contentOffset.y = initialOffset + displacement
+                view.layoutIfNeeded()
+
+                XCTAssertEqual(scrollView.contentOffset.y, initialOffset + displacement, accuracy: 0.5)
+                XCTAssertEqual(buttons.map(\.frame), initialFrames)
+            }
+        }
+    }
+
     func test_bookDetailInWideLandscape_usesTwoColumnsInsideReadableArea() throws {
         let container = ContainerLayout(bounds: CGRect(x: 0, y: 0, width: 1194, height: 834))
         let columns = try XCTUnwrap(ReadingColumns(container: container))
