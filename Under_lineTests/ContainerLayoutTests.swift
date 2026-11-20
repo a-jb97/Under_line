@@ -6,6 +6,34 @@ import UIKit
 final class ContainerLayoutTests: XCTestCase {
     private let bounds = CGRect(x: 0, y: 0, width: 800, height: 600)
 
+    func test_bookDetailInWideLandscape_usesTwoColumnsInsideReadableArea() throws {
+        let container = ContainerLayout(bounds: CGRect(x: 0, y: 0, width: 1194, height: 834))
+        let columns = try XCTUnwrap(BookDetailColumns(container: container))
+        XCTAssertEqual(columns.viewport, CGRect(x: 217, y: 0, width: 760, height: 834))
+        XCTAssertEqual(columns.quoteWidth, 344)
+        XCTAssertEqual(columns.gap, 24)
+    }
+
+    func test_bookDetailWhenPortraitOrNarrow_usesSingleColumn() {
+        let portrait = ContainerLayout(bounds: CGRect(x: 0, y: 0, width: 834, height: 1194))
+        let narrow = ContainerLayout(bounds: CGRect(x: 0, y: 0, width: 560, height: 500))
+        XCTAssertNil(BookDetailColumns(container: portrait))
+        XCTAssertNil(BookDetailColumns(container: narrow))
+    }
+
+    func test_bookDetailWithInactiveVerticalDivision_keepsColumnsOnOppositeSides() throws {
+        let container = ContainerLayout(
+            bounds: bounds,
+            safeAreaInsets: UIEdgeInsets(top: 20, left: 10, bottom: 30, right: 40),
+            reservedRegions: [.init(kind: .division, frame: CGRect(x: 390, y: 0, width: 20, height: 600), isActive: false)],
+            reservesInactiveDivisions: true
+        )
+        let columns = try XCTUnwrap(BookDetailColumns(container: container))
+        XCTAssertEqual(columns.viewport, CGRect(x: 10, y: 20, width: 750, height: 550))
+        XCTAssertEqual(columns.viewport.minX + 24 + columns.quoteWidth, 366)
+        XCTAssertEqual(columns.viewport.minX + 24 + columns.quoteWidth + columns.gap, 434)
+    }
+
     func test_asymmetricSafeArea_insetsEveryEdgeInContainerCoordinates() {
         let layout = ContainerLayout(
             bounds: CGRect(x: 10, y: 20, width: 400, height: 300),
