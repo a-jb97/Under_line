@@ -1,8 +1,8 @@
 import UIKit
 
-struct BookDetailColumns: Equatable {
+struct ReadingColumns: Equatable {
     let viewport: CGRect
-    let quoteWidth: CGFloat
+    let leadingWidth: CGFloat
     let gap: CGFloat
 
     init?(container: ContainerLayout, usesFullWidth: Bool = false) {
@@ -22,7 +22,7 @@ struct BookDetailColumns: Equatable {
             let bottom = min(left.maxY, right.maxY)
             guard bottom > top else { return nil }
             viewport = CGRect(x: left.minX, y: top, width: right.maxX - left.minX, height: bottom - top)
-            quoteWidth = left.width - 2 * inset
+            leadingWidth = left.width - 2 * inset
             gap = right.minX - left.maxX + 2 * inset
         } else {
             var frame = ReadableContentLayout(
@@ -41,7 +41,7 @@ struct BookDetailColumns: Equatable {
             guard container.bounds.width > container.bounds.height,
                   columnWidth >= minimumColumnWidth else { return nil }
             viewport = frame
-            quoteWidth = columnWidth
+            leadingWidth = columnWidth
             self.gap = gap
         }
     }

@@ -213,11 +213,11 @@ final class BookDetailViewController: AdaptiveViewController {
     // MARK: - Lifecycle
 
     private var lastQuoteWidth: CGFloat = 0
-    private var columns: BookDetailColumns?
+    private var columns: ReadingColumns?
 
     override func viewWillLayoutSubviews() {
         super.viewWillLayoutSubviews()
-        let layout = BookDetailColumns(
+        let layout = ReadingColumns(
             container: ContainerLayout(view: view, reservesInactiveDivisions: true),
             usesFullWidth: traitCollection.userInterfaceIdiom == .pad
         )
@@ -407,7 +407,7 @@ final class BookDetailViewController: AdaptiveViewController {
         quoteCard.snp.remakeConstraints { make in
             make.left.equalToSuperview().offset(24)
             if let columns {
-                make.width.equalTo(columns.quoteWidth)
+                make.width.equalTo(columns.leadingWidth)
             } else {
                 make.top.equalToSuperview().offset(12)
                 make.right.equalToSuperview().inset(24)
