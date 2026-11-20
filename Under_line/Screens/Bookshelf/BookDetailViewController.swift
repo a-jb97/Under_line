@@ -97,12 +97,17 @@ final class BookDetailViewController: AdaptiveViewController {
         return v
     }()
 
+    private let bookCoverWidth: CGFloat = 60
     private let bookCoverView: UIImageView = {
         let iv = UIImageView()
         iv.backgroundColor   = UIColor.appPrimary
         iv.layer.cornerRadius = 3
         iv.clipsToBounds      = true
         iv.contentMode        = .scaleAspectFill
+        for axis in [NSLayoutConstraint.Axis.horizontal, .vertical] {
+            iv.setContentHuggingPriority(.fittingSizeLevel, for: axis)
+            iv.setContentCompressionResistancePriority(.fittingSizeLevel, for: axis)
+        }
         return iv
     }()
 
@@ -315,19 +320,13 @@ final class BookDetailViewController: AdaptiveViewController {
             make.centerX.equalTo(quoteCard)
         }
 
-        // Book Cover (60×83)
-        bookCoverView.snp.makeConstraints { make in
-            make.leading.equalToSuperview().inset(16)
-            make.top.equalToSuperview().inset(16)
-            make.width.equalTo(60)
-            make.height.equalTo(83)
-        }
+        updateBookCoverConstraints(aspectRatio: 83 / bookCoverWidth)
 
         // Book Title
         bookTitleLabel.snp.makeConstraints { make in
-            make.leading.equalTo(bookCoverView.snp.trailing).offset(14)
+            make.leading.equalTo(bookCoverView.snp.leading).offset(bookCoverWidth + 14)
             make.trailing.equalToSuperview().inset(16)
-            make.top.equalTo(bookCoverView)
+            make.top.equalToSuperview().inset(16)
         }
 
         bookAuthorLabel.snp.makeConstraints { make in
@@ -360,7 +359,7 @@ final class BookDetailViewController: AdaptiveViewController {
         }
 
         // Progress Section (cornerRadius 12, padding [12,14])
-        // 초기에는 description이 숨겨진 상태이므로 genreTagView 기준
+        // 도서 소개가 접혀 있으면 장르 태그 하단을 기준으로 배치한다.
         progressSectionView.snp.makeConstraints { make in
             make.top.equalTo(genreTagView.snp.bottom).offset(16)
             make.leading.trailing.equalToSuperview().inset(16)
@@ -389,6 +388,17 @@ final class BookDetailViewController: AdaptiveViewController {
 
         sentenceUpdateButton.snp.makeConstraints { make in
             make.edges.equalToSuperview()
+        }
+    }
+
+    private func updateBookCoverConstraints(aspectRatio: CGFloat) {
+        bookCoverView.snp.remakeConstraints { make in
+            make.leading.equalToSuperview().inset(16)
+            make.top.greaterThanOrEqualToSuperview().inset(16)
+            make.bottom.equalTo(genreTagView.snp.bottom)
+            make.width.lessThanOrEqualTo(bookCoverWidth)
+            make.width.equalTo(bookCoverWidth).priority(249)
+            make.height.equalTo(bookCoverView.snp.width).multipliedBy(aspectRatio)
         }
     }
 
@@ -470,14 +480,12 @@ final class BookDetailViewController: AdaptiveViewController {
         genreTagView.isHidden = false
 
         if let coverURL = book.coverURL {
-            bookCoverView.kf.setImage(with: coverURL) { [weak self] result in
+            let request = ShelfCoverImageSource.request(for: coverURL)
+            bookCoverView.kf.setImage(with: request.url, options: request.options) { [weak self] result in
                 guard let self, case .success(let value) = result else { return }
                 let imageSize = value.image.size
-                guard imageSize.width > 0 else { return }
-                let newHeight = ceil(60.0 * imageSize.height / imageSize.width)
-                self.bookCoverView.snp.updateConstraints { make in
-                    make.height.equalTo(newHeight)
-                }
+                guard imageSize.width > 0, imageSize.height > 0 else { return }
+                self.updateBookCoverConstraints(aspectRatio: imageSize.height / imageSize.width)
             }
         }
 

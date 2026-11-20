@@ -550,11 +550,8 @@ final class BookshelfViewController: UIViewController {
         fitCover(CGSize(width: 88, height: 117))
 
         if let url = book.coverURL {
-            let originalURL = ShelfCoverImageSource.originalURL(for: url)
-            let options: KingfisherOptionsInfo = originalURL == nil ? [] : [
-                .alternativeSources([.network(KF.ImageResource(downloadURL: url))])
-            ]
-            imageView.kf.setImage(with: originalURL ?? url, options: options) { result in
+            let request = ShelfCoverImageSource.request(for: url)
+            imageView.kf.setImage(with: request.url, options: request.options) { result in
                 guard case .success(let value) = result else { return }
                 fitCover(value.image.size)
             }

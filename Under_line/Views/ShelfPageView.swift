@@ -99,11 +99,8 @@ private final class ShelfBookView: UIView {
         tapButton.rx.tap.subscribe(onNext: { onTap(book) }).disposed(by: disposeBag)
         deleteButton.rx.tap.subscribe(onNext: { onDelete(book) }).disposed(by: disposeBag)
         if let url = book.coverURL {
-            let originalURL = ShelfCoverImageSource.originalURL(for: url)
-            let options: KingfisherOptionsInfo = originalURL == nil ? [] : [
-                .alternativeSources([.network(KF.ImageResource(downloadURL: url))])
-            ]
-            imageView.kf.setImage(with: originalURL ?? url, options: options) { [weak self] result in
+            let request = ShelfCoverImageSource.request(for: url)
+            imageView.kf.setImage(with: request.url, options: request.options) { [weak self] result in
                 guard let self, case .success(let value) = result else { return }
                 self.titleLabel.isHidden = true
                 self.fitCover(imageSize: value.image.size)
