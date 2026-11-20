@@ -82,7 +82,7 @@ class AdaptiveViewController: UIViewController {
 
     override func viewWillLayoutSubviews() {
         super.viewWillLayoutSubviews()
-        scrollPositions = scrollViews(in: view).map(ScrollPosition.init)
+        scrollPositions = scrollViews(in: view).map { ScrollPosition($0) }
     }
 
     override func loadView() {
