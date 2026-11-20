@@ -74,6 +74,24 @@ final class QuoteCardEditorLayoutTests: XCTestCase {
         }
     }
 
+    func test_actionButtons_haveRoomAboveForPressAnimation() throws {
+        let controller = makeEditor()
+        let background = try XCTUnwrap(UIImage(systemName: "photo"))
+        controller.applyBackgroundImage(background, dominantColor: .red)
+        let toolbar = try XCTUnwrap(controller.view.subviews.compactMap { $0 as? UIScrollView }.first)
+        let buttons = [controller.removeLogoButton, controller.backgroundButton, controller.colorSyncButton, controller.saveButton]
+
+        for size in [CGSize(width: 393, height: 852), CGSize(width: 852, height: 393)] {
+            resize(controller, to: size)
+            toolbar.layoutIfNeeded()
+            for button in buttons {
+                XCTAssertFalse(button.isHidden)
+                let frame = button.convert(button.bounds, to: toolbar)
+                XCTAssertGreaterThanOrEqual(frame.minY - toolbar.bounds.minY, 12)
+            }
+        }
+    }
+
     func test_landscape_centersCardAndRightAlignedActionGroup() {
         let bounds = CGRect(x: 0, y: 0, width: 760, height: 600)
         let safeBounds = CGRect(x: 0, y: 20, width: 660, height: 550)
