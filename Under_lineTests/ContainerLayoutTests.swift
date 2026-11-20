@@ -17,8 +17,21 @@ final class ContainerLayoutTests: XCTestCase {
     func test_bookDetailWhenPortraitOrNarrow_usesSingleColumn() {
         let portrait = ContainerLayout(bounds: CGRect(x: 0, y: 0, width: 834, height: 1194))
         let narrow = ContainerLayout(bounds: CGRect(x: 0, y: 0, width: 560, height: 500))
-        XCTAssertNil(BookDetailColumns(container: portrait))
-        XCTAssertNil(BookDetailColumns(container: narrow))
+        XCTAssertNil(BookDetailColumns(container: portrait, usesFullWidth: true))
+        XCTAssertNil(BookDetailColumns(container: narrow, usesFullWidth: true))
+    }
+
+    func test_bookDetailInFullWidthLandscape_centersInsideAsymmetricSafeArea() throws {
+        let container = ContainerLayout(
+            bounds: CGRect(x: 0, y: 0, width: 1194, height: 834),
+            safeAreaInsets: UIEdgeInsets(top: 20, left: 16, bottom: 24, right: 24)
+        )
+        let columns = try XCTUnwrap(BookDetailColumns(container: container, usesFullWidth: true))
+        XCTAssertEqual(columns.viewport, CGRect(x: 24, y: 20, width: 1146, height: 790))
+        XCTAssertEqual(columns.viewport.midX, container.bounds.midX)
+        XCTAssertTrue(container.safeBounds.contains(columns.viewport))
+        XCTAssertEqual(columns.quoteWidth, 537)
+        XCTAssertEqual(columns.gap, 24)
     }
 
     func test_bookDetailWithInactiveVerticalDivision_keepsColumnsOnOppositeSides() throws {

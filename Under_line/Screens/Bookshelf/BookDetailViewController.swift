@@ -217,7 +217,10 @@ final class BookDetailViewController: AdaptiveViewController {
 
     override func viewWillLayoutSubviews() {
         super.viewWillLayoutSubviews()
-        let layout = BookDetailColumns(container: ContainerLayout(view: view, reservesInactiveDivisions: true))
+        let layout = BookDetailColumns(
+            container: ContainerLayout(view: view, reservesInactiveDivisions: true),
+            usesFullWidth: traitCollection.userInterfaceIdiom == .pad
+        )
         guard layout != columns else { return }
         columns = layout
         updateContentConstraints()

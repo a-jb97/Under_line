@@ -5,7 +5,7 @@ struct BookDetailColumns: Equatable {
     let quoteWidth: CGFloat
     let gap: CGFloat
 
-    init?(container: ContainerLayout) {
+    init?(container: ContainerLayout, usesFullWidth: Bool = false) {
         let inset: CGFloat = 24
         let minimumColumnWidth: CGFloat = 260
         if let hinge = container.reservedRegions.first(where: {
@@ -25,7 +25,17 @@ struct BookDetailColumns: Equatable {
             quoteWidth = left.width - 2 * inset
             gap = right.minX - left.maxX + 2 * inset
         } else {
-            let frame = ReadableContentLayout(container: container).frame
+            var frame = ReadableContentLayout(
+                container: container,
+                maximumWidth: usesFullWidth ? container.safeBounds.width : 760
+            ).frame
+            if usesFullWidth {
+                let centerX = container.bounds.midX
+                let halfWidth = min(centerX - frame.minX, frame.maxX - centerX)
+                guard halfWidth > 0 else { return nil }
+                frame.origin.x = centerX - halfWidth
+                frame.size.width = 2 * halfWidth
+            }
             let gap: CGFloat = 24
             let columnWidth = (frame.width - 2 * inset - gap) / 2
             guard container.bounds.width > container.bounds.height,
