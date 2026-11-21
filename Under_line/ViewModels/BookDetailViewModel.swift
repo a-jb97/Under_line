@@ -16,14 +16,12 @@ final class BookDetailViewModel {
     struct Input {
         let viewWillAppear:    Observable<Void>      // 화면 진입 시 문장 재조회
         let deleteSentence:    Observable<Sentence>  // 삭제 버튼 탭
-        let updateCurrentPage: Observable<Int>       // 페이지 기록 저장
     }
 
     // MARK: - Output
 
     struct Output {
         let sentences:    Driver<[Sentence]>  // 문장 목록
-        let itemPage:     Driver<Int?>        // 책 전체 페이지 수
         let errorMessage: Signal<String>      // Toast 메시지 (1회성)
     }
 
@@ -31,13 +29,11 @@ final class BookDetailViewModel {
 
     private let book: Book
     private let sentenceRepository: SentenceRepositoryProtocol
-    private let bookRepository: BookRepositoryProtocol
     private let disposeBag = DisposeBag()
 
-    init(book: Book, sentenceRepository: SentenceRepositoryProtocol, bookRepository: BookRepositoryProtocol) {
+    init(book: Book, sentenceRepository: SentenceRepositoryProtocol) {
         self.book                = book
         self.sentenceRepository  = sentenceRepository
-        self.bookRepository      = bookRepository
     }
 
     // MARK: - Transform
@@ -46,22 +42,6 @@ final class BookDetailViewModel {
         let errorMessage = PublishRelay<String>()
         let sentences    = BehaviorRelay<[Sentence]>(value: [])
         let reload       = PublishRelay<Void>()
-        let itemPage     = BehaviorRelay<Int?>(value: nil)
-
-        // 화면 최초 진입 시 책 상세(페이지 수) 조회
-        input.viewWillAppear
-            .take(1)
-            .flatMapLatest { [weak self] _ -> Observable<Book> in
-                guard let self else { return .empty() }
-                return rxAsync { try await self.bookRepository.fetchBookDetail(isbn13: self.book.isbn13) }
-                    .catch { error in
-                        errorMessage.accept(error.localizedDescription)
-                        return .empty()
-                    }
-            }
-            .map { $0.itemPage }
-            .bind(to: itemPage)
-            .disposed(by: disposeBag)
 
         // 화면 진입 또는 삭제 후 reload 트리거 → 문장 재조회
         Observable.merge(input.viewWillAppear, reload.asObservable())
@@ -90,19 +70,8 @@ final class BookDetailViewModel {
             .bind(to: reload)
             .disposed(by: disposeBag)
 
-        // 페이지 기록 → DB 저장 (fire-and-forget)
-        input.updateCurrentPage
-            .flatMapLatest { [weak self] page -> Observable<Void> in
-                guard let self else { return .empty() }
-                return rxAsync { try await self.bookRepository.updateCurrentPage(isbn13: self.book.isbn13, page: page) }
-                    .catch { _ in .empty() }
-            }
-            .subscribe()
-            .disposed(by: disposeBag)
-
         return Output(
             sentences:    sentences.asDriver(),
-            itemPage:     itemPage.asDriver(),
             errorMessage: errorMessage.asSignal()
         )
     }

@@ -12,7 +12,7 @@ import RxCocoa
 
 // MARK: - StatisticsViewController
 
-final class StatisticsViewController: UIViewController {
+final class StatisticsViewController: AdaptiveViewController {
 
     private let disposeBag  = DisposeBag()
     private let reloadRelay = PublishRelay<Void>()
@@ -21,7 +21,6 @@ final class StatisticsViewController: UIViewController {
     private var shouldAnimateDonutOnAppearance = false
     private var isStatisticsRequestInFlight = false
     private var latestDonutData: SentenceDonutStatisticsData?
-    private var highlightLayers: [(view: UIView, layer: CAGradientLayer)] = []
     private lazy var viewModel = StatisticsViewModel(
         readingSessionRepository: AppContainer.shared.readingSessionRepository,
         bookRepository:           AppContainer.shared.bookRepository,
@@ -44,24 +43,9 @@ final class StatisticsViewController: UIViewController {
         return sv
     }()
 
-    // 헤더
-    private let titleLabel: UILabel = {
-        let l = UILabel()
-        l.text = "통계"
-        l.font = UIFont(name: "GowunBatang-Bold", size: 34) ?? .systemFont(ofSize: 34, weight: .bold)
-        l.textColor = .accent
-        return l
-    }()
-
-    private lazy var allSentencesButton: UIButton = {
-        let btn = UIButton(type: .system)
-        let cfg = UIImage.SymbolConfiguration(pointSize: 14, weight: .regular)
-        btn.setImage(UIImage(systemName: "text.quote", withConfiguration: cfg), for: .normal)
-        btn.tintColor = UIColor.walnut
-        btn.layer.cornerRadius = 20
-        btn.clipsToBounds = true
-        return btn
-    }()
+    private let allSentencesButton = SystemNavigationStyle.item(
+        image: "text.quote", label: "밑줄 모아보기", identifier: "allSentencesButton", priority: .high
+    )
 
     // 히트맵 카드
     private let heatmapCard = HeatmapCardView()
@@ -79,14 +63,13 @@ final class StatisticsViewController: UIViewController {
         view.backgroundColor = .background
         setupUI()
         setupConstraints()
+        SystemNavigationStyle.observeBarPlacement(on: self)
         bindViewModel()
     }
 
-    override func viewDidLayoutSubviews() {
-        super.viewDidLayoutSubviews()
-        for (view, gradient) in highlightLayers {
-            gradient.frame = view.bounds
-        }
+    override func viewWillLayoutSubviews() {
+        super.viewWillLayoutSubviews()
+        SystemNavigationStyle.setSectionTitle("통계", leadingInset: 8, on: self)
     }
 
     override func viewWillAppear(_ animated: Bool) {
@@ -140,27 +123,12 @@ final class StatisticsViewController: UIViewController {
     // MARK: - Setup
 
     private func setupUI() {
+        SystemNavigationStyle.configure(self, title: "")
+        SystemNavigationStyle.setSectionTitle("통계", leadingInset: 8, on: self)
+        SystemNavigationStyle.setTrailingItems([allSentencesButton], on: navigationItem)
         view.addSubview(scrollView)
         scrollView.addSubview(contentStack)
 
-        let headerContainer = UIView()
-        headerContainer.addSubview(titleLabel)
-        headerContainer.addSubview(allSentencesButton)
-        headerContainer.snp.makeConstraints { make in
-            make.height.equalTo(54)
-        }
-        allSentencesButton.snp.makeConstraints { make in
-            make.trailing.equalToSuperview()
-            make.centerY.equalToSuperview()
-            make.size.equalTo(40)
-        }
-        titleLabel.snp.makeConstraints { make in
-            make.leading.centerY.equalToSuperview()
-            make.trailing.lessThanOrEqualTo(allSentencesButton.snp.leading).offset(-8)
-        }
-        applyFabGlassStyle(to: allSentencesButton, cornerRadius: 20)
-
-        contentStack.addArrangedSubview(headerContainer)
         contentStack.addArrangedSubview(heatmapCard)
         contentStack.addArrangedSubview(genreCard)
         contentStack.addArrangedSubview(lineChartCard)
@@ -168,8 +136,9 @@ final class StatisticsViewController: UIViewController {
 
     private func setupConstraints() {
         scrollView.snp.makeConstraints { make in
-            make.top.equalTo(view.safeAreaLayoutGuide)
-            make.leading.trailing.bottom.equalToSuperview()
+            make.top.equalTo(view.adaptiveContentLayoutGuide)
+            make.leading.trailing.equalTo(view.adaptiveContentLayoutGuide)
+            make.bottom.equalTo(view.adaptiveContentLayoutGuide)
         }
 
         contentStack.snp.makeConstraints { make in
@@ -193,8 +162,12 @@ final class StatisticsViewController: UIViewController {
 
         let steps: [TutorialStep] = [
             TutorialStep(
-                targetFrame: heatmapCard.convert(heatmapCard.bounds, to: nil),
-                message: "날짜 칸을 탭하면 해당 날의\n독서 시간을 확인할 수 있어요"
+                targetFrame: .zero,
+                message: "날짜 칸을 탭하면 해당 날의\n독서 시간을 확인할 수 있어요",
+                targetFrameProvider: { [weak self] in
+                    guard let target = self?.heatmapCard else { return .zero }
+                    return target.convert(target.bounds, to: nil)
+                }
             ),
         ]
 
@@ -249,75 +222,4 @@ final class StatisticsViewController: UIViewController {
             .disposed(by: disposeBag)
     }
 
-    // MARK: - FAB Glass Style
-
-    private func applyFabGlassStyle(to button: UIButton, cornerRadius: CGFloat) {
-        guard let superview = button.superview else { return }
-
-        let shadowView = UIView()
-        shadowView.isUserInteractionEnabled = false
-        shadowView.layer.cornerRadius = cornerRadius
-        shadowView.backgroundColor = .white
-        shadowView.layer.shadowColor   = UIColor.black.cgColor
-        shadowView.layer.shadowOpacity = Float(CGFloat(0x18) / 255)
-        shadowView.layer.shadowRadius  = 8
-        shadowView.layer.shadowOffset  = CGSize(width: 0, height: 6)
-        superview.insertSubview(shadowView, belowSubview: button)
-        shadowView.snp.makeConstraints { $0.edges.equalTo(button) }
-
-        let glassContainer = UIView()
-        glassContainer.isUserInteractionEnabled = false
-        glassContainer.layer.cornerRadius = cornerRadius
-        glassContainer.clipsToBounds = true
-        glassContainer.layer.borderWidth = 1
-        glassContainer.layer.borderColor = UIColor(white: 1, alpha: CGFloat(0x70) / 255).cgColor
-        superview.insertSubview(glassContainer, belowSubview: button)
-        glassContainer.snp.makeConstraints { $0.edges.equalTo(button) }
-        superview.insertSubview(shadowView, belowSubview: glassContainer)
-
-        let blurView = UIVisualEffectView(effect: UIBlurEffect(style: .systemUltraThinMaterial))
-        blurView.isUserInteractionEnabled = false
-        glassContainer.addSubview(blurView)
-        blurView.snp.makeConstraints { $0.edges.equalToSuperview() }
-
-        let solidTint = UIView()
-        solidTint.isUserInteractionEnabled = false
-        solidTint.backgroundColor = UIColor(hex: "#832C11", alpha: CGFloat(0x24) / 255)
-        blurView.contentView.addSubview(solidTint)
-        solidTint.snp.makeConstraints { $0.edges.equalToSuperview() }
-
-        let topSpecular = UIView()
-        topSpecular.isUserInteractionEnabled = false
-        blurView.contentView.addSubview(topSpecular)
-        topSpecular.snp.makeConstraints { $0.edges.equalToSuperview() }
-        let topGrad = CAGradientLayer()
-        topGrad.colors = [
-            UIColor(white: 1, alpha: CGFloat(0x50) / 255).cgColor,
-            UIColor(white: 1, alpha: CGFloat(0x10) / 255).cgColor,
-            UIColor.clear.cgColor,
-        ]
-        topGrad.locations  = [0, 0.45, 1.0]
-        topGrad.startPoint = CGPoint(x: 0.5, y: 0)
-        topGrad.endPoint   = CGPoint(x: 0.5, y: 1)
-        topSpecular.layer.addSublayer(topGrad)
-        highlightLayers.append((topSpecular, topGrad))
-
-        let bottomWarm = UIView()
-        bottomWarm.isUserInteractionEnabled = false
-        blurView.contentView.addSubview(bottomWarm)
-        bottomWarm.snp.makeConstraints { $0.edges.equalToSuperview() }
-        let bottomGrad = CAGradientLayer()
-        bottomGrad.colors = [
-            UIColor(hex: "#832C11", alpha: CGFloat(0x20) / 255).cgColor,
-            UIColor(hex: "#832C11", alpha: CGFloat(0x0C) / 255).cgColor,
-            UIColor.clear.cgColor,
-        ]
-        bottomGrad.locations  = [0, 0.5, 1.0]
-        bottomGrad.startPoint = CGPoint(x: 0.5, y: 1)
-        bottomGrad.endPoint   = CGPoint(x: 0.5, y: 0)
-        bottomWarm.layer.addSublayer(bottomGrad)
-        highlightLayers.append((bottomWarm, bottomGrad))
-
-        button.backgroundColor = .clear
-    }
 }

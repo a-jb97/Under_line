@@ -10,7 +10,9 @@ import SnapKit
 import RxSwift
 import RxCocoa
 
-final class AllSentenceViewController: UIViewController {
+final class AllSentenceViewController: AdaptiveViewController {
+
+    override var avoidsKeyboard: Bool { true }
 
     private let disposeBag            = DisposeBag()
     private let viewWillAppearRelay   = PublishRelay<Void>()
@@ -25,24 +27,6 @@ final class AllSentenceViewController: UIViewController {
     private var expandedIDs: Set<UUID> = []
 
     // MARK: - UI
-
-    private lazy var backButton: UIButton = {
-        let btn = UIButton(type: .system)
-        let cfg = UIImage.SymbolConfiguration(pointSize: 17, weight: .regular)
-        btn.setImage(UIImage(systemName: "chevron.left", withConfiguration: cfg), for: .normal)
-        btn.tintColor = UIColor.accent
-        return btn
-    }()
-
-    private let titleLabel: UILabel = {
-        let l = UILabel()
-        l.text = "밑줄 모아보기"
-        l.font = UIFont(name: "GowunBatang-Bold", size: 34) ?? .systemFont(ofSize: 34, weight: .bold)
-        l.textColor = .accent
-        l.adjustsFontSizeToFitWidth = true
-        l.minimumScaleFactor = 0.7
-        return l
-    }()
 
     private let searchBarView: UIView = {
         let v = UIView()
@@ -105,31 +89,24 @@ final class AllSentenceViewController: UIViewController {
 
     override func viewDidLoad() {
         super.viewDidLoad()
+        SystemNavigationStyle.configure(self, title: "밑줄 모아보기")
         view.backgroundColor = .background
         setupUI()
         setupConstraints()
         bindViewModel()
-        bindActions()
     }
 
     override func viewWillAppear(_ animated: Bool) {
         super.viewWillAppear(animated)
-        navigationController?.interactivePopGestureRecognizer?.delegate = nil
-        navigationController?.interactivePopGestureRecognizer?.isEnabled = true
         viewWillAppearRelay.accept(())
     }
 
     // MARK: - Setup
 
     private func setupUI() {
-        let headerView = UIView()
-        headerView.addSubview(backButton)
-        headerView.addSubview(titleLabel)
-
         searchBarView.addSubview(searchIconView)
         searchBarView.addSubview(searchTextField)
 
-        view.addSubview(headerView)
         view.addSubview(searchBarView)
         view.addSubview(tableView)
         view.addSubview(emptyLabel)
@@ -138,26 +115,12 @@ final class AllSentenceViewController: UIViewController {
         tableView.dataSource = self
         tableView.delegate   = self
 
-        headerView.snp.makeConstraints { make in
-            make.top.equalTo(view.safeAreaLayoutGuide)
-            make.leading.trailing.equalToSuperview().inset(24)
-            make.height.equalTo(54)
-        }
-        backButton.snp.makeConstraints { make in
-            make.leading.centerY.equalToSuperview()
-            make.size.equalTo(CGSize(width: 32, height: 44))
-        }
-        titleLabel.snp.makeConstraints { make in
-            make.leading.equalTo(backButton.snp.trailing).offset(4)
-            make.centerY.equalToSuperview()
-            make.trailing.lessThanOrEqualToSuperview()
-        }
     }
 
     private func setupConstraints() {
         searchBarView.snp.makeConstraints { make in
-            make.top.equalTo(view.safeAreaLayoutGuide).offset(60)
-            make.leading.trailing.equalToSuperview().inset(24)
+            make.top.equalTo(view.adaptiveContentLayoutGuide).offset(8)
+            make.leading.trailing.equalTo(view.adaptiveContentLayoutGuide).inset(24)
             make.height.equalTo(48)
         }
         searchIconView.snp.makeConstraints { make in
@@ -172,10 +135,10 @@ final class AllSentenceViewController: UIViewController {
         }
         tableView.snp.makeConstraints { make in
             make.top.equalTo(searchBarView.snp.bottom)
-            make.leading.trailing.bottom.equalToSuperview()
+            make.leading.trailing.bottom.equalTo(view.adaptiveContentLayoutGuide)
         }
         emptyLabel.snp.makeConstraints { make in
-            make.center.equalTo(view.safeAreaLayoutGuide)
+            make.center.equalTo(view.adaptiveContentLayoutGuide)
         }
     }
 
@@ -205,13 +168,6 @@ final class AllSentenceViewController: UIViewController {
             .disposed(by: disposeBag)
     }
 
-    private func bindActions() {
-        backButton.rx.tap
-            .subscribe(onNext: { [weak self] in
-                self?.navigationController?.popViewController(animated: true)
-            })
-            .disposed(by: disposeBag)
-    }
 }
 
 // MARK: - UITableViewDataSource & Delegate

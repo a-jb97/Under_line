@@ -11,7 +11,9 @@ import RxSwift
 import RxCocoa
 import Toast
 
-final class DirectRegisterViewController: UIViewController {
+final class DirectRegisterViewController: AdaptiveViewController {
+
+    override var avoidsKeyboard: Bool { true }
 
     private let disposeBag = DisposeBag()
     private let viewModel  = DirectRegisterViewModel(repository: AppContainer.shared.bookRepository)
@@ -28,8 +30,8 @@ final class DirectRegisterViewController: UIViewController {
     private let sheetTitleLabel: UILabel = {
         let l = UILabel()
         l.text = "도서 등록"
-        l.font = UIFont(name: "GowunBatang-Bold", size: 22)
-            ?? .systemFont(ofSize: 22, weight: .semibold)
+        l.font = UIFont(name: "GowunBatang-Bold", size: 20)
+            ?? .systemFont(ofSize: 20, weight: .semibold)
         l.textColor = .accent
         return l
     }()
@@ -55,6 +57,7 @@ final class DirectRegisterViewController: UIViewController {
     private let publisherField   = FormFieldView(label: "출판사 *")
     private let publishDateField = FormFieldView(label: "출판일", keyboardType: .numberPad, placeholder: "예 : 20260101")
     private let isbnField        = FormFieldView(label: "ISBN 번호 *", keyboardType: .numberPad)
+    private let itemPageField    = FormFieldView(label: "전체 페이지 수 (선택)", keyboardType: .numberPad, placeholder: "예 : 320")
 
     // Section Bottom
     private let coverURLField    = FormFieldView(label: "책 표지 이미지 URL", keyboardType: .URL, placeholder: "https://")
@@ -84,6 +87,8 @@ final class DirectRegisterViewController: UIViewController {
     // MARK: - Setup
 
     private func setupUI() {
+        // 스크롤 영역 자체가 safe area 안에 있으므로 자동 인셋은 추가하지 않는다.
+        scrollView.contentInsetAdjustmentBehavior = .never
         view.backgroundColor = UIColor.background
 
         view.addSubview(handleBar)
@@ -96,6 +101,7 @@ final class DirectRegisterViewController: UIViewController {
             publisherField,
             publishDateField,
             isbnField,
+            itemPageField,
         ])
         sectionTop.axis    = .vertical
         sectionTop.spacing = 16
@@ -120,8 +126,8 @@ final class DirectRegisterViewController: UIViewController {
     private func setupConstraints() {
         // Drag handle
         handleBar.snp.makeConstraints { make in
-            make.top.equalToSuperview().offset(12)
-            make.centerX.equalToSuperview()
+            make.top.equalTo(view.adaptiveContentLayoutGuide).offset(12)
+            make.centerX.equalTo(view.adaptiveContentLayoutGuide)
             make.width.equalTo(36)
             make.height.equalTo(5)
         }
@@ -129,15 +135,15 @@ final class DirectRegisterViewController: UIViewController {
         // Sheet header (height=52, padding=[0,24])
         sheetTitleLabel.snp.makeConstraints { make in
             make.top.equalTo(handleBar.snp.bottom).offset(11)
-            make.leading.trailing.equalToSuperview().inset(24)
+            make.leading.trailing.equalTo(view.adaptiveContentLayoutGuide).inset(24)
             make.height.equalTo(52)
         }
 
         // Form scroll (top offset=5, padding=[5,24,24,24])
         scrollView.snp.makeConstraints { make in
             make.top.equalTo(sheetTitleLabel.snp.bottom).offset(5)
-            make.leading.trailing.equalToSuperview()
-            make.bottom.equalTo(view.safeAreaLayoutGuide)
+            make.leading.trailing.equalTo(view.adaptiveContentLayoutGuide)
+            make.bottom.equalTo(view.adaptiveContentLayoutGuide)
         }
 
         formStackView.snp.makeConstraints { make in
@@ -164,6 +170,7 @@ final class DirectRegisterViewController: UIViewController {
             coverURLString: coverURLField.textField.rx.text.orEmpty.asObservable(),
             category:       categoryField.textField.rx.text.orEmpty.asObservable(),
             description:    descriptionField.textView.rx.text.orEmpty.asObservable(),
+            itemPage:       itemPageField.textField.rx.text.orEmpty.asObservable(),
             registerTap:    registerButton.rx.tap.asObservable()
         ))
 
@@ -220,9 +227,6 @@ private final class FormFieldView: UIView {
         tf.backgroundColor = .clear
         return tf
     }()
-
-    // 날짜 필드용
-    private var datePicker: UIDatePicker?
 
     init(label: String, keyboardType: UIKeyboardType = .default, placeholder: String = "") {
         super.init(frame: .zero)

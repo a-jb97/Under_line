@@ -2,288 +2,196 @@
 //  BookSearchViewModel.swift
 //  Under_line
 //
-//  도서 검색 시트 ViewModel — MVVM Input/Output 패턴 (페이지네이션 지원)
-//
 
 import RxSwift
 import RxCocoa
 import Foundation
 
 final class BookSearchViewModel {
-
     enum BookListType: Equatable {
-        case bestseller
-        case newSpecial
+        case popular
+        case trending
+
+        var recommendation: RecommendedBookList { self == .popular ? .popular : .trending }
     }
 
-    private enum DisplayMode: Equatable {
+    struct ListUpdate {
+        enum Change {
+            case replace
+            case refresh
+            case append(from: Int)
+            case update(rows: [Int])
+        }
+
+        // 전체 snapshot도 제공해 구독 재연결 시 안전하게 복원할 수 있다.
+        let books: [Book]
+        let change: Change
+        var requestID: UUID? = nil
+        var startedAt: TimeInterval? = nil
+    }
+
+    private enum DisplayMode {
         case list(BookListType)
         case search(String)
-    }
 
-    private enum NextPageRequest {
-        case search(query: String, page: Int)
-        case newSpecial(page: Int)
-    }
+        var pageSize: Int {
+            return 50
+        }
 
-    private enum NextPageResult {
-        case search(query: String, page: Int, books: [Book])
-        case newSpecial(page: Int, books: [Book])
+        var maximumCount: Int {
+            if case .search = self { return 200 }
+            return 50
+        }
     }
-
-    // MARK: - Input
 
     struct Input {
-        let viewDidLoad:    Observable<Void>    // 베스트셀러 fetch 트리거
-        let listSelection:  Observable<BookListType>
-        let searchQuery:    Observable<String>  // searchTextField 텍스트 스트림
-        let searchTrigger:  Observable<Void>    // return 키 탭
-        let loadNextPage:   Observable<Void>    // 스크롤 하단 도달 시
-        let registerBook:   Observable<Book>    // 등록 버튼 탭
+        let viewDidLoad: Observable<Void>
+        let listSelection: Observable<BookListType>
+        let searchQuery: Observable<String>
+        let searchTrigger: Observable<Void>
+        let loadNextPage: Observable<Void>
+        let visibleRows: Observable<[Int]>
+        let descriptionBook: Observable<Book>
+        let registerBook: Observable<Book>
+        let screenAppeared: Observable<Void>
+        let toggleWishlist: Observable<Book>
+        var retry: Observable<Void> = .empty()
     }
 
-    // MARK: - Output
+    struct WishlistState: Equatable {
+        var savedISBNs: Set<String> = []
+        var pendingISBNs: Set<String> = []
+        var isLoaded = false
+        var isRefreshing = false
+    }
+
+    struct RecommendationState {
+        var fetchedAt: Date?
+        var isRefreshing = false
+        var message: String?
+        var canRetry = false
+    }
 
     struct Output {
-        let books:             Driver<[Book]>   // UITableView 데이터 (누적)
-        let isLoading:         Driver<Bool>     // 초기 로딩 인디케이터
-        let isLoadingMore:     Driver<Bool>     // 추가 페이지 로딩 인디케이터
-        let errorMessage:      Signal<String>   // Toast 메시지 (1회성)
-        let registerCompleted: Signal<Void>     // 등록 완료 → 시트 닫기
+        let recommendationState: Driver<RecommendationState>
+        let books: Driver<[Book]>
+        let listUpdates: Driver<ListUpdate>
+        let isLoading: Driver<Bool>
+        let isLoadingMore: Driver<Bool>
+        let errorMessage: Signal<String>
+        let descriptionReady: Signal<String>
+        let registerCompleted: Signal<Void>
+        let wishlistState: Driver<WishlistState>
+        let wishlistMessage: Signal<String>
+        let registeredISBNs: Driver<Set<String>>
     }
 
-    // MARK: - Dependencies
-
+    private let recommendationState = BehaviorRelay<RecommendationState>(value: .init())
+    private var showingCachedRecommendation = false
+    private var requestStartedAt = ProcessInfo.processInfo.systemUptime
+    #if DEBUG
+    private var firstListSpan: BookSearchPerformance.Span?
+    #endif
     private let repository: BookRepositoryProtocol
+    private let registeredISBNs = BehaviorRelay<Set<String>>(value: [])
+    private let wishlistRepository: WishlistRepositoryProtocol
+    private let wishlistState = BehaviorRelay<WishlistState>(value: WishlistState())
+    private let wishlistMessage = PublishRelay<String>()
+    private let wishlistRefresh = SerialDisposable()
+    private var wishlistRefreshID = UUID()
+    private var needsWishlistRefresh = false
     private let disposeBag = DisposeBag()
+    private let pageRequest = SerialDisposable()
+    private let maximumConcurrentEnrichments = 4
+    private let updates = BehaviorRelay<ListUpdate>(value: .init(books: [], change: .replace))
+    private let isLoading = BehaviorRelay<Bool>(value: false)
+    private let isLoadingMore = BehaviorRelay<Bool>(value: false)
+    private let errorMessage = PublishRelay<String>()
+    private let descriptionReady = PublishRelay<String>()
+    private let registerCompleted = PublishRelay<Void>()
+    private var latestQuery = ""
+    private var mode: DisplayMode?
+    private var generation = UUID()
+    private var currentPage = 0
+    private var totalCount = 0
+    private var hasMorePages = false
+    private var pendingEnrichmentISBNs: [String] = []
+    private var attemptedEnrichmentISBNs = Set<String>()
+    private var enrichmentTasks: [String: Task<Void, Never>] = [:]
+    private var descriptionTask: Task<Void, Never>?
 
-    init(repository: BookRepositoryProtocol) {
+    init(repository: BookRepositoryProtocol, wishlistRepository: WishlistRepositoryProtocol) {
         self.repository = repository
+        self.wishlistRepository = wishlistRepository
+        pageRequest.disposed(by: disposeBag)
+        wishlistRefresh.disposed(by: disposeBag)
     }
-
-    // MARK: - Transform
 
     func transform(input: Input) -> Output {
-        let isLoading            = BehaviorRelay<Bool>(value: false)
-        let isLoadingMore        = BehaviorRelay<Bool>(value: false)
-        let errorMessage         = PublishRelay<String>()
-        let latestQuery          = BehaviorRelay<String>(value: "")
-        let currentPage          = BehaviorRelay<Int>(value: 1)
-        let hasMorePages         = BehaviorRelay<Bool>(value: false)
-        let books                = BehaviorRelay<[Book]>(value: [])
-        let displayMode          = BehaviorRelay<DisplayMode>(value: .list(.bestseller))
-        // 이미 요청을 보낸 가장 높은 페이지 번호 — 동기적으로 설정해 중복 요청 차단
-        let highestRequestedPage = BehaviorRelay<Int>(value: 0)
-        // 검색 결과의 totalResults 기반으로 계산한 실제 최대 페이지
-        // Aladin API 한계: 페이지당 50개, 총 최대 200개 → 최대 4페이지
-        let effectiveMaxPage     = BehaviorRelay<Int>(value: 4)
-        // 현재 검색어의 실제 결과 수 — 누적 시 이 수만큼 잘라 중복 방지
-        let totalResultCount     = BehaviorRelay<Int>(value: 0)
-        let newSpecialPageSize   = 10
-        let newSpecialMaxCount   = 50
+        repository.fetchSavedBooks()
+            .map { Set($0.map { $0.isbn13.trimmingCharacters(in: .whitespacesAndNewlines) }) }
+            .distinctUntilChanged()
+            .bind(to: registeredISBNs)
+            .disposed(by: disposeBag)
 
-        // 검색어 최신값 유지
+        input.screenAppeared
+            .subscribe(onNext: { [weak self] in self?.refreshWishlist() })
+            .disposed(by: disposeBag)
+
+        input.toggleWishlist
+            .subscribe(onNext: { [weak self] in self?.toggleWishlist($0) })
+            .disposed(by: disposeBag)
+
         input.searchQuery
-            .bind(to: latestQuery)
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .subscribe(onNext: { [weak self] in self?.latestQuery = $0 })
             .disposed(by: disposeBag)
 
-        // 추천 목록 — viewDidLoad 시 베스트셀러, 탭 선택 시 해당 목록으로 교체
         Observable.merge(
-            input.viewDidLoad.map { BookListType.bestseller },
-            input.listSelection
+            input.viewDidLoad.map { DisplayMode.list(.popular) },
+            input.listSelection.map { DisplayMode.list($0) },
+            input.searchTrigger.compactMap { [weak self] _ -> DisplayMode? in
+                guard let self, !self.latestQuery.isEmpty else { return nil }
+                return .search(self.latestQuery)
+            }
         )
-            .do(onNext: { listType in
-                displayMode.accept(.list(listType))
-                currentPage.accept(1)
-                highestRequestedPage.accept(0)
-                hasMorePages.accept(false)
-                effectiveMaxPage.accept(listType == .newSpecial ? 5 : 1)
-                totalResultCount.accept(listType == .newSpecial ? newSpecialMaxCount : 0)
-            })
-            .flatMapLatest { [weak self] listType -> Observable<(BookListType, [Book])> in
-                guard let self else { return .empty() }
-                isLoading.accept(true)
-                let request: Observable<[Book]>
-                switch listType {
-                case .bestseller:
-                    request = rxAsync { try await self.repository.fetchBestsellers() }
-                case .newSpecial:
-                    request = rxAsync { try await self.repository.fetchNewSpecialBooks(page: 1) }
-                }
-                return request
-                    .do(
-                        onNext:  { _ in isLoading.accept(false) },
-                        onError: { _ in isLoading.accept(false) }
-                    )
-                    .catch { error in
-                        errorMessage.accept(error.localizedDescription)
-                        return .just([])
-                    }
-                    .map { (listType, $0) }
-            }
-            .subscribe(onNext: { listType, fetched in
-                guard displayMode.value == .list(listType) else { return }
-                books.accept(fetched)
-                currentPage.accept(1)
-                hasMorePages.accept(listType == .newSpecial && fetched.count >= newSpecialPageSize)
+        .subscribe(onNext: { [weak self] in self?.start($0) })
+        .disposed(by: disposeBag)
+
+        input.retry
+            .subscribe(onNext: { [weak self] in
+                guard let self, let mode = self.mode else { return }
+                self.start(mode, forceRefresh: true)
             })
             .disposed(by: disposeBag)
 
-        // 새 검색 — return 키 탭 시 1페이지부터 다시 시작
-        input.searchTrigger
-            .withLatestFrom(latestQuery)
-            .filter { !$0.trimmingCharacters(in: .whitespaces).isEmpty }
-            .do(onNext: { query in
-                currentPage.accept(1)
-                highestRequestedPage.accept(0)
-                hasMorePages.accept(false)
-                displayMode.accept(.search(query.trimmingCharacters(in: .whitespaces)))
-            })
-            .flatMapLatest { [weak self] query -> Observable<(books: [Book], totalResults: Int)> in
-                guard let self else { return .empty() }
-                isLoading.accept(true)
-                return rxAsync { try await self.repository.searchBooks(query: query, page: 1) }
-                    .do(
-                        onNext:  { _ in isLoading.accept(false) },
-                        onError: { _ in isLoading.accept(false) }
-                    )
-                    .catch { error in
-                        errorMessage.accept(error.localizedDescription)
-                        return .just((books: [], totalResults: 0))
-                    }
-            }
-            .subscribe(onNext: { result in
-                guard case .search = displayMode.value else { return }
-                // totalResults 기반으로 실제 페이지 수 계산 (API 한계 200개 = 4페이지 상한)
-                let cappedTotal = min(result.totalResults, 200)
-                let pages = cappedTotal == 0 ? 1 : Int(ceil(Double(cappedTotal) / 50.0))
-                effectiveMaxPage.accept(pages)
-                totalResultCount.accept(cappedTotal)
-                books.accept(result.books)
-                hasMorePages.accept(result.totalResults > result.books.count)
-            })
-            .disposed(by: disposeBag)
-
-        // 다음 페이지 — 스크롤 하단 도달 시
-        // highestRequestedPage: 요청 시작 즉시(동기) 갱신 → Driver 비동기 UI 업데이트 후
-        // willDisplayCell이 재발동해도 같은 페이지를 중복 요청하지 않음
         input.loadNextPage
-            .withLatestFrom(Observable.combineLatest(
-                isLoading.asObservable(),
-                hasMorePages.asObservable(),
-                latestQuery.asObservable(),
-                currentPage.asObservable(),
-                highestRequestedPage.asObservable(),
-                effectiveMaxPage.asObservable(),
-                displayMode.asObservable()
-            ))
-            .filter { isLoad, hasMore, query, page, highReq, maxPg, mode in
-                let nextPage = page + 1
-                guard !isLoad && hasMore && nextPage > highReq && nextPage <= maxPg else { return false }
-                switch mode {
-                case .list(.newSpecial):
-                    return true
-                case .list(.bestseller):
-                    return false
-                case .search(let normalizedQuery):
-                    return !query.trimmingCharacters(in: .whitespaces).isEmpty
-                        && normalizedQuery == query.trimmingCharacters(in: .whitespaces)
-                }
-            }
-            .map { _, _, query, page, _, _, mode -> NextPageRequest in
-                let nextPage = page + 1
-                switch mode {
-                case .list(.newSpecial):
-                    return .newSpecial(page: nextPage)
-                case .search:
-                    return .search(query: query, page: nextPage)
-                case .list(.bestseller):
-                    return .newSpecial(page: nextPage)
-                }
-            }
-            .do(onNext: { request in
-                // 동기적으로 선점 — 이후 중복 이벤트는 위 filter에서 차단됨
-                let nextPage: Int
-                switch request {
-                case .search(_, let page), .newSpecial(let page):
-                    nextPage = page
-                }
-                highestRequestedPage.accept(nextPage)
-                isLoadingMore.accept(true)
-            })
-            .flatMap { [weak self] request -> Observable<NextPageResult> in
-                guard let self else { return .empty() }
-                switch request {
-                case .search(let query, let nextPage):
-                    return rxAsync { try await self.repository.searchBooks(query: query, page: nextPage) }
-                        .do(onError: { _ in isLoadingMore.accept(false) })
-                        .catch { error in
-                            errorMessage.accept(error.localizedDescription)
-                            return .just((books: [], totalResults: 0))
-                        }
-                        .map { .search(query: query, page: nextPage, books: $0.books) }
-                case .newSpecial(let nextPage):
-                    return rxAsync { try await self.repository.fetchNewSpecialBooks(page: nextPage) }
-                        .do(onError: { _ in isLoadingMore.accept(false) })
-                        .catch { error in
-                            errorMessage.accept(error.localizedDescription)
-                            return .just([])
-                        }
-                        .map { .newSpecial(page: nextPage, books: $0) }
-                }
-            }
-            .observe(on: MainScheduler.instance)
-            .subscribe(onNext: { result in
-                switch result {
-                case .search(let query, let nextPage, let fetched):
-                    // 검색어가 바뀐 경우 무시 (스테일 응답 방어)
-                    let normalizedQuery = query.trimmingCharacters(in: .whitespaces)
-                    guard latestQuery.value == query,
-                          displayMode.value == .search(normalizedQuery) else {
-                        isLoadingMore.accept(false)
-                        return
-                    }
-                    currentPage.accept(nextPage)
-                    if !fetched.isEmpty {
-                        let combined = Array((books.value + fetched).prefix(totalResultCount.value))
-                        books.accept(combined)
-                        let reachedEnd = combined.count >= totalResultCount.value
-                            || fetched.count < 50
-                            || nextPage >= effectiveMaxPage.value
-                        if reachedEnd { hasMorePages.accept(false) }
-                    } else {
-                        hasMorePages.accept(false)
-                    }
-                case .newSpecial(let nextPage, let fetched):
-                    guard displayMode.value == .list(.newSpecial) else {
-                        isLoadingMore.accept(false)
-                        return
-                    }
-                    currentPage.accept(nextPage)
-                    if !fetched.isEmpty {
-                        let combined = Array((books.value + fetched).prefix(newSpecialMaxCount))
-                        books.accept(combined)
-                        let reachedEnd = combined.count >= newSpecialMaxCount
-                            || fetched.count < newSpecialPageSize
-                            || nextPage >= effectiveMaxPage.value
-                        if reachedEnd { hasMorePages.accept(false) }
-                    } else {
-                        hasMorePages.accept(false)
-                    }
-                }
-                isLoadingMore.accept(false)
-            })
+            .subscribe(onNext: { [weak self] in self?.loadNextPage() })
             .disposed(by: disposeBag)
 
-        // 등록 버튼 탭 → saveBook → registerCompleted
-        let registerCompleted = PublishRelay<Void>()
+        input.visibleRows
+            .subscribe(onNext: { [weak self] in self?.updateEnrichmentWindow(visibleRows: $0) })
+            .disposed(by: disposeBag)
+
+        input.descriptionBook
+            .subscribe(onNext: { [weak self] in self?.enrichDescription(for: $0) })
+            .disposed(by: disposeBag)
 
         input.registerBook
-            .flatMapLatest { [weak self] book -> Observable<Void> in
+            .filter { [weak self] book in
+                guard let self else { return false }
+                return !self.registeredISBNs.value.contains(
+                    book.isbn13.trimmingCharacters(in: .whitespacesAndNewlines)
+                )
+            }
+            .flatMapFirst { [weak self] book -> Observable<Void> in
                 guard let self else { return .empty() }
-                return rxAsync { try await self.repository.saveBook(book) }
-                    .catch { error in
-                        errorMessage.accept(error.localizedDescription)
+                return rxAsync {
+                    [repository = self.repository] in
+                    try await repository.registerSearchedBook(book)
+                }
+                    .catch { [weak self] error in
+                        self?.errorMessage.accept(error.localizedDescription)
                         return .empty()
                     }
             }
@@ -291,11 +199,372 @@ final class BookSearchViewModel {
             .disposed(by: disposeBag)
 
         return Output(
-            books:             books.asDriver(),
-            isLoading:         isLoading.asDriver(),
-            isLoadingMore:     isLoadingMore.asDriver(),
-            errorMessage:      errorMessage.asSignal(),
-            registerCompleted: registerCompleted.asSignal()
+            recommendationState: recommendationState.asDriver(),
+            books: updates.map(\.books).asDriver(onErrorJustReturn: []),
+            listUpdates: updates.asDriver(),
+            isLoading: isLoading.asDriver(),
+            isLoadingMore: isLoadingMore.asDriver(),
+            errorMessage: errorMessage.asSignal(),
+            descriptionReady: descriptionReady.asSignal(),
+            registerCompleted: registerCompleted.asSignal(),
+            wishlistState: wishlistState.asDriver(),
+            wishlistMessage: wishlistMessage.asSignal(),
+            registeredISBNs: registeredISBNs.asDriver()
         )
+    }
+
+    private func refreshWishlist() {
+        // Re-entry during a mutation must not read a snapshot from before that mutation.
+        guard wishlistState.value.pendingISBNs.isEmpty else {
+            needsWishlistRefresh = true
+            return
+        }
+        needsWishlistRefresh = false
+        let requestID = UUID()
+        wishlistRefreshID = requestID
+        var state = wishlistState.value
+        state.isRefreshing = true
+        wishlistState.accept(state)
+        wishlistRefresh.disposable = rxAsync { [wishlistRepository] in
+            let items = try await wishlistRepository.fetchAllItems()
+            try Task.checkCancellation()
+            return items
+        }
+        .subscribe(onNext: { [weak self] items in
+            guard let self, self.wishlistRefreshID == requestID else { return }
+            var state = self.wishlistState.value
+            state.savedISBNs = Set(items.map { $0.isbn13.trimmingCharacters(in: .whitespacesAndNewlines) })
+            state.isLoaded = true
+            state.isRefreshing = false
+            self.wishlistState.accept(state)
+        }, onError: { [weak self] error in
+            guard let self, self.wishlistRefreshID == requestID else { return }
+            var state = self.wishlistState.value
+            state.isLoaded = false
+            state.isRefreshing = false
+            self.wishlistState.accept(state)
+            if !(error is CancellationError) {
+                self.errorMessage.accept(error.localizedDescription)
+            }
+        })
+    }
+
+    private func toggleWishlist(_ book: Book) {
+        let isbn13 = book.isbn13.trimmingCharacters(in: .whitespacesAndNewlines)
+        var state = wishlistState.value
+        guard state.isLoaded, !state.isRefreshing,
+              !state.pendingISBNs.contains(isbn13) else { return }
+        let shouldSave = !state.savedISBNs.contains(isbn13)
+        state.pendingISBNs.insert(isbn13)
+        wishlistState.accept(state)
+
+        rxAsync { [repository, wishlistRepository] in
+            if shouldSave {
+                let detail: BookDetailMetadata?
+                do {
+                    detail = try await repository.fetchBookSupplement(isbn13: isbn13)
+                } catch is CancellationError {
+                    throw CancellationError()
+                } catch {
+                    detail = nil
+                }
+                try Task.checkCancellation()
+                let enriched = detail.map { book.mergingDetailMetadata(from: $0) } ?? book
+                try await wishlistRepository.addBook(enriched)
+            } else {
+                try await wishlistRepository.deleteBook(isbn13: isbn13)
+            }
+        }
+        .subscribe(onNext: { [weak self] in
+            self?.finishWishlistChange(isbn13: isbn13, saved: shouldSave)
+        }, onError: { [weak self] error in
+            self?.finishWishlistChange(isbn13: isbn13, saved: shouldSave, error: error)
+        })
+        .disposed(by: disposeBag)
+    }
+
+    private func finishWishlistChange(isbn13: String, saved: Bool, error: Error? = nil) {
+        var state = wishlistState.value
+        state.pendingISBNs.remove(isbn13)
+        let isDuplicate = error as? WishlistRepositoryError == .duplicateISBN13
+        if error == nil || isDuplicate {
+            if saved || isDuplicate {
+                state.savedISBNs.insert(isbn13)
+            } else {
+                state.savedISBNs.remove(isbn13)
+            }
+        }
+        wishlistState.accept(state)
+        if let error, !isDuplicate {
+            if !(error is CancellationError) { errorMessage.accept(error.localizedDescription) }
+        } else {
+            wishlistMessage.accept(isDuplicate ? "이미 위시리스트에 추가된 도서입니다."
+                : saved ? "위시리스트에 추가했습니다." : "위시리스트에서 삭제했습니다.")
+        }
+        if needsWishlistRefresh, state.pendingISBNs.isEmpty { refreshWishlist() }
+    }
+
+    private func start(_ mode: DisplayMode, forceRefresh: Bool = false) {
+        if case .list(let list) = mode, case .list(let current) = self.mode,
+           list == current, isLoading.value || recommendationState.value.isRefreshing { return }
+        // 동일 검색의 첫 페이지·다음 페이지 요청이 진행 중이면 그대로 유지한다.
+        if case .search(let query) = mode,
+           case .search(let currentQuery) = self.mode,
+           query == currentQuery,
+           isLoading.value || isLoadingMore.value {
+            return
+        }
+
+        // 같은 검색어·같은 탭으로 돌아와도 이전 응답과 구분한다.
+        generation = UUID()
+        requestStartedAt = ProcessInfo.processInfo.systemUptime
+        #if DEBUG
+        firstListSpan?.finish(.superseded)
+        let source: BookSearchPerformance.Source
+        switch mode {
+        case .list(.popular): source = .popular
+        case .list(.trending): source = .trending
+        case .search: source = .search
+        }
+        firstListSpan = BookSearchPerformance.Span(.firstListReceived, source: source, id: generation, startedAt: requestStartedAt)
+        #endif
+        cancelEnrichment()
+        descriptionTask?.cancel()
+        descriptionTask = nil
+        pageRequest.disposable = Disposables.create()
+        self.mode = mode
+        currentPage = 0
+        totalCount = 0
+        hasMorePages = false
+        showingCachedRecommendation = false
+        recommendationState.accept(.init())
+        isLoading.accept(true)
+        isLoadingMore.accept(false)
+        if case .list(let list) = mode {
+            if let snapshot = BookSearchTrace.$requestID.withValue(generation, operation: { repository.cachedRecommendation(list.recommendation) }) {
+                receive(BookSearchPage(books: snapshot.books, totalResults: snapshot.books.count, isEnd: true), mode: mode, page: 1, fromCache: true)
+                showingCachedRecommendation = true
+                let refresh = forceRefresh || !snapshot.isFresh(at: Date())
+                recommendationState.accept(.init(fetchedAt: snapshot.fetchedAt, isRefreshing: refresh,
+                    message: snapshot.books.isEmpty ? "표시할 도서가 없습니다." : nil))
+                if !refresh { return }
+            } else {
+                emit(.init(books: [], change: .replace))
+            }
+        }
+        request(mode: mode, page: 1, generation: generation)
+    }
+
+    private func loadNextPage() {
+        guard let mode, !isLoading.value, !isLoadingMore.value, hasMorePages else { return }
+        if case .search(let query) = mode, query != latestQuery { return }
+        // UI 이벤트가 반복되어도 응답 전에는 한 페이지만 요청한다.
+        isLoadingMore.accept(true)
+        requestStartedAt = ProcessInfo.processInfo.systemUptime
+        request(mode: mode, page: currentPage + 1, generation: generation)
+    }
+
+    private func request(mode: DisplayMode, page: Int, generation: UUID) {
+        let request: Observable<BookSearchPage> = rxAsync { [repository] in
+            try await BookSearchTrace.$requestID.withValue(generation) {
+                switch mode {
+                case .list(.popular):
+                    let snapshot = try await repository.refreshRecommendation(.popular)
+                    return BookSearchPage(books: snapshot.books, totalResults: snapshot.books.count, isEnd: true)
+                case .list(.trending):
+                    let snapshot = try await repository.refreshRecommendation(.trending)
+                    return BookSearchPage(books: snapshot.books, totalResults: snapshot.books.count, isEnd: true)
+                case .search(let query):
+                    return try await repository.searchBooks(query: query, page: page)
+                }
+            }
+        }
+        pageRequest.disposable = request.subscribe(
+            onNext: { [weak self] result in
+                guard let self, self.generation == generation else { return }
+                if case .list(let list) = mode {
+                    self.recommendationState.accept(.init(
+                        fetchedAt: self.repository.cachedRecommendation(list.recommendation)?.fetchedAt ?? Date(),
+                        message: result.books.isEmpty ? "표시할 도서가 없습니다." : nil
+                    ))
+                }
+                self.receive(result, mode: mode, page: page)
+            },
+            onError: { [weak self] error in
+                guard let self, self.generation == generation else { return }
+                // 실패 시 currentPage와 hasMorePages를 유지해 동일 페이지 재시도를 허용한다.
+                if page == 1 && !self.showingCachedRecommendation {
+                    self.emit(.init(books: [], change: .replace))
+                }
+                self.isLoading.accept(false)
+                self.isLoadingMore.accept(false)
+                #if DEBUG
+                self.firstListSpan?.finish(error is CancellationError ? .cancelled : .failed)
+                self.firstListSpan = nil
+                #endif
+                if !(error is CancellationError) {
+                    if case .list = mode {
+                        var state = self.recommendationState.value
+                        state.isRefreshing = false
+                        state.canRetry = true
+                        state.message = self.showingCachedRecommendation
+                            ? "최신 목록을 불러오지 못했습니다. 이전 목록을 표시합니다."
+                            : error.localizedDescription
+                        self.recommendationState.accept(state)
+                    } else { self.errorMessage.accept(error.localizedDescription) }
+                }
+            }
+        )
+    }
+
+    private func emit(_ update: ListUpdate) {
+        var update = update
+        update.requestID = generation
+        update.startedAt = requestStartedAt
+        updates.accept(update)
+    }
+
+    private func receive(_ result: BookSearchPage, mode: DisplayMode, page: Int, fromCache: Bool = false) {
+        if page == 1 { totalCount = min(max(result.totalResults, 0), mode.maximumCount) }
+        let previous = page == 1 ? [] : updates.value.books
+        var combined = Array((previous + result.books).prefix(totalCount))
+        if showingCachedRecommendation, page == 1 {
+            let existing = Dictionary(updates.value.books.map { ($0.isbn13, $0) }, uniquingKeysWith: { first, _ in first })
+            combined = combined.map { book in
+                existing[book.isbn13].map { book.mergingListMetadata(from: BookListMetadata(book: $0)) } ?? book
+            }
+        }
+        currentPage = page
+        hasMorePages = !result.books.isEmpty
+            && combined.count < totalCount
+            && page * mode.pageSize < totalCount
+        switch mode {
+        case .list(.popular):
+            hasMorePages = false
+        case .list(.trending):
+            hasMorePages = false
+        case .search:
+            // ISBN13이 없는 문서가 제외되어 페이지가 짧아져도 카카오의 종료값을 따른다.
+            hasMorePages = hasMorePages && !result.isEnd
+        }
+        // 상태 계산과 snapshot 반영 중 발생하는 UI 요청은 로딩 상태로 차단한다.
+        #if DEBUG
+        firstListSpan?.finish(count: combined.count, cache: fromCache ? .memory : .none)
+        firstListSpan = nil
+        #endif
+        if page == 1 {
+            if showingCachedRecommendation, updates.value.books.map(\.isbn13) == combined.map(\.isbn13) {
+                emit(.init(books: combined, change: .update(rows: Array(combined.indices))))
+            } else {
+                emit(.init(books: combined, change: showingCachedRecommendation ? .refresh : .replace))
+            }
+        } else if combined.count > previous.count {
+            emit(.init(books: combined, change: .append(from: previous.count)))
+        }
+        isLoading.accept(false)
+        isLoadingMore.accept(false)
+    }
+
+    private func updateEnrichmentWindow(visibleRows: [Int]) {
+        guard case .list = mode, !isLoading.value, currentPage > 0 else { return }
+        let books = updates.value.books
+        let rows = Set(visibleRows.filter { books.indices.contains($0) }).sorted()
+        guard let lastRow = rows.last else {
+            pendingEnrichmentISBNs.removeAll()
+            return
+        }
+
+        let nextRows = (lastRow + 1)..<min(lastRow + 6, books.count)
+        var seenISBNs = Set<String>()
+        // 표시 중인 행을 우선하고, 아직 시작하지 않은 요청은 최신 범위로 교체한다.
+        pendingEnrichmentISBNs = (rows + Array(nextRows))
+            .map { books[$0].isbn13 }
+            .filter { seenISBNs.insert($0).inserted && !attemptedEnrichmentISBNs.contains($0) }
+        scheduleEnrichment(generation: generation)
+    }
+
+    private func scheduleEnrichment(generation: UUID) {
+        guard self.generation == generation else { return }
+        while enrichmentTasks.count < maximumConcurrentEnrichments,
+              !pendingEnrichmentISBNs.isEmpty {
+            let isbn13 = pendingEnrichmentISBNs.removeFirst()
+            attemptedEnrichmentISBNs.insert(isbn13)
+            let task = Task { [weak self, repository] in
+                let metadata = try? await repository.fetchListBookMetadata(isbn13: isbn13)
+                guard let self else { return }
+                self.finishEnrichment(
+                    isbn13: isbn13,
+                    metadata: Task.isCancelled ? nil : metadata,
+                    generation: generation
+                )
+            }
+            enrichmentTasks[isbn13] = task
+        }
+    }
+
+    private func finishEnrichment(
+        isbn13: String,
+        metadata: BookListMetadata?,
+        generation: UUID
+    ) {
+        guard self.generation == generation else { return }
+        enrichmentTasks.removeValue(forKey: isbn13)
+
+        if let metadata {
+            var books = updates.value.books
+            var changedRows: [Int] = []
+            for index in books.indices where books[index].isbn13 == isbn13 {
+                let original = books[index]
+                let enriched = original.mergingListMetadata(from: metadata)
+                guard original.coverURL != enriched.coverURL
+                        || original.description != enriched.description else { continue }
+                books[index] = enriched
+                changedRows.append(index)
+            }
+            if !changedRows.isEmpty {
+                emit(.init(books: books, change: .update(rows: changedRows)))
+            }
+        }
+
+        scheduleEnrichment(generation: generation)
+    }
+
+    private func enrichDescription(for book: Book) {
+        let requestGeneration = generation
+        descriptionTask?.cancel()
+        descriptionTask = Task { [weak self, repository] in
+            let metadata: BookDetailMetadata?
+            do {
+                metadata = try await repository.fetchBookSupplement(isbn13: book.isbn13)
+            } catch {
+                metadata = nil
+            }
+            guard !Task.isCancelled,
+                  let self,
+                  self.generation == requestGeneration else { return }
+
+            if let metadata,
+               !metadata.description.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                var books = self.updates.value.books
+                var changedRows: [Int] = []
+                for index in books.indices where books[index].isbn13 == book.isbn13 {
+                    let enriched = books[index].mergingDetailMetadata(from: metadata)
+                    guard books[index].description != enriched.description else { continue }
+                    books[index] = enriched
+                    changedRows.append(index)
+                }
+                if !changedRows.isEmpty {
+                    self.emit(.init(books: books, change: .update(rows: changedRows)))
+                }
+            }
+            self.descriptionReady.accept(book.isbn13)
+        }
+    }
+
+    private func cancelEnrichment() {
+        pendingEnrichmentISBNs.removeAll()
+        attemptedEnrichmentISBNs.removeAll()
+        enrichmentTasks.values.forEach { $0.cancel() }
+        enrichmentTasks.removeAll()
     }
 }

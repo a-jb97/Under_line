@@ -12,24 +12,37 @@ import RxCocoa
 import UniformTypeIdentifiers
 import Toast
 
-final class SettingsViewController: UIViewController {
+final class SettingsViewController: AdaptiveViewController {
 
     private let viewModel = SettingsViewModel()
     private let restoreFilePickedRelay = PublishRelay<URL>()
     private let disposeBag = DisposeBag()
 
+    private let preferenceSelected = PublishRelay<BookPurchasePreference>()
+    private var currentPreference = BookPurchasePreference.askEveryTime
+    private let scrollView = UIScrollView()
+    private let purchaseValueLabel = UILabel()
+    private lazy var purchaseRow: UIButton = {
+        let row = makeChevronRow(title: "도서 구매 서점")
+        let title = row.subviews.compactMap { $0 as? UILabel }.first!
+        title.snp.remakeConstraints { make in
+            make.leading.equalToSuperview().inset(24)
+            make.top.equalToSuperview().offset(6)
+        }
+        purchaseValueLabel.font = UIFont(name: "GowunBatang-Regular", size: 12) ?? .systemFont(ofSize: 12)
+        purchaseValueLabel.textColor = .appPrimary
+        purchaseValueLabel.isUserInteractionEnabled = false
+        row.addSubview(purchaseValueLabel)
+        purchaseValueLabel.snp.makeConstraints { make in
+            make.leading.equalTo(title)
+            make.top.equalTo(title.snp.bottom).offset(2)
+        }
+        return row
+    }()
+
     private var isImportMode = false
 
     // MARK: - UI
-
-    private let titleLabel: UILabel = {
-        let l = UILabel()
-        l.text = "설정"
-        l.font = UIFont(name: "GowunBatang-Bold", size: 34)
-            ?? .systemFont(ofSize: 34, weight: .bold)
-        l.textColor = .accent
-        return l
-    }()
 
     private let tableSection: UIView = {
         let v = UIView()
@@ -56,7 +69,25 @@ final class SettingsViewController: UIViewController {
         view.backgroundColor = .background
         setupUI()
         setupConstraints()
+        SystemNavigationStyle.observeBarPlacement(on: self)
         bindActions()
+    }
+
+    override func viewWillLayoutSubviews() {
+        super.viewWillLayoutSubviews()
+        SystemNavigationStyle.setSectionTitle("설정", leadingInset: 10, on: self)
+    }
+
+    override func viewDidAppear(_ animated: Bool) {
+        super.viewDidAppear(animated)
+        scrollView.scrollRectToVisible(purchaseRow.convert(purchaseRow.bounds, to: scrollView), animated: false)
+        view.layoutIfNeeded()
+        TutorialSupport.show(on: self, key: "tutorial.purchaseSettings", steps: [
+            TutorialStep(targetFrame: .zero, message: "기본 구매 서점을 지정하면 바로 연결돼요\n‘구매할 때마다 선택’으로 바꿀 수도 있어요", targetFrameProvider: { [weak self] in
+                guard let row = self?.purchaseRow else { return .zero }
+                return row.convert(row.bounds, to: nil)
+            })
+        ])
     }
 
     override var preferredStatusBarStyle: UIStatusBarStyle { .darkContent }
@@ -64,13 +95,16 @@ final class SettingsViewController: UIViewController {
     // MARK: - Setup
 
     private func setupUI() {
-        view.addSubview(titleLabel)
-        view.addSubview(tableSection)
+        SystemNavigationStyle.configure(self, title: "")
+        SystemNavigationStyle.setSectionTitle("설정", leadingInset: 10, on: self)
+        view.addSubview(scrollView)
+        scrollView.addSubview(tableSection)
 
         let rows: [(UIView, Bool)] = [
             (backupRow,          true),
             (restoreRow,         true),
             (randomUnderLineRow, true),
+            (purchaseRow, true),
             (tutorialRow,        true),
             (feedbackRow, true),
             (reviewRow,   true),
@@ -113,19 +147,18 @@ final class SettingsViewController: UIViewController {
     }
 
     private func setupConstraints() {
-        titleLabel.snp.makeConstraints { make in
-            make.top.equalTo(view.safeAreaLayoutGuide).offset(8)
-            make.leading.greaterThanOrEqualToSuperview().inset(24)
-            make.width.lessThanOrEqualTo(600)
-            make.width.equalToSuperview().priority(.high)
-            make.centerX.equalToSuperview()
+        scrollView.snp.makeConstraints { make in
+            make.top.equalTo(view.adaptiveContentLayoutGuide).offset(12)
+            make.leading.trailing.bottom.equalTo(view.adaptiveContentLayoutGuide)
         }
-
+        scrollView.contentLayoutGuide.snp.makeConstraints { make in
+            make.width.equalTo(scrollView.frameLayoutGuide)
+        }
         tableSection.snp.makeConstraints { make in
-            make.top.equalTo(titleLabel.snp.bottom).offset(28)
+            make.top.bottom.equalTo(scrollView.contentLayoutGuide)
+            make.centerX.equalTo(scrollView.frameLayoutGuide)
+            make.width.equalTo(scrollView.frameLayoutGuide).priority(.high)
             make.width.lessThanOrEqualTo(600)
-            make.width.equalToSuperview().priority(.high)
-            make.centerX.equalToSuperview()
         }
     }
 
@@ -200,9 +233,27 @@ final class SettingsViewController: UIViewController {
 
     private func bindActions() {
         let output = viewModel.transform(input: SettingsViewModel.Input(
+            preferenceSelected: preferenceSelected.asObservable(),
             backupTap:         backupRow.rx.tap.asObservable(),
             restoreFilePicked: restoreFilePickedRelay.asObservable()
         ))
+
+        output.purchasePreference.drive(onNext: { [weak self] value in
+            self?.currentPreference = value
+            self?.purchaseValueLabel.text = value.displayName
+        }).disposed(by: disposeBag)
+        purchaseRow.rx.tap.subscribe(onNext: { [weak self] in
+            guard let self, self.presentedViewController == nil else { return }
+            let menu = UIAlertController(title: "도서 구매 서점", message: "현재: \(self.currentPreference.displayName)", preferredStyle: .alert)
+            let options = BookStore.allCases.map { BookPurchasePreference.store($0) } + [.askEveryTime]
+            for option in options {
+                menu.addAction(UIAlertAction(title: option.displayName, style: .default) { [weak self] _ in
+                    self?.preferenceSelected.accept(option)
+                })
+            }
+            menu.addAction(UIAlertAction(title: "취소", style: .cancel))
+            self.present(menu, animated: true)
+        }).disposed(by: disposeBag)
 
         output.exportFileURL
             .observe(on: MainScheduler.instance)
@@ -273,9 +324,7 @@ final class SettingsViewController: UIViewController {
 
         tutorialRow.rx.tap
             .subscribe(onNext: { [weak self] in
-                ["tutorial.bookshelf", "tutorial.bookDetail",
-                 "tutorial.readingRecord", "tutorial.statistics",
-                 "tutorial.cardEditor"]
+                TutorialSupport.keys
                     .forEach { UserDefaults.standard.removeObject(forKey: $0) }
                 guard let tabBar = self?.tabBarController else { return }
                 tabBar.selectedIndex = 0

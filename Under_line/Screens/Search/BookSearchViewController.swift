@@ -9,18 +9,97 @@ import UIKit
 import SnapKit
 import RxSwift
 import RxCocoa
-import Kingfisher
 import Toast
 
-final class BookSearchViewController: UIViewController {
+final class BookSearchViewController: AdaptiveViewController {
+
+    override var avoidsKeyboard: Bool { true }
 
     // MARK: - Properties
 
     private let disposeBag = DisposeBag()
-    private let viewModel  = BookSearchViewModel(repository: AppContainer.shared.bookRepository)
+    private let viewModel: BookSearchViewModel
+
+    init(viewModel: BookSearchViewModel? = nil) {
+        self.viewModel = viewModel ?? BookSearchViewModel(
+            repository: AppContainer.shared.bookRepository,
+            wishlistRepository: AppContainer.shared.wishlistRepository
+        )
+        super.init(nibName: nil, bundle: nil)
+    }
+
+    required init?(coder: NSCoder) {
+        fatalError("Use init(viewModel:)")
+    }
+
+    private let screenAppearedRelay = PublishRelay<Void>()
+    private let toggleWishlistRelay = PublishRelay<Book>()
+    private var wishlistState = BookSearchViewModel.WishlistState()
+    private var registeredISBNs: Set<String> = []
     private let loadNextPageRelay  = PublishRelay<Void>()
     private let registerBookRelay  = PublishRelay<Book>()
+    private let descriptionBookRelay = PublishRelay<Book>()
+    private let visibleRowsRelay = PublishRelay<[Int]>()
+    private let retryRelay = PublishRelay<Void>()
     private let listSelectionRelay = PublishRelay<BookSearchViewModel.BookListType>()
+
+    private let coverPrefetcher = BookCoverPrefetcher()
+    private var isScreenVisible = false
+    private var isLoadingBooks = false
+    private var prefetchUpdateScheduled = false
+    private var enrichmentUpdateScheduled = false
+    private var paginationUpdateScheduled = false
+    private var paginationGate = BookSearchPaginationGate()
+    private var isLoadingNextPage = false
+    private var expandedRow: Int?
+    private var descriptionLoadingISBN: String?
+    private var pendingDescriptionISBN: String?
+    private lazy var bookDataSource: BookSearchTableDataSource = BookSearchTableDataSource(updateCell: { [weak self] cell, indexPath, book in
+        guard let self, let cell = cell as? BookRowCell else { return }
+        let isExpanded = self.expandedRow == indexPath.row
+        cell.updateMetadata(
+            content: BookRowContent(book: book),
+            displayScale: self.view.traitCollection.displayScale,
+            updateDescription: !isExpanded
+        )
+        if isExpanded {
+            self.pendingDescriptionISBN = book.isbn13
+            self.flushPendingDescriptionUpdate()
+        }
+    }) { [weak self] tableView, indexPath, book in
+        let cell = tableView.dequeueReusableCell(withIdentifier: BookRowCell.reuseID, for: indexPath) as! BookRowCell
+        #if DEBUG
+        cell.performanceBatchID = self?.performanceBatchID
+        #endif
+        cell.configure(
+            content: BookRowContent(book: book),
+            displayScale: self?.view.traitCollection.displayScale ?? 1,
+            descriptionWidth: max(tableView.bounds.width - 48, 1),
+            isExpanded: self?.expandedRow == indexPath.row,
+            isDescriptionLoading: self?.descriptionLoadingISBN == book.isbn13,
+            primaryAction: .registration(isRegistered: self?.registeredISBNs.contains(book.isbn13.trimmingCharacters(in: .whitespacesAndNewlines)) ?? false),
+            secondaryAction: self?.wishlistAction(for: book.isbn13) ?? .wishlist(isSaved: false, isEnabled: false)
+        )
+        cell.onPrimaryAction = { [weak self] isbn13 in
+            guard let self, let book = self.bookDataSource.books.first(where: {
+                $0.isbn13.trimmingCharacters(in: .whitespacesAndNewlines) == isbn13
+            }) else { return }
+            self.registerBookRelay.accept(book)
+        }
+        cell.onSecondaryAction = { [weak self] isbn13 in
+            guard let self, let book = self.bookDataSource.books.first(where: {
+                $0.isbn13.trimmingCharacters(in: .whitespacesAndNewlines) == isbn13
+            }) else { return }
+            self.toggleWishlistRelay.accept(book)
+        }
+        return cell
+    }
+
+    #if DEBUG
+    private var firstCellDisplaySpan: BookSearchPerformance.Span?
+    private var performanceBatchID: UUID?
+    private var firstMeasuredRow = 0
+    #endif
 
     // MARK: - UI Components
 
@@ -34,47 +113,14 @@ final class BookSearchViewController: UIViewController {
     private let sheetTitleLabel: UILabel = {
         let l = UILabel()
         l.text = "도서 검색"
-        l.font = UIFont(name: "GowunBatang-Bold", size: 22)
-            ?? .systemFont(ofSize: 22, weight: .semibold)
+        l.font = UIFont(name: "GowunBatang-Bold", size: 20)
+            ?? .systemFont(ofSize: 20, weight: .semibold)
         l.textColor = UIColor(hex: "#190e0b")
         return l
     }()
 
-    private let searchBarView: UIView = {
-        let v = UIView()
-        v.backgroundColor = UIColor.background
-        v.layer.cornerRadius = 10
-        v.layer.borderWidth  = 1
-        v.layer.borderColor  = UIColor.walnut.cgColor
-        return v
-    }()
-
-    private let searchIconView: UIImageView = {
-        let iv = UIImageView()
-        let cfg = UIImage.SymbolConfiguration(pointSize: 16, weight: .regular)
-        iv.image = UIImage(systemName: "magnifyingglass", withConfiguration: cfg)
-        iv.tintColor    = UIColor.walnut
-        iv.contentMode  = .scaleAspectFit
-        return iv
-    }()
-
-    private let searchTextField: UITextField = {
-        let tf = UITextField()
-        let placeholderFont = UIFont(name: "GoyangIlsan R", size: 14)
-            ?? .systemFont(ofSize: 14)
-        tf.attributedPlaceholder = NSAttributedString(
-            string: "책 제목 또는 저자를 검색하세요",
-            attributes: [
-                .font:            placeholderFont,
-                .foregroundColor: UIColor(hex: "#190e0b").withAlphaComponent(0.5),
-            ]
-        )
-        tf.font            = placeholderFont
-        tf.textColor       = UIColor(hex: "#190e0b")
-        tf.backgroundColor = .clear
-        tf.returnKeyType   = .search
-        return tf
-    }()
+    private let searchBarView = BookSearchBarView()
+    private var searchTextField: UITextField { searchBarView.textField }
 
     private let directRegisterButton: UIButton = {
         var config = UIButton.Configuration.plain()
@@ -114,8 +160,24 @@ final class BookSearchViewController: UIViewController {
         return v
     }()
 
-    private lazy var bestsellerButton = makeListTabButton(title: "베스트셀러 50", selected: true)
-    private lazy var newSpecialButton = makeListTabButton(title: "추천 신간", selected: false)
+    private let listStatusLabel: UILabel = {
+        let label = UILabel()
+        label.font = UIFont(name: "GowunBatang-Regular", size: 11) ?? .systemFont(ofSize: 11)
+        label.textColor = .secondaryLabel
+        label.numberOfLines = 0
+        return label
+    }()
+    private let retryButton: UIButton = {
+        let button = UIButton(type: .system)
+        button.setTitle("다시 시도", for: .normal)
+        button.titleLabel?.font = UIFont(name: "GowunBatang-Bold", size: 12)
+        button.setTitleColor(.appPrimary, for: .normal)
+        button.isHidden = true
+        return button
+    }()
+
+    private lazy var popularButton = makeListTabButton(title: "인기 대출 도서", selected: true)
+    private lazy var trendingButton = makeListTabButton(title: "요즘 뜨는 책", selected: false)
 
     private lazy var listSegmentContainerView: UIView = {
         let v = UIView()
@@ -131,7 +193,8 @@ final class BookSearchViewController: UIViewController {
     private let loadMoreIndicator: UIActivityIndicatorView = {
         let ai = UIActivityIndicatorView(style: .medium)
         ai.color = UIColor.walnut
-        ai.frame = CGRect(x: 0, y: 0, width: UIScreen.main.bounds.width, height: 48)
+        ai.frame = CGRect(x: 0, y: 0, width: 0, height: 48)
+        ai.autoresizingMask = [.flexibleWidth]
         ai.startAnimating()
         return ai
     }()
@@ -145,9 +208,108 @@ final class BookSearchViewController: UIViewController {
         bindViewModel()
     }
 
+    override func viewDidAppear(_ animated: Bool) {
+        super.viewDidAppear(animated)
+        screenAppearedRelay.accept(())
+        isScreenVisible = true
+        scheduleCoverPrefetch()
+        scheduleEnrichmentWindowUpdate()
+        scheduleNextPageIfNeeded()
+        showWishlistTutorial()
+    }
+
+    private func showWishlistTutorial() {
+        guard isScreenVisible, view.window != nil, presentedViewController == nil,
+              !UserDefaults.standard.bool(forKey: "tutorial.searchWishlist"),
+              tableView.numberOfSections > 0 else { return }
+        let rowCount = tableView.numberOfRows(inSection: 0)
+        guard rowCount > 0 else { return }
+
+        // 셀의 뷰 계층 순서 대신 세 번째 도서의 버튼을 예시로 사용한다.
+        let indexPath = IndexPath(row: min(2, rowCount - 1), section: 0)
+        tableView.layoutIfNeeded()
+        if !tableView.bounds.contains(tableView.rectForRow(at: indexPath)) {
+            tableView.scrollToRow(at: indexPath, at: .middle, animated: false)
+            tableView.layoutIfNeeded()
+        }
+        guard let cell = tableView.cellForRow(at: indexPath),
+              TutorialSupport.target(in: cell, identifier: "registerBookButton") != nil,
+              TutorialSupport.target(in: cell, identifier: "wishlistButton") != nil else { return }
+        TutorialSupport.show(on: self, key: "tutorial.searchWishlist", steps: [
+            TutorialStep(targetFrame: .zero, message: "책장 아이콘을 누르면\n책장에 도서가 등록돼요", targetFrameProvider: { [weak self] in
+                guard let self, let cell = self.tableView.cellForRow(at: indexPath),
+                      let target = TutorialSupport.target(in: cell, identifier: "registerBookButton") else { return .zero }
+                return target.convert(target.bounds, to: nil)
+            }),
+            TutorialStep(targetFrame: .zero, message: "하트를 눌러 읽고 싶은 책을\n위시리스트에 담아보세요", targetFrameProvider: { [weak self] in
+                guard let self, let cell = self.tableView.cellForRow(at: indexPath),
+                      let target = TutorialSupport.target(in: cell, identifier: "wishlistButton") else { return .zero }
+                return target.convert(target.bounds, to: nil)
+            }),
+            TutorialStep(targetFrame: .zero, message: "도서를 탭하면\n해당 도서의 소개를 펼쳐볼 수 있어요", targetFrameProvider: { [weak self] in
+                guard let self, let cell = self.tableView.cellForRow(at: indexPath) else { return .zero }
+                return cell.convert(cell.bounds, to: nil)
+            }, onTargetTap: { [weak self] in
+                self?.toggleBookDescription(at: indexPath)
+            })
+        ])
+    }
+
+    override func viewWillDisappear(_ animated: Bool) {
+        super.viewWillDisappear(animated)
+        isScreenVisible = false
+        visibleRowsRelay.accept([])
+        coverPrefetcher.stop()
+    }
+
+    override func viewDidLayoutSubviews() {
+        DispatchQueue.main.async { [weak self] in self?.showWishlistTutorial() }
+        super.viewDidLayoutSubviews()
+        updateLoadingFooterWidth()
+        updateListHeaderSize()
+        scheduleCoverPrefetch()
+        scheduleEnrichmentWindowUpdate()
+        scheduleNextPageIfNeeded()
+    }
+
+    private func updateListHeaderSize() {
+        guard let header = tableView.tableHeaderView, tableView.bounds.width > 0 else { return }
+        let hasStatus = !(listStatusLabel.text ?? "").isEmpty
+        let labelWidth = max(1, tableView.bounds.width - 106)
+        let textHeight = hasStatus ? ceil(listStatusLabel.sizeThatFits(
+            CGSize(width: labelWidth, height: .greatestFiniteMagnitude)
+        ).height) : 0
+        let height = hasStatus ? 48 + max(textHeight + 8, retryButton.isHidden ? 0 : 48) : 50
+        guard header.frame.width != tableView.bounds.width || abs(header.frame.height - height) > 0.5 else { return }
+        let oldHeight = header.frame.height
+        let offset = tableView.contentOffset
+        header.frame.size = CGSize(width: tableView.bounds.width, height: height)
+        tableView.tableHeaderView = header
+        if offset.y >= oldHeight {
+            tableView.setContentOffset(CGPoint(x: offset.x, y: offset.y + height - oldHeight), animated: false)
+        }
+    }
+
+    private func updateLoadingFooterWidth() {
+        guard tableView.tableFooterView === loadMoreIndicator,
+              loadMoreIndicator.frame.width != tableView.bounds.width else { return }
+        loadMoreIndicator.frame.size.width = tableView.bounds.width
+        tableView.tableFooterView = loadMoreIndicator
+    }
+
+    #if DEBUG
+    override func viewDidDisappear(_ animated: Bool) {
+        super.viewDidDisappear(animated)
+        firstCellDisplaySpan?.finish(.notDisplayed)
+        firstCellDisplaySpan = nil
+    }
+    #endif
+
     // MARK: - Setup
 
     private func setupUI() {
+        // 가용 영역에 safe area가 반영되어 있으므로 스크롤 인셋을 중복 적용하지 않는다.
+        tableView.contentInsetAdjustmentBehavior = .never
         view.backgroundColor = UIColor.background
 
         view.addSubview(tableView)
@@ -158,8 +320,6 @@ final class BookSearchViewController: UIViewController {
         view.addSubview(sheetTitleLabel)
         view.addSubview(directRegisterButton)
 
-        searchBarView.addSubview(searchIconView)
-        searchBarView.addSubview(searchTextField)
         view.addSubview(searchBarView)
         setupTableHeader()
     }
@@ -167,70 +327,73 @@ final class BookSearchViewController: UIViewController {
     private func setupTableHeader() {
         let container = UIView()
         container.backgroundColor = .clear
-        listSegmentContainerView.addSubview(bestsellerButton)
-        listSegmentContainerView.addSubview(newSpecialButton)
+        listSegmentContainerView.addSubview(popularButton)
+        listSegmentContainerView.addSubview(trendingButton)
         container.addSubview(listSegmentContainerView)
+        container.addSubview(listStatusLabel)
+        container.addSubview(retryButton)
+        listStatusLabel.snp.makeConstraints { make in
+            make.leading.equalToSuperview().offset(14)
+            make.top.equalTo(listSegmentContainerView.snp.bottom).offset(4)
+            make.trailing.equalTo(retryButton.snp.leading).offset(-8)
+        }
+        retryButton.snp.makeConstraints { make in
+            make.trailing.equalToSuperview().inset(14)
+            make.top.equalTo(listSegmentContainerView.snp.bottom)
+            make.width.equalTo(70)
+            make.height.equalTo(44)
+        }
         listSegmentContainerView.snp.makeConstraints { make in
-            make.leading.equalToSuperview()
+            make.leading.equalToSuperview().offset(8)
             make.top.equalToSuperview().offset(10)
-            make.bottom.equalToSuperview().inset(6)
             make.height.equalTo(34)
         }
-        bestsellerButton.snp.makeConstraints { make in
+        popularButton.snp.makeConstraints { make in
             make.leading.top.bottom.equalToSuperview().inset(3)
             make.width.equalTo(94)
         }
-        newSpecialButton.snp.makeConstraints { make in
-            make.leading.equalTo(bestsellerButton.snp.trailing)
+        trendingButton.snp.makeConstraints { make in
+            make.leading.equalTo(popularButton.snp.trailing)
             make.trailing.top.bottom.equalToSuperview().inset(3)
-            make.width.equalTo(bestsellerButton)
+            make.width.equalTo(popularButton)
         }
-        container.frame = CGRect(x: 0, y: 0, width: 0, height: 50)
+        container.frame = CGRect(x: 0, y: 0, width: 0, height: 100)
         tableView.tableHeaderView = container
     }
 
     private func setupConstraints() {
         handleBar.snp.makeConstraints { make in
-            make.top.equalToSuperview().offset(12)
-            make.centerX.equalToSuperview()
+            make.top.equalTo(view.adaptiveContentLayoutGuide).offset(12)
+            make.centerX.equalTo(view.adaptiveContentLayoutGuide)
             make.width.equalTo(36)
             make.height.equalTo(5)
         }
 
         sheetTitleLabel.snp.makeConstraints { make in
             make.top.equalTo(handleBar.snp.bottom).offset(11)
-            make.leading.equalToSuperview().inset(24)
+            make.leading.equalTo(view.adaptiveContentLayoutGuide).inset(24)
             make.trailing.lessThanOrEqualTo(directRegisterButton.snp.leading).offset(-12)
             make.height.equalTo(52)
         }
 
         directRegisterButton.snp.makeConstraints { make in
-            make.trailing.equalToSuperview().inset(24)
+            make.trailing.equalTo(view.adaptiveContentLayoutGuide).inset(24)
             make.centerY.equalTo(sheetTitleLabel)
         }
 
         searchBarView.snp.makeConstraints { make in
             make.top.equalTo(sheetTitleLabel.snp.bottom)
-            make.leading.trailing.equalToSuperview().inset(24)
+            make.leading.trailing.equalTo(view.adaptiveContentLayoutGuide).inset(24)
             make.height.equalTo(48)
-        }
-
-        searchIconView.snp.makeConstraints { make in
-            make.leading.equalToSuperview().offset(16)
-            make.centerY.equalToSuperview()
-            make.size.equalTo(18)
-        }
-
-        searchTextField.snp.makeConstraints { make in
-            make.leading.equalTo(searchIconView.snp.trailing).offset(10)
-            make.trailing.equalToSuperview().inset(16)
-            make.centerY.equalToSuperview()
         }
 
         tableView.snp.makeConstraints { make in
             make.top.equalTo(searchBarView.snp.bottom)
-            make.leading.trailing.equalToSuperview().inset(24)
-            make.bottom.equalTo(view.safeAreaLayoutGuide)
+            // 카드의 실제 좌우 여백은 24pt로 유지하면서 그림자 공간 8pt를
+            // 테이블 내부에 둔다. 행 높이 변경 중 UIKit이 셀 경계를 클리핑해도
+            // 그림자가 잘리지 않는다.
+            make.leading.trailing.equalTo(view.adaptiveContentLayoutGuide).inset(16)
+            make.bottom.equalTo(view.adaptiveContentLayoutGuide)
         }
 
         activityIndicator.snp.makeConstraints { make in
@@ -238,7 +401,7 @@ final class BookSearchViewController: UIViewController {
         }
 
         headerBackground.snp.makeConstraints { make in
-            make.top.leading.trailing.equalToSuperview()
+            make.top.leading.trailing.equalTo(view.adaptiveContentLayoutGuide)
             make.bottom.equalTo(searchBarView.snp.bottom)
         }
     }
@@ -252,37 +415,154 @@ final class BookSearchViewController: UIViewController {
             searchQuery:   searchTextField.rx.text.orEmpty.asObservable(),
             searchTrigger: searchTextField.rx.controlEvent(.editingDidEndOnExit).asObservable(),
             loadNextPage:  loadNextPageRelay.asObservable(),
-            registerBook:  registerBookRelay.asObservable()
+            visibleRows: visibleRowsRelay.asObservable(),
+            descriptionBook: descriptionBookRelay.asObservable(),
+            registerBook: registerBookRelay.asObservable(),
+            screenAppeared: screenAppearedRelay.asObservable(),
+            toggleWishlist: toggleWishlistRelay.asObservable(),
+            retry: retryRelay.asObservable()
         )
 
         let output = viewModel.transform(input: input)
 
-        output.books
-            .drive(tableView.rx.items(cellIdentifier: BookRowCell.reuseID, cellType: BookRowCell.self)) { [weak self] _, book, cell in
-                cell.configure(book: book)
-                cell.onRegister = { [weak self] registeredBook in
-                    self?.registerBookRelay.accept(registeredBook)
+        retryButton.rx.tap.bind(to: retryRelay).disposed(by: disposeBag)
+        output.recommendationState
+            .drive(onNext: { [weak self] state in
+                guard let self else { return }
+                var parts: [String] = []
+                if state.isRefreshing { parts.append("최신 목록 갱신 중…") }
+                if let message = state.message { parts.append(message) }
+                self.listStatusLabel.text = parts.joined(separator: " · ")
+                self.retryButton.isHidden = !state.canRetry
+                self.updateListHeaderSize()
+                self.view.setNeedsLayout()
+            })
+            .disposed(by: disposeBag)
+
+        tableView.rx.setDataSource(bookDataSource)
+            .disposed(by: disposeBag)
+
+        #if DEBUG
+        tableView.rx.willDisplayCell
+            .subscribe(onNext: { [weak self] _, indexPath in
+                guard let self, indexPath.row >= self.firstMeasuredRow else { return }
+                self.firstCellDisplaySpan?.finish(count: self.bookDataSource.books.count)
+                self.firstCellDisplaySpan = nil
+            })
+            .disposed(by: disposeBag)
+        #endif
+
+        output.listUpdates
+            .drive(onNext: { [weak self] update in
+                guard let self else { return }
+                #if DEBUG
+                switch update.change {
+                case .replace, .refresh:
+                    self.firstCellDisplaySpan?.finish(.superseded)
+                    let batchID = update.requestID ?? UUID()
+                    self.performanceBatchID = batchID
+                    self.firstMeasuredRow = 0
+                    self.firstCellDisplaySpan = update.books.isEmpty ? nil : BookSearchPerformance.Span(
+                        .firstCellWillDisplay, source: .table, id: batchID, startedAt: update.startedAt
+                    )
+                case .append(let start):
+                    self.firstCellDisplaySpan?.finish(.superseded)
+                    let batchID = update.requestID ?? UUID()
+                    self.performanceBatchID = batchID
+                    self.firstMeasuredRow = start == self.bookDataSource.books.count && start < update.books.count ? start : 0
+                    self.firstCellDisplaySpan = update.books.isEmpty ? nil : BookSearchPerformance.Span(
+                        .firstCellWillDisplay, source: .table, id: batchID, startedAt: update.startedAt
+                    )
+                case .update:
+                    break
                 }
-            }
+                #endif
+                let resetsRows: Bool
+                switch update.change {
+                case .replace, .refresh: resetsRows = true
+                default: resetsRows = false
+                }
+                if resetsRows {
+                    self.pendingDescriptionISBN = nil
+                    self.expandedRow = nil
+                    self.descriptionLoadingISBN = nil
+                    self.coverPrefetcher.stop()
+                }
+                if case .update = update.change {
+                    // ISBN 보완은 페이지 상태를 변경하지 않는다.
+                } else {
+                    self.paginationGate.listDidUpdate()
+                }
+                self.bookDataSource.apply(update, to: self.tableView)
+                self.scheduleCoverPrefetch()
+                self.scheduleEnrichmentWindowUpdate()
+                self.scheduleNextPageIfNeeded()
+            })
             .disposed(by: disposeBag)
 
         output.isLoading
+            .do(onNext: { [weak self] loading in
+                guard let self else { return }
+                self.isLoadingBooks = loading
+                if loading {
+                    self.coverPrefetcher.stop()
+                } else {
+                    self.scheduleCoverPrefetch()
+                    self.scheduleEnrichmentWindowUpdate()
+                    self.scheduleNextPageIfNeeded()
+                }
+            })
             .drive(activityIndicator.rx.isAnimating)
             .disposed(by: disposeBag)
 
         output.isLoadingMore
             .drive(onNext: { [weak self] loading in
                 guard let self else { return }
+                self.isLoadingNextPage = loading
                 self.tableView.tableFooterView = loading ? self.loadMoreIndicator : UIView()
+                if loading { self.updateLoadingFooterWidth() }
+                if !loading { self.scheduleNextPageIfNeeded() }
             })
             .disposed(by: disposeBag)
 
-        output.errorMessage
+        output.registeredISBNs
+            .drive(onNext: { [weak self] isbn13s in
+                guard let self else { return }
+                self.registeredISBNs = isbn13s
+                for case let cell as BookRowCell in self.tableView.visibleCells {
+                    cell.setPrimaryAction(.registration(isRegistered: cell.isbn13.map { isbn13s.contains($0) } ?? false))
+                }
+            })
+            .disposed(by: disposeBag)
+
+        output.wishlistState
+            .drive(onNext: { [weak self] state in
+                guard let self else { return }
+                self.wishlistState = state
+                for case let cell as BookRowCell in self.tableView.visibleCells {
+                    cell.setSecondaryAction(self.wishlistAction(for: cell.isbn13 ?? ""))
+                }
+            })
+            .disposed(by: disposeBag)
+
+        Signal.merge(output.errorMessage, output.wishlistMessage)
             .emit(onNext: { [weak self] message in
                 var style = ToastStyle()
                 style.backgroundColor = UIColor.appPrimary.withAlphaComponent(0.9)
                 style.messageFont = UIFont(name: "GowunBatang-Regular", size: 14) ?? .systemFont(ofSize: 14)
                 self?.view.makeToast(message, duration: 1.2, position: .center, style: style)
+            })
+            .disposed(by: disposeBag)
+
+        output.descriptionReady
+            .emit(onNext: { [weak self] isbn13 in
+                guard let self,
+                      let row = self.expandedRow,
+                      self.bookDataSource.books.indices.contains(row),
+                      self.bookDataSource.books[row].isbn13 == isbn13 else { return }
+                self.descriptionLoadingISBN = nil
+                self.pendingDescriptionISBN = isbn13
+                self.flushPendingDescriptionUpdate()
             })
             .disposed(by: disposeBag)
 
@@ -292,28 +572,42 @@ final class BookSearchViewController: UIViewController {
             })
             .disposed(by: disposeBag)
 
-        bestsellerButton.rx.tap
+        popularButton.rx.tap
             .subscribe(onNext: { [weak self] in
-                self?.selectListTab(.bestseller)
-                self?.listSelectionRelay.accept(.bestseller)
+                self?.selectListTab(.popular)
+                self?.listSelectionRelay.accept(.popular)
             })
             .disposed(by: disposeBag)
 
-        newSpecialButton.rx.tap
+        trendingButton.rx.tap
             .subscribe(onNext: { [weak self] in
-                self?.selectListTab(.newSpecial)
-                self?.listSelectionRelay.accept(.newSpecial)
+                self?.selectListTab(.trending)
+                self?.listSelectionRelay.accept(.trending)
             })
             .disposed(by: disposeBag)
 
-        // 마지막 셀이 표시될 때 다음 페이지 요청
         tableView.rx.willDisplayCell
-            .filter { [weak self] _, indexPath in
-                guard let self else { return false }
-                return indexPath.row == self.tableView.numberOfRows(inSection: 0) - 1
-            }
-            .map { _ in }
-            .bind(to: loadNextPageRelay)
+            .subscribe(onNext: { [weak self] _, _ in
+                self?.scheduleCoverPrefetch()
+                self?.scheduleEnrichmentWindowUpdate()
+                self?.scheduleNextPageIfNeeded()
+            })
+            .disposed(by: disposeBag)
+
+        tableView.rx.didEndDragging
+            .subscribe(onNext: { [weak self] decelerate in
+                if !decelerate { self?.flushPendingDescriptionUpdate() }
+            })
+            .disposed(by: disposeBag)
+
+        tableView.rx.didEndDecelerating
+            .subscribe(onNext: { [weak self] in self?.flushPendingDescriptionUpdate() })
+            .disposed(by: disposeBag)
+
+        tableView.rx.itemSelected
+            .subscribe(onNext: { [weak self] indexPath in
+                self?.toggleBookDescription(at: indexPath)
+            })
             .disposed(by: disposeBag)
 
         // 검색 버튼 탭 시 헤더 영구 숨김 (dismiss 전까지 복원 안 함)
@@ -338,6 +632,9 @@ final class BookSearchViewController: UIViewController {
         tableView.rx.didScroll
             .subscribe(onNext: { [weak self] in
                 self?.view.endEditing(false)
+                self?.scheduleCoverPrefetch()
+                self?.scheduleEnrichmentWindowUpdate()
+                self?.scheduleNextPageIfNeeded()
             })
             .disposed(by: disposeBag)
 
@@ -348,18 +645,125 @@ final class BookSearchViewController: UIViewController {
                 if let sheet = vc.sheetPresentationController {
                     sheet.detents              = [.large()]
                     sheet.prefersGrabberVisible = false
-                    sheet.preferredCornerRadius = 24
                 }
                 self?.present(vc, animated: true)
             })
             .disposed(by: disposeBag)
     }
 
+    private func wishlistAction(for rawISBN: String) -> BookRowAction {
+        let isbn13 = rawISBN.trimmingCharacters(in: .whitespacesAndNewlines)
+        return .wishlist(
+            isSaved: wishlistState.savedISBNs.contains(isbn13),
+            isEnabled: wishlistState.isLoaded && !wishlistState.isRefreshing,
+            isPending: wishlistState.pendingISBNs.contains(isbn13)
+        )
+    }
+
+    // MARK: - Book Description
+
+    private func toggleBookDescription(at indexPath: IndexPath) {
+        tableView.deselectRow(at: indexPath, animated: false)
+
+        guard indexPath.row < bookDataSource.books.count,
+              let selectedCell = tableView.cellForRow(at: indexPath) as? BookRowCell else { return }
+
+        pendingDescriptionISBN = nil
+        let previousRow = expandedRow
+        expandedRow = previousRow == indexPath.row ? nil : indexPath.row
+        descriptionLoadingISBN = expandedRow == nil
+            ? nil
+            : bookDataSource.books[indexPath.row].isbn13
+
+        // reloadRows는 높이 애니메이션 중 셀을 교체하므로 그림자가 임시 행 경계에
+        // 잘려 보인다. 기존 셀의 콘텐츠만 바꾸고 테이블에는 높이 재계산만 요청한다.
+        if let previousRow, previousRow != indexPath.row {
+            let previousIndexPath = IndexPath(row: previousRow, section: indexPath.section)
+            (tableView.cellForRow(at: previousIndexPath) as? BookRowCell)?.setExpanded(false)
+        }
+        if expandedRow == indexPath.row {
+            selectedCell.setDescriptionLoading(true)
+            descriptionBookRelay.accept(bookDataSource.books[indexPath.row])
+        } else {
+            selectedCell.setExpanded(false)
+        }
+        tableView.performBatchUpdates(nil)
+    }
+
+    private func flushPendingDescriptionUpdate() {
+        guard !tableView.isDragging, !tableView.isDecelerating,
+              let isbn13 = pendingDescriptionISBN else { return }
+        pendingDescriptionISBN = nil
+        guard let row = expandedRow,
+              bookDataSource.books.indices.contains(row),
+              bookDataSource.books[row].isbn13 == isbn13,
+              let cell = tableView.cellForRow(at: IndexPath(row: row, section: 0)) as? BookRowCell,
+              cell.isbn13 == isbn13.trimmingCharacters(in: .whitespacesAndNewlines) else { return }
+        cell.updateMetadata(
+            content: BookRowContent(book: bookDataSource.books[row]),
+            displayScale: view.traitCollection.displayScale
+        )
+        cell.setDescriptionLoading(descriptionLoadingISBN == isbn13)
+        tableView.performBatchUpdates(nil)
+    }
+
+    // MARK: - Pagination
+
+    private func scheduleNextPageIfNeeded() {
+        guard isScreenVisible, !paginationUpdateScheduled else { return }
+        paginationUpdateScheduled = true
+        DispatchQueue.main.async { [weak self] in
+            guard let self else { return }
+            self.paginationUpdateScheduled = false
+            guard self.isScreenVisible else { return }
+            let shouldRequest = self.paginationGate.shouldRequest(
+                lastVisibleRow: self.tableView.indexPathsForVisibleRows?.map(\.row).max(),
+                rowCount: self.bookDataSource.books.count,
+                isLoading: self.isLoadingBooks || self.isLoadingNextPage
+            )
+            if shouldRequest { self.loadNextPageRelay.accept(()) }
+        }
+    }
+
+    // MARK: - Cover Prefetch
+
+    private func scheduleCoverPrefetch() {
+        guard isScreenVisible, !isLoadingBooks, !prefetchUpdateScheduled else { return }
+        prefetchUpdateScheduled = true
+        // 같은 레이아웃에서 발생한 여러 willDisplay/scroll 이벤트를 한 번으로 합친다.
+        DispatchQueue.main.async { [weak self] in
+            guard let self else { return }
+            self.prefetchUpdateScheduled = false
+            guard self.isScreenVisible, !self.isLoadingBooks else { return }
+            guard let lastVisibleRow = self.tableView.indexPathsForVisibleRows?.map(\.row).max() else {
+                self.coverPrefetcher.stop()
+                return
+            }
+            self.coverPrefetcher.update(
+                books: self.bookDataSource.books, after: lastVisibleRow,
+                displayScale: self.view.traitCollection.displayScale
+            )
+        }
+    }
+
+    // MARK: - List Metadata
+
+    private func scheduleEnrichmentWindowUpdate() {
+        guard isScreenVisible, !isLoadingBooks, !enrichmentUpdateScheduled else { return }
+        enrichmentUpdateScheduled = true
+        DispatchQueue.main.async { [weak self] in
+            guard let self else { return }
+            self.enrichmentUpdateScheduled = false
+            guard self.isScreenVisible, !self.isLoadingBooks else { return }
+            self.visibleRowsRelay.accept(self.tableView.indexPathsForVisibleRows?.map(\.row) ?? [])
+        }
+    }
+
     // MARK: - List Segment
 
     private func selectListTab(_ listType: BookSearchViewModel.BookListType) {
-        applyListTabStyle(to: bestsellerButton, selected: listType == .bestseller)
-        applyListTabStyle(to: newSpecialButton, selected: listType == .newSpecial)
+        applyListTabStyle(to: popularButton, selected: listType == .popular)
+        applyListTabStyle(to: trendingButton, selected: listType == .trending)
     }
 
     private func makeListTabButton(title: String, selected: Bool) -> UIButton {
@@ -382,183 +786,5 @@ final class BookSearchViewController: UIViewController {
             return outgoing
         }
         button.configuration = config
-    }
-}
-
-// MARK: - BookRowCell
-
-private final class BookRowCell: UITableViewCell {
-
-    static let reuseID = "BookRowCell"
-
-    // MARK: - UI
-
-    private let cardView: UIView = {
-        let v = UIView()
-        v.backgroundColor     = UIColor.background
-        v.layer.cornerRadius  = 16
-        v.layer.masksToBounds = false
-        v.layer.shadowColor   = UIColor(hex: "#5d4037").cgColor
-        v.layer.shadowOpacity = Float(CGFloat(0x30) / 255)
-        v.layer.shadowRadius  = 4
-        v.layer.shadowOffset  = CGSize(width: 4, height: 4)
-        return v
-    }()
-
-    private let rankLabel: UILabel = {
-        let l = UILabel()
-        l.font          = UIFont(name: "GoyangIlsan L", size: 18) ?? .boldSystemFont(ofSize: 18)
-        l.textColor     = UIColor(hex: "#190e0b")
-        l.textAlignment = .center
-        l.setContentHuggingPriority(.required, for: .horizontal)
-        return l
-    }()
-
-    private let thumbnailImageView: UIImageView = {
-        let iv = UIImageView()
-        iv.backgroundColor    = UIColor.walnut
-        iv.layer.cornerRadius = 3
-        iv.clipsToBounds      = true
-        iv.contentMode        = .scaleAspectFill
-        return iv
-    }()
-
-    private let titleLabel: UILabel = {
-        let l = UILabel()
-        l.font          = UIFont(name: "GowunBatang-Regular", size: 16)
-            ?? .systemFont(ofSize: 16, weight: .medium)
-        l.textColor     = UIColor(hex: "#190e0b")
-        l.numberOfLines = 2
-        return l
-    }()
-
-    private let authorLabel: UILabel = {
-        let l = UILabel()
-        l.font      = UIFont(name: "GowunBatang-Regular", size: 13)
-            ?? .systemFont(ofSize: 13)
-        l.textColor = UIColor.walnut
-        return l
-    }()
-
-    private let registerButton: UIButton = {
-        var config = UIButton.Configuration.plain()
-        config.title = "등록"
-        config.baseForegroundColor = UIColor.walnut
-        config.contentInsets = NSDirectionalEdgeInsets(top: 7, leading: 14, bottom: 7, trailing: 14)
-        config.titleTextAttributesTransformer = UIConfigurationTextAttributesTransformer { incoming in
-            var outgoing = incoming
-            outgoing.font = UIFont(name: "GoyangIlsan R", size: 13) ?? .systemFont(ofSize: 13, weight: .medium)
-            return outgoing
-        }
-        let btn = UIButton(configuration: config)
-        btn.layer.cornerRadius = 7
-        btn.layer.borderWidth  = 1
-        btn.layer.borderColor  = UIColor.walnut.cgColor
-        btn.setContentHuggingPriority(.required, for: .horizontal)
-        btn.setContentCompressionResistancePriority(.required, for: .horizontal)
-        return btn
-    }()
-
-    var onRegister: ((Book) -> Void)?
-    private var currentBook: Book?
-    private let disposeBag = DisposeBag()
-
-    /// nil = 아직 미설정 (첫 configure 시 반드시 레이아웃 업데이트)
-    private var rankVisible: Bool?
-
-    // MARK: - Init
-
-    override init(style: UITableViewCell.CellStyle, reuseIdentifier: String?) {
-        super.init(style: style, reuseIdentifier: reuseIdentifier)
-        setupCell()
-        registerButton.rx.tap
-            .subscribe(onNext: { [weak self] in
-                guard let self, let book = self.currentBook else { return }
-                self.onRegister?(book)
-            })
-            .disposed(by: disposeBag)
-    }
-
-    required init?(coder: NSCoder) { fatalError() }
-
-    // MARK: - Setup
-
-    private func setupCell() {
-        selectionStyle              = .none
-        backgroundColor             = .clear
-        contentView.backgroundColor = .clear
-        contentView.clipsToBounds   = false
-
-        contentView.addSubview(cardView)
-
-        let textStack = UIStackView(arrangedSubviews: [titleLabel, authorLabel])
-        textStack.axis    = .vertical
-        textStack.spacing = 3
-
-        [rankLabel, thumbnailImageView, textStack, registerButton].forEach {
-            cardView.addSubview($0)
-        }
-
-        cardView.snp.makeConstraints { make in
-            make.top.equalToSuperview().offset(6)
-            make.bottom.equalToSuperview().inset(6)
-            make.leading.trailing.equalToSuperview()
-            make.height.greaterThanOrEqualTo(80)
-        }
-
-        rankLabel.snp.makeConstraints { make in
-            make.leading.equalToSuperview().offset(16)
-            make.centerY.equalToSuperview()
-            make.width.equalTo(20)
-        }
-
-        // thumbnailImageView 초기 constraints — rank 표시 모드 (configure에서 remakeConstraints)
-        thumbnailImageView.snp.makeConstraints { make in
-            make.leading.equalTo(rankLabel.snp.trailing).offset(14)
-            make.centerY.equalToSuperview()
-            make.width.equalTo(48)
-            make.height.equalTo(64)
-        }
-
-        textStack.snp.makeConstraints { make in
-            make.leading.equalTo(thumbnailImageView.snp.trailing).offset(14)
-            make.trailing.lessThanOrEqualTo(registerButton.snp.leading).offset(-14)
-            make.centerY.equalToSuperview()
-        }
-
-        registerButton.snp.makeConstraints { make in
-            make.trailing.equalToSuperview().inset(16)
-            make.centerY.equalToSuperview()
-        }
-
-    }
-
-    // MARK: - Configure
-
-    func configure(book: Book) {
-        currentBook      = book
-        rankLabel.text   = book.bestRank.map { "\($0)" }
-        titleLabel.text  = book.title
-        authorLabel.text = book.author
-        thumbnailImageView.kf.setImage(with: book.coverURL)
-
-        let showRank = book.bestRank != nil
-        guard showRank != rankVisible else { return }
-        rankVisible        = showRank
-        rankLabel.isHidden = !showRank
-        updateThumbnailLeading(showRank: showRank)
-    }
-
-    private func updateThumbnailLeading(showRank: Bool) {
-        thumbnailImageView.snp.remakeConstraints { make in
-            if showRank {
-                make.leading.equalTo(rankLabel.snp.trailing).offset(14)
-            } else {
-                make.leading.equalToSuperview().offset(16)
-            }
-            make.centerY.equalToSuperview()
-            make.width.equalTo(48)
-            make.height.equalTo(64)
-        }
     }
 }
