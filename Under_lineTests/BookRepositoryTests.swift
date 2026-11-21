@@ -1,0 +1,746 @@
+import XCTest
+import SwiftData
+import RxSwift
+import RxCocoa
+@testable import Under_line
+
+@MainActor
+final class BookRepositoryTests: XCTestCase {
+    func test_tutorial_usesTopNineAndEnrichesCoversWithoutSaving() async throws {
+        let fixture = try Fixture()
+        let cover = URL(string: "https://example.com/cover.jpg")!
+        fixture.searchAPI.isbnBook = Book(title: "표지", author: "저자", isbn13: "test", coverURL: cover,
+            publisher: "", publishDate: nil, category: nil, bestRank: nil, description: "", itemPage: nil, currentPage: nil)
+        fixture.listAPI.books = (1...12).map { rank in
+            Book(title: "도서 \(rank)", author: "저자", isbn13: "test", coverURL: nil,
+                publisher: "", publishDate: nil, category: nil, bestRank: rank, description: "", itemPage: nil, currentPage: nil)
+        }
+        let model = BookshelfTutorialViewModel(repository: fixture.repository)
+        await model.prepare()
+        XCTAssertEqual(model.books.map(\.bestRank), (1...9).map(Optional.some))
+        XCTAssertTrue(model.books.allSatisfy { $0.coverURL == cover })
+        XCTAssertEqual(try fixture.container.mainContext.fetch(FetchDescriptor<BookRecord>()).count, 0)
+    }
+
+    func test_tutorial_keepsBooksWhenCoverLookupFails() async throws {
+        let fixture = try Fixture()
+        fixture.searchAPI.onISBNRequest = { throw URLError(.notConnectedToInternet) }
+        let model = BookshelfTutorialViewModel(repository: fixture.repository)
+        await model.prepare()
+        XCTAssertEqual(model.books.count, 1)
+        XCTAssertNil(model.books.first?.coverURL)
+    }
+
+    func test_authorStatistics_mergesLegacyPrefixesIntoAuthorName() {
+        let names = ["지은이: 한강", "한강", " 지은이 ： 한강\n", "저자 : 김애란", "유현준", "지은이 : "]
+        let books = names.enumerated().map { index, name in
+            Book(title: "책", author: name, isbn13: "book-\(index)", coverURL: nil,
+                 publisher: "", publishDate: nil, category: nil, bestRank: nil,
+                 description: "", itemPage: nil, currentPage: nil)
+        }
+        let sentences = books.map {
+            Sentence(id: UUID(), bookISBN: $0.isbn13, sentence: "밑줄", page: 1,
+                     emotion: .calm, memo: nil, date: Date())
+        }
+        let result = StatisticsViewModel.computeAuthorData(sentences: sentences, books: books)
+        XCTAssertEqual(result.total, 6)
+        XCTAssertEqual(Dictionary(uniqueKeysWithValues: result.items.map { ($0.label, $0.count) }),
+                       ["한강": 3, "김애란": 1, "유현준": 1, "알 수 없음": 1])
+        XCTAssertEqual(books[0].author, "지은이: 한강")
+    }
+
+    func test_genreAndAuthorNormalization_handlesMissingValuesAndPrefixes() {
+        for raw in [nil, "", " \n", "미정", "장르 미상", ">", " > > ", "\n> \t >", "＞", "› ›"] as [String?] {
+            XCTAssertEqual(BookGenre.normalized(raw), "장르 미상")
+        }
+        XCTAssertEqual(BookGenre.normalized(" 문학\n"), "문학")
+        XCTAssertEqual(BookGenre.normalized("문학 > 소설"), "문학 > 소설")
+        for raw in ["지은이 : 한강", "지은이:한강", " 지은이： 한강\n", "저자 : 한강", "지은이 : 지은이 : 한강"] {
+            let name = LibraryAuthor.normalized(raw)
+            XCTAssertEqual(name, "한강")
+            XCTAssertEqual(LibraryAuthor.normalized(name), name)
+        }
+        XCTAssertEqual(LibraryAuthor.normalized("지은이 : 한강, 김영하"), "한강, 김영하")
+        XCTAssertEqual(LibraryAuthor.normalized("지은이 없는 이름"), "지은이 없는 이름")
+        XCTAssertEqual(LibraryAuthor.normalized("김지은이 : 한강"), "김지은이 : 한강")
+    }
+
+    func test_searchAuthorText_unknownAuthorAndRepeatedFormatting() {
+        let book = Book(title: "책", author: " \n", isbn13: "9788937460586",
+                        coverURL: nil, publisher: "", publishDate: nil, category: nil,
+                        bestRank: nil, description: "", itemPage: nil, currentPage: nil)
+        XCTAssertEqual(book.searchAuthorText, "지은이 : 알 수 없음")
+        XCTAssertEqual(book.searchAuthorText, "지은이 : 알 수 없음")
+        XCTAssertEqual(book.author, " \n")
+    }
+
+    func test_reload_normalizesLegacyGenresWithoutChangingAuthors() throws {
+        let fixture = try Fixture()
+        let source = fixture.searchAPI.books[0]
+        let originals: [String?] = [nil, "", " \n", "미정", "문학", " > > "]
+        for (index, category) in originals.enumerated() {
+            let record = BookRecord(from: source)
+            record.isbn13 = "legacy-\(index)"
+            record.category = category
+            record.author = "지은이 : 한강"
+            fixture.container.mainContext.insert(record)
+        }
+        try fixture.container.mainContext.save()
+        fixture.repository.reloadRelay()
+        fixture.repository.reloadRelay()
+        let records = try fixture.savedRecords.sorted { $0.isbn13 < $1.isbn13 }
+        XCTAssertEqual(records.map(\.category), ["장르 미상", "장르 미상", "장르 미상", "장르 미상", "문학", "장르 미상"])
+        XCTAssertTrue(records.allSatisfy { $0.author == "지은이 : 한강" })
+    }
+
+    func test_registerGenre_detailWinsAcrossSearchAndListAndFallsBack() async throws {
+        for detailGenre in [" 문학\n", nil, " "] as [String?] {
+            for listGenre in [nil, "소설"] as [String?] {
+                let fixture = try Fixture()
+                let book = Book(title: "책", author: "한강", isbn13: "9788937460586",
+                                coverURL: nil, publisher: "출판사", publishDate: nil,
+                                category: listGenre, bestRank: nil, description: "",
+                                itemPage: nil, currentPage: nil)
+                fixture.listAPI.detail = BookDetailMetadata(
+                    isbn13: book.isbn13, title: "책", author: "한강", publisher: "출판사",
+                    publishDate: nil, coverURL: nil, description: "", category: detailGenre
+                )
+                try await fixture.repository.registerSearchedBook(book)
+                let record = try XCTUnwrap(fixture.savedRecords.first)
+                XCTAssertEqual(record.category, BookGenre.known(detailGenre) ?? BookGenre.normalized(listGenre))
+                XCTAssertEqual(record.author, "한강")
+                XCTAssertEqual(book.searchAuthorText, "지은이 : 한강")
+                XCTAssertEqual(book.author, "한강")
+            }
+        }
+    }
+
+    func test_pageRecordValidation_blankCurrentPageDefaultsToZero() throws {
+        let progress = try PageRecordViewModel.validate(
+            itemPage: " 320 ",
+            currentPage: " "
+        ).get()
+
+        XCTAssertEqual(progress, ReadingProgress(itemPage: 320, currentPage: 0))
+    }
+
+    func test_pageRecordValidation_rejectsInvalidItemPage() {
+        XCTAssertEqual(
+            PageRecordViewModel.validate(itemPage: "0", currentPage: "0"),
+            .failure(.invalidItemPage)
+        )
+    }
+
+    func test_pageRecordValidation_rejectsCurrentPageOverItemPage() {
+        XCTAssertEqual(
+            PageRecordViewModel.validate(itemPage: "320", currentPage: "321"),
+            .failure(.currentPageExceedsItemPage)
+        )
+    }
+
+    func test_repeatedLists_reusesSeparateCachedResults() async throws {
+        let fixture = try Fixture()
+        let popular = try await fixture.repository.fetchPopularBooks()
+        let trending = try await fixture.repository.fetchTrendingBooks()
+        fixture.listAPI.books = []
+        let cachedPopular = try await fixture.repository.fetchPopularBooks()
+        let cachedTrending = try await fixture.repository.fetchTrendingBooks()
+        XCTAssertEqual(cachedPopular.map(\.isbn13), popular.map(\.isbn13))
+        XCTAssertEqual(cachedTrending.map(\.isbn13), trending.map(\.isbn13))
+        XCTAssertEqual(fixture.listAPI.popularCalls, 1)
+        XCTAssertEqual(fixture.listAPI.trendingCalls, 1)
+    }
+
+    func test_searchWhitespace_reusesBooksAndTotalResults() async throws {
+        let fixture = try Fixture()
+        fixture.searchAPI.isEnd = true
+        let first = try await fixture.repository.searchBooks(query: " \n어린 왕자\t", page: 1)
+        fixture.searchAPI.books = []
+        fixture.searchAPI.totalResults = 0
+        fixture.searchAPI.isEnd = false
+        let cached = try await fixture.repository.searchBooks(query: "어린 왕자", page: 1)
+        XCTAssertEqual(cached.books.map(\.isbn13), first.books.map(\.isbn13))
+        XCTAssertEqual(cached.totalResults, 120)
+        XCTAssertTrue(cached.isEnd)
+        XCTAssertEqual(fixture.searchAPI.searchQueries.map(\.query), ["어린 왕자"])
+    }
+
+    func test_search_usesDedicatedBookSearchServiceOnly() async throws {
+        let fixture = try Fixture()
+
+        _ = try await fixture.repository.searchBooks(query: "책", page: 1)
+
+        XCTAssertEqual(fixture.searchAPI.searchQueries.map(\.query), ["책"])
+        XCTAssertEqual(fixture.listAPI.popularCalls, 0)
+        XCTAssertEqual(fixture.listAPI.trendingCalls, 0)
+    }
+
+    func test_queryPageAndListType_doNotShareCache() async throws {
+        let fixture = try Fixture()
+        for query in ["어린 왕자", "어린  왕자", "다른 책", "Book", "book"] {
+            _ = try await fixture.repository.searchBooks(query: query, page: 1)
+        }
+        _ = try await fixture.repository.searchBooks(query: "어린 왕자", page: 2)
+        _ = try await fixture.repository.fetchTrendingBooks()
+        _ = try await fixture.repository.fetchTrendingBooks()
+        _ = try await fixture.repository.fetchPopularBooks()
+        XCTAssertEqual(fixture.searchAPI.searchQueries.count, 6)
+        XCTAssertEqual(fixture.searchAPI.searchQueries.map(\.page), [1, 1, 1, 1, 1, 2])
+        XCTAssertEqual(fixture.listAPI.trendingCalls, 1)
+        XCTAssertEqual(fixture.listAPI.popularCalls, 1)
+    }
+
+    func test_emptySuccess_isCached() async throws {
+        let fixture = try Fixture()
+        fixture.searchAPI.books = []
+        fixture.searchAPI.totalResults = 0
+        _ = try await fixture.repository.searchBooks(query: "빈 결과", page: 1)
+        let result = try await fixture.repository.searchBooks(query: "빈 결과", page: 1)
+        XCTAssertTrue(result.books.isEmpty)
+        XCTAssertEqual(result.totalResults, 0)
+        XCTAssertEqual(fixture.searchAPI.searchQueries.count, 1)
+    }
+
+    func test_exactExpiry_requestsAgainWithoutExtendingOnRead() async throws {
+        let fixture = try Fixture()
+        _ = try await fixture.repository.fetchPopularBooks()
+        fixture.clock.time = 299
+        _ = try await fixture.repository.fetchPopularBooks()
+        XCTAssertEqual(fixture.listAPI.popularCalls, 1)
+        fixture.clock.time = 300
+        _ = try await fixture.repository.fetchPopularBooks()
+        XCTAssertEqual(fixture.listAPI.popularCalls, 2)
+    }
+
+    func test_expiry_startsAtResponseCompletion() async throws {
+        let fixture = try Fixture()
+        fixture.onRequest = { fixture.clock.time = 400 }
+        _ = try await fixture.repository.searchBooks(query: "책", page: 1)
+        fixture.onRequest = nil
+        fixture.clock.time = 699
+        _ = try await fixture.repository.searchBooks(query: "책", page: 1)
+        XCTAssertEqual(fixture.searchAPI.searchQueries.count, 1)
+        fixture.clock.time = 700
+        _ = try await fixture.repository.searchBooks(query: "책", page: 1)
+        XCTAssertEqual(fixture.searchAPI.searchQueries.count, 2)
+    }
+
+    func test_moreThanThirtyEntries_evictsLeastRecentlyUsed() async throws {
+        let fixture = try Fixture()
+        for index in 0..<30 {
+            _ = try await fixture.repository.searchBooks(query: "책 \(index)", page: 1)
+        }
+        _ = try await fixture.repository.searchBooks(query: "책 0", page: 1)
+        _ = try await fixture.repository.searchBooks(query: "추가 책", page: 1)
+        _ = try await fixture.repository.searchBooks(query: "책 0", page: 1)
+        XCTAssertEqual(fixture.searchAPI.searchQueries.count, 31)
+        _ = try await fixture.repository.searchBooks(query: "책 1", page: 1)
+        XCTAssertEqual(fixture.searchAPI.searchQueries.count, 32)
+    }
+
+    func test_expiredEntries_areRemovedBeforeEvictingValidEntry() async throws {
+        let fixture = try Fixture()
+        for index in 0..<29 { _ = try await fixture.repository.searchBooks(query: "책 \(index)", page: 1) }
+        fixture.clock.time = 100
+        _ = try await fixture.repository.searchBooks(query: "유효한 책", page: 1)
+        fixture.clock.time = 299
+        for index in 0..<29 { _ = try await fixture.repository.searchBooks(query: "책 \(index)", page: 1) }
+        fixture.clock.time = 300
+        _ = try await fixture.repository.searchBooks(query: "새 책", page: 1)
+        _ = try await fixture.repository.searchBooks(query: "유효한 책", page: 1)
+        XCTAssertEqual(fixture.searchAPI.searchQueries.count, 31)
+    }
+
+    func test_failedRequests_areNotCached() async throws {
+        let fixture = try Fixture()
+        for request in fixture.remoteRequests {
+            fixture.onRequest = { throw StubError.failed }
+            do {
+                try await request()
+                XCTFail("실패 응답은 호출자에게 전달되어야 함")
+            } catch StubError.failed { }
+            fixture.onRequest = nil
+            try await request()
+            try await request()
+        }
+        XCTAssertEqual(fixture.listAPI.popularCalls, 2)
+        XCTAssertEqual(fixture.listAPI.trendingCalls, 2)
+        XCTAssertEqual(fixture.searchAPI.searchQueries.count, 2)
+    }
+
+    func test_cancelledRequestsReturningSuccess_areNotCached() async throws {
+        let fixture = try Fixture()
+        for request in fixture.remoteRequests {
+            let started = expectation(description: "요청 시작")
+            var continuation: CheckedContinuation<Void, Never>?
+            fixture.onRequest = {
+                await withCheckedContinuation {
+                    continuation = $0
+                    started.fulfill()
+                }
+            }
+            let task = Task { try await request() }
+            await fulfillment(of: [started], timeout: 2)
+            task.cancel()
+            continuation?.resume()
+            do {
+                try await task.value
+                XCTFail("취소 후 도착한 성공 응답은 저장되면 안 됨")
+            } catch is CancellationError { }
+            fixture.onRequest = nil
+            try await request()
+        }
+        XCTAssertEqual(fixture.listAPI.popularCalls, 2)
+        XCTAssertEqual(fixture.listAPI.trendingCalls, 2)
+        XCTAssertEqual(fixture.searchAPI.searchQueries.count, 2)
+    }
+
+    func test_alreadyCancelledTask_doesNotReturnCachedResult() async throws {
+        let fixture = try Fixture()
+        _ = try await fixture.repository.fetchPopularBooks()
+        let task = Task { try await fixture.repository.fetchPopularBooks() }
+        task.cancel()
+        do {
+            _ = try await task.value
+            XCTFail("캐시 적중이어도 취소를 존중해야 함")
+        } catch is CancellationError { }
+        XCTAssertEqual(fixture.listAPI.popularCalls, 1)
+    }
+
+    func test_newRepository_doesNotReusePreviousInstanceCache() async throws {
+        let fixture = try Fixture()
+        _ = try await fixture.repository.fetchPopularBooks()
+        let another = BookRepository(
+            bookSearchService: fixture.searchAPI,
+            data4LibraryService: fixture.listAPI,
+            modelContext: fixture.container.mainContext
+        )
+        _ = try await another.fetchPopularBooks()
+        XCTAssertEqual(fixture.listAPI.popularCalls, 2)
+    }
+
+    func test_listMetadata_cachesFoundAndMissingResults() async throws {
+        let fixture = try Fixture()
+        _ = try await fixture.repository.fetchListBookMetadata(isbn13: "found")
+        _ = try await fixture.repository.fetchListBookMetadata(isbn13: "found")
+        fixture.searchAPI.isbnBook = nil
+        _ = try await fixture.repository.fetchListBookMetadata(isbn13: "missing")
+        _ = try await fixture.repository.fetchListBookMetadata(isbn13: "missing")
+
+        XCTAssertEqual(fixture.searchAPI.isbnQueries, ["found", "missing"])
+    }
+
+    func test_listMetadata_coalescesSameISBNRequest() async throws {
+        let fixture = try Fixture()
+        let started = expectation(description: "ISBN 요청 시작")
+        var continuation: CheckedContinuation<Void, Never>?
+        fixture.searchAPI.onISBNRequest = {
+            await withCheckedContinuation {
+                continuation = $0
+                started.fulfill()
+            }
+        }
+
+        async let first = fixture.repository.fetchListBookMetadata(isbn13: "same")
+        await fulfillment(of: [started], timeout: 2)
+        async let second = fixture.repository.fetchListBookMetadata(isbn13: "same")
+        await Task.yield()
+        XCTAssertEqual(fixture.searchAPI.isbnQueries, ["same"])
+        continuation?.resume()
+        _ = try await (first, second)
+    }
+
+    func test_listMetadata_doesNotCacheFailure() async throws {
+        let fixture = try Fixture()
+        fixture.searchAPI.onISBNRequest = { throw StubError.failed }
+        do {
+            _ = try await fixture.repository.fetchListBookMetadata(isbn13: "retry")
+            XCTFail("오류는 호출자에게 전달되어야 함")
+        } catch StubError.failed { }
+        fixture.searchAPI.onISBNRequest = nil
+        _ = try await fixture.repository.fetchListBookMetadata(isbn13: "retry")
+        XCTAssertEqual(fixture.searchAPI.isbnQueries, ["retry", "retry"])
+    }
+
+    func test_listMetadataCache_expiresAfterThirtyMinutes() async throws {
+        let fixture = try Fixture()
+        _ = try await fixture.repository.fetchListBookMetadata(isbn13: "found")
+        fixture.clock.time = 1_799
+        _ = try await fixture.repository.fetchListBookMetadata(isbn13: "found")
+        XCTAssertEqual(fixture.searchAPI.isbnQueries, ["found"])
+
+        fixture.clock.time = 1_800
+        _ = try await fixture.repository.fetchListBookMetadata(isbn13: "found")
+        XCTAssertEqual(fixture.searchAPI.isbnQueries, ["found", "found"])
+    }
+
+    func test_registerSearchedBook_prefersDetailDescriptionAndPreservesSearchMetadata() async throws {
+        let fixture = try Fixture()
+        let searchedBook = Book(
+            title: "카카오 제목", author: "카카오 저자", isbn13: "9788937460586",
+            coverURL: URL(string: "https://example.com/kakao.jpg"), publisher: "카카오 출판사",
+            publishDate: "2026-10-01", category: "소설", bestRank: 3,
+            description: "카카오 책소개", itemPage: nil, currentPage: nil
+        )
+        fixture.listAPI.detail = BookDetailMetadata(
+            isbn13: searchedBook.isbn13, title: "정보나루 제목", author: "정보나루 저자",
+            publisher: "정보나루 출판사", publishDate: "2025-01-01",
+            coverURL: URL(string: "https://example.com/data4library.jpg"),
+            description: "정보나루 상세 책소개"
+        )
+
+        let supplement = try await fixture.repository.fetchBookSupplement(
+            isbn13: searchedBook.isbn13
+        )
+        try await fixture.repository.registerSearchedBook(searchedBook)
+
+        let record = try XCTUnwrap(fixture.savedRecords.first)
+        XCTAssertEqual(supplement?.description, "정보나루 상세 책소개")
+        XCTAssertEqual(fixture.listAPI.detailCalls, [searchedBook.isbn13])
+        XCTAssertEqual(record.title, searchedBook.title)
+        XCTAssertEqual(record.author, searchedBook.author)
+        XCTAssertEqual(record.publisher, searchedBook.publisher)
+        XCTAssertEqual(record.publishDate, searchedBook.publishDate)
+        XCTAssertEqual(record.coverURLString, searchedBook.coverURL?.absoluteString)
+        XCTAssertEqual(record.bookDescription, "정보나루 상세 책소개")
+    }
+
+    func test_registerSearchedBook_fillsBlankSearchMetadataFromDetail() async throws {
+        let fixture = try Fixture()
+        let searchedBook = Book(
+            title: " ", author: "", isbn13: "9788937460586", coverURL: nil,
+            publisher: "\n", publishDate: nil, category: nil, bestRank: nil,
+            description: "", itemPage: nil, currentPage: nil
+        )
+        fixture.listAPI.detail = BookDetailMetadata(
+            isbn13: searchedBook.isbn13, title: "상세 제목", author: "상세 저자",
+            publisher: "상세 출판사", publishDate: "2026-10-01",
+            coverURL: URL(string: "https://example.com/detail.jpg"), description: "상세 설명"
+        )
+
+        try await fixture.repository.registerSearchedBook(searchedBook)
+
+        let record = try XCTUnwrap(fixture.savedRecords.first)
+        XCTAssertEqual(record.title, "상세 제목")
+        XCTAssertEqual(record.author, "상세 저자")
+        XCTAssertEqual(record.publisher, "상세 출판사")
+        XCTAssertEqual(record.publishDate, "2026-10-01")
+        XCTAssertEqual(record.coverURLString, "https://example.com/detail.jpg")
+        XCTAssertEqual(record.bookDescription, "상세 설명")
+    }
+
+    func test_registerSearchedBook_savesOriginalBookWhenDetailRequestFails() async throws {
+        let fixture = try Fixture()
+        let searchedBook = fixture.searchAPI.books[0]
+        fixture.listAPI.onDetailRequest = { throw StubError.failed }
+
+        try await fixture.repository.registerSearchedBook(searchedBook)
+
+        let record = try XCTUnwrap(fixture.savedRecords.first)
+        XCTAssertEqual(record.title, searchedBook.title)
+        XCTAssertEqual(record.category, "장르 미상")
+        XCTAssertEqual(record.bookDescription, searchedBook.description)
+    }
+
+    func test_registerSearchedBook_doesNotRequestDetailForDuplicateISBN() async throws {
+        let fixture = try Fixture()
+        let searchedBook = fixture.searchAPI.books[0]
+        try await fixture.repository.saveBook(searchedBook)
+        let conflictingBook = Book(
+            title: "신규 검색의 다른 제목", author: "다른 저자", isbn13: searchedBook.isbn13,
+            coverURL: nil, publisher: "다른 출판사", publishDate: nil,
+            category: nil, bestRank: nil, description: "덮어쓰면 안 되는 설명",
+            itemPage: nil, currentPage: nil
+        )
+
+        do {
+            try await fixture.repository.registerSearchedBook(conflictingBook)
+            XCTFail("중복 도서는 등록되면 안 됨")
+        } catch let error as NSError {
+            XCTAssertEqual(error.code, 409)
+        }
+
+        XCTAssertTrue(fixture.listAPI.detailCalls.isEmpty)
+        let savedRecords = try fixture.savedRecords
+        XCTAssertEqual(savedRecords.count, 1)
+        XCTAssertEqual(savedRecords.first?.title, searchedBook.title)
+        XCTAssertEqual(savedRecords.first?.bookDescription, searchedBook.description)
+    }
+
+    func test_updateReadingProgress_savesItemAndCurrentPageTogether() async throws {
+        let fixture = try Fixture()
+        try await fixture.repository.saveBook(fixture.searchAPI.books[0])
+
+        try await fixture.repository.updateReadingProgress(
+            isbn13: "test",
+            itemPage: 320,
+            currentPage: 120
+        )
+
+        let record = try XCTUnwrap(fixture.savedRecords.first)
+        XCTAssertEqual(record.itemPage, 320)
+        XCTAssertEqual(record.currentPage, 120)
+    }
+
+    func test_updateReadingProgress_missingBookThrowsNotFound() async throws {
+        let fixture = try Fixture()
+
+        do {
+            try await fixture.repository.updateReadingProgress(
+                isbn13: "missing",
+                itemPage: 320,
+                currentPage: 120
+            )
+            XCTFail("등록되지 않은 도서의 진행률은 저장되면 안 됨")
+        } catch let error as NSError {
+            XCTAssertEqual(error.code, 404)
+        }
+    }
+
+    func test_viewModelPagination_usesSameNormalizedQuery() async throws {
+        let fixture = try Fixture()
+        let viewModel = BookSearchViewModel(
+            repository: fixture.repository,
+            wishlistRepository: WishlistRepository(modelContainer: fixture.container)
+        )
+        let query = PublishSubject<String>()
+        let search = PublishSubject<Void>()
+        let nextPage = PublishSubject<Void>()
+        let firstPage = expectation(description: "첫 페이지")
+        let secondPage = expectation(description: "다음 페이지")
+        let output = viewModel.transform(input: .init(
+            viewDidLoad: .never(), listSelection: .never(), searchQuery: query,
+            searchTrigger: search, loadNextPage: nextPage,
+            visibleRows: .never(),
+            descriptionBook: .never(), registerBook: .never(),
+            screenAppeared: .never(), toggleWishlist: .never()
+        ))
+        let subscription = output.books.drive(onNext: { books in
+            if books.count == 1 { firstPage.fulfill() }
+            if books.count == 2 { secondPage.fulfill() }
+        })
+        defer { subscription.dispose() }
+        query.onNext(" \n어린 왕자\t")
+        search.onNext(())
+        await fulfillment(of: [firstPage], timeout: 2)
+        query.onNext("어린 왕자 \n")
+        nextPage.onNext(())
+        await fulfillment(of: [secondPage], timeout: 2)
+        XCTAssertEqual(fixture.searchAPI.searchQueries.map(\.query), ["어린 왕자", "어린 왕자"])
+        XCTAssertEqual(fixture.searchAPI.searchQueries.map(\.page), [1, 2])
+    }
+}
+
+private enum StubError: Error {
+    case failed
+}
+
+@MainActor
+private final class TestClock {
+    var time: TimeInterval = 0
+}
+
+@MainActor
+private final class Fixture {
+    let clock = TestClock()
+    let searchAPI = StubBookSearchService()
+    let listAPI = StubData4LibraryService()
+    let container: ModelContainer
+    let repository: BookRepository
+
+    init() throws {
+        container = try ModelContainer(
+            for: BookRecord.self, SentenceRecord.self, ReadingSessionRecord.self,
+            configurations: ModelConfiguration(isStoredInMemoryOnly: true)
+        )
+        let clock = clock
+        repository = BookRepository(
+            bookSearchService: searchAPI,
+            data4LibraryService: listAPI,
+            modelContext: container.mainContext,
+            searchCache: BookSearchCache(now: { clock.time }),
+            metadataCache: BookSearchCache(
+                lifetime: 30 * 60,
+                capacity: 100,
+                now: { clock.time }
+            ),
+            recommendedCache: RecommendedBookCache(now: { Date(timeIntervalSince1970: clock.time) })
+        )
+    }
+
+    var onRequest: (() async throws -> Void)? {
+        get { searchAPI.onRequest }
+        set {
+            searchAPI.onRequest = newValue
+            listAPI.onRequest = newValue
+        }
+    }
+
+    var remoteRequests: [() async throws -> Void] {
+        [
+            { _ = try await self.repository.fetchPopularBooks() },
+            { _ = try await self.repository.fetchTrendingBooks() },
+            { _ = try await self.repository.searchBooks(query: "책", page: 1) }
+        ]
+    }
+
+    var savedRecords: [BookRecord] {
+        get throws { try container.mainContext.fetch(FetchDescriptor<BookRecord>()) }
+    }
+}
+
+@MainActor
+private final class StubData4LibraryService: Data4LibraryServiceProtocol {
+    var popularCalls = 0
+    var trendingCalls = 0
+    var detailCalls: [String] = []
+    var onRequest: (() async throws -> Void)?
+    var onDetailRequest: (() async throws -> Void)?
+    var detail: BookDetailMetadata?
+    var books = [Book(
+        title: "테스트 도서", author: "저자", isbn13: "test", coverURL: nil,
+        publisher: "출판사", publishDate: nil, category: nil, bestRank: nil,
+        description: "설명", itemPage: nil, currentPage: nil
+    )]
+
+    func fetchPopularBooks() async throws -> [Book] {
+        popularCalls += 1
+        try await onRequest?()
+        return books
+    }
+
+    func fetchTrendingBooks() async throws -> [Book] {
+        trendingCalls += 1
+        try await onRequest?()
+        return books
+    }
+
+    func fetchBookDetail(isbn13: String) async throws -> BookDetailMetadata? {
+        detailCalls.append(isbn13)
+        try await onDetailRequest?()
+        return detail
+    }
+}
+
+@MainActor
+private final class StubBookSearchService: BookSearchServiceProtocol {
+    var searchQueries: [(query: String, page: Int)] = []
+    var totalResults = 120
+    var isEnd = false
+    var onRequest: (() async throws -> Void)?
+    var onISBNRequest: (() async throws -> Void)?
+    var isbnQueries: [String] = []
+    var books = [Book(
+        title: "테스트 도서", author: "저자", isbn13: "test", coverURL: nil,
+        publisher: "출판사", publishDate: nil, category: nil, bestRank: nil,
+        description: "설명", itemPage: nil, currentPage: nil
+    )]
+    var isbnBook: Book? {
+        get { books.first }
+        set { books = newValue.map { [$0] } ?? [] }
+    }
+
+    func searchBooks(query: String, page: Int) async throws -> BookSearchPage {
+        searchQueries.append((query, page))
+        try await onRequest?()
+        return BookSearchPage(books: books, totalResults: totalResults, isEnd: isEnd)
+    }
+
+    func fetchBook(isbn13: String) async throws -> Book? {
+        isbnQueries.append(isbn13)
+        try await onISBNRequest?()
+        return isbnBook
+    }
+}
+
+@MainActor
+extension BookRepositoryTests {
+    func test_recommendationCache_survivesRecreationAndRejectsExpiredOrCorruptFiles() throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let date = Date()
+        var now = date
+        let cache = RecommendedBookCache(directory: directory, now: { now })
+        let books = StubData4LibraryService().books
+        _ = cache.insert(books, for: .popular)
+        let recreated = RecommendedBookCache(directory: directory, now: { now })
+        XCTAssertEqual(recreated.snapshot(for: .popular)?.books.first?.isbn13, "test")
+        XCTAssertNil(recreated.snapshot(for: .trending))
+        now = date.addingTimeInterval(299)
+        XCTAssertTrue(try XCTUnwrap(recreated.snapshot(for: .popular)).isFresh(at: now))
+        now = date.addingTimeInterval(300)
+        XCTAssertFalse(try XCTUnwrap(recreated.snapshot(for: .popular)).isFresh(at: now))
+        now = date.addingTimeInterval(86400)
+        XCTAssertNil(recreated.snapshot(for: .popular))
+        try Data("corrupt".utf8).write(to: directory.appendingPathComponent("popular.json"))
+        XCTAssertNil(RecommendedBookCache(directory: directory).snapshot(for: .popular))
+    }
+
+    func test_recommendationCache_diskFailureAndEmptySuccessRemainUsableInMemory() throws {
+        let file = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try Data().write(to: file)
+        defer { try? FileManager.default.removeItem(at: file) }
+        let cache = RecommendedBookCache(directory: file)
+        _ = cache.insert([], for: .trending)
+        XCTAssertEqual(cache.snapshot(for: .trending)?.books.count, 0)
+    }
+
+    func test_recommendationLoader_concurrentWaitersShareRequestAndOneMayCancel() async throws {
+        let service = StubData4LibraryService()
+        let started = expectation(description: "shared request")
+        service.onRequest = {
+            started.fulfill()
+            try await Task.sleep(for: .milliseconds(100))
+        }
+        let cache = RecommendedBookCache()
+        let loader = RecommendedBookLoader(service: service, cache: cache)
+        let first = Task { try await loader.fetch(.popular) }
+        await fulfillment(of: [started], timeout: 2)
+        let second = Task { try await loader.fetch(.popular) }
+        for _ in 0..<10 { await Task.yield() }
+        first.cancel()
+        do { _ = try await first.value; XCTFail("Cancelled waiter returned") }
+        catch is CancellationError { }
+        let result = try await second.value
+        XCTAssertEqual(result.books.count, 1)
+        XCTAssertEqual(service.popularCalls, 1)
+        _ = try await loader.fetch(.popular)
+        XCTAssertEqual(service.popularCalls, 1)
+        service.onRequest = nil
+        _ = try await loader.fetch(.popular, forceRefresh: true)
+        XCTAssertEqual(service.popularCalls, 2)
+    }
+
+    func test_recommendationLoader_lastCancellationDoesNotCacheLateSuccess() async throws {
+        let service = StubData4LibraryService()
+        let started = expectation(description: "request")
+        var continuation: CheckedContinuation<Void, Never>?
+        service.onRequest = {
+            await withCheckedContinuation { continuation = $0; started.fulfill() }
+        }
+        let cache = RecommendedBookCache()
+        let loader = RecommendedBookLoader(service: service, cache: cache)
+        let task = Task { try await loader.fetch(.popular) }
+        await fulfillment(of: [started], timeout: 2)
+        task.cancel()
+        do { _ = try await task.value; XCTFail("Cancelled waiter returned") }
+        catch is CancellationError { }
+        continuation?.resume()
+        for _ in 0..<10 { await Task.yield() }
+        XCTAssertNil(cache.snapshot(for: .popular))
+        service.onRequest = nil
+        _ = try await loader.fetch(.popular)
+        XCTAssertEqual(service.popularCalls, 2)
+    }
+
+    func test_recommendationLoader_failurePreservesPreviousSnapshot() async throws {
+        let service = StubData4LibraryService()
+        let cache = RecommendedBookCache()
+        let old = cache.insert(service.books, for: .trending)
+        let loader = RecommendedBookLoader(service: service, cache: cache)
+        service.onRequest = { throw StubError.failed }
+        do { _ = try await loader.fetch(.trending, forceRefresh: true); XCTFail("Expected failure") }
+        catch StubError.failed { }
+        XCTAssertEqual(cache.snapshot(for: .trending)?.fetchedAt, old.fetchedAt)
+    }
+}

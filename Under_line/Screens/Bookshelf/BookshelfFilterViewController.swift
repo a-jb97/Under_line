@@ -15,21 +15,34 @@ protocol BookshelfFilterDelegate: AnyObject {
     func bookshelfFilterDidRequestShowAll()
 }
 
-final class BookshelfFilterViewController: UIViewController {
+final class BookshelfFilterViewController: AdaptiveViewController {
+
+    private let formScrollView = ScrollableFormView()
+
+    override var avoidsKeyboard: Bool { true }
+    override var ignoresHorizontalSafeArea: Bool { true }
 
     weak var delegate: BookshelfFilterDelegate?
 
     private let disposeBag = DisposeBag()
 
-    /// 시트 최적 높이: 전부표시 버튼 하단 + 16pt
+    /// 커스텀 핸들부터 전부 표시 버튼 하단 여백까지의 콘텐츠 높이.
     static var preferredSheetHeight: CGFloat {
         let font = UIFont(name: "GowunBatang-Bold", size: 20) ?? .systemFont(ofSize: 20, weight: .bold)
         let titleH = ceil(font.lineHeight)
-        // top(20) + title + gap(12) + searchBar(48) + gap(16) + divider(1) + gap(16) + button(48) + bottom(16)
-        return 20 + titleH + 12 + 48 + 16 + 1 + 16 + 48 + 16
+        // top(12) + handle(5) + gap(11) + title + gap(12) + searchBar(48)
+        // + gap(16) + divider(1) + gap(16) + button(48) + bottom(24)
+        return 12 + 5 + 11 + titleH + 12 + 48 + 16 + 1 + 16 + 48 + 24
     }
 
     // MARK: - UI
+
+    private let handleBar: UIView = {
+        let view = UIView()
+        view.backgroundColor = UIColor.walnut.withAlphaComponent(0.25)
+        view.layer.cornerRadius = 2.5
+        return view
+    }()
 
     private let titleLabel: UILabel = {
         let l = UILabel()
@@ -110,15 +123,19 @@ final class BookshelfFilterViewController: UIViewController {
     // MARK: - Setup
 
     private func setupUI() {
+        formScrollView.contentInsetAdjustmentBehavior = .never
+        view.addSubview(formScrollView)
+        formScrollView.snp.makeConstraints { $0.edges.equalTo(view.adaptiveContentLayoutGuide) }
         view.backgroundColor = UIColor.background
 
         searchBarView.addSubview(searchIconView)
         searchBarView.addSubview(searchTextField)
 
-        view.addSubview(titleLabel)
-        view.addSubview(searchBarView)
-        view.addSubview(divider)
-        view.addSubview(showAllButton)
+        formScrollView.formContentView.addSubview(handleBar)
+        formScrollView.formContentView.addSubview(titleLabel)
+        formScrollView.formContentView.addSubview(searchBarView)
+        formScrollView.formContentView.addSubview(divider)
+        formScrollView.formContentView.addSubview(showAllButton)
     }
 
     private func bindActions() {
@@ -139,8 +156,15 @@ final class BookshelfFilterViewController: UIViewController {
     }
 
     private func setupConstraints() {
+        handleBar.snp.makeConstraints { make in
+            make.top.equalToSuperview().offset(12)
+            make.centerX.equalToSuperview()
+            make.width.equalTo(36)
+            make.height.equalTo(5)
+        }
+
         titleLabel.snp.makeConstraints { make in
-            make.top.equalTo(view.safeAreaLayoutGuide).offset(20)
+            make.top.equalTo(handleBar.snp.bottom).offset(11)
             make.leading.trailing.equalToSuperview().inset(24)
         }
 
@@ -172,6 +196,7 @@ final class BookshelfFilterViewController: UIViewController {
             make.top.equalTo(divider.snp.bottom).offset(16)
             make.leading.trailing.equalToSuperview().inset(24)
             make.height.equalTo(48)
+            make.bottom.equalToSuperview().inset(24)
         }
     }
 

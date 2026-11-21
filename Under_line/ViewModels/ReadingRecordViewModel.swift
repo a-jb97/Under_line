@@ -30,7 +30,6 @@ final class ReadingRecordViewModel {
         let viewDidAppear: Observable<Void>
         let tabSelected:   Observable<Int>   // 0=일별, 1=주별, 2=월별
         let timerStopped:  Observable<Int>   // 경과 초
-        let pageRecorded:  Observable<Int>   // 기록된 페이지 번호
     }
 
     // MARK: - Output
@@ -43,17 +42,14 @@ final class ReadingRecordViewModel {
 
     private let book: Book
     private let readingSessionRepository: ReadingSessionRepositoryProtocol
-    private let bookRepository: BookRepositoryProtocol
     private let disposeBag = DisposeBag()
 
     init(
         book: Book,
-        readingSessionRepository: ReadingSessionRepositoryProtocol,
-        bookRepository: BookRepositoryProtocol
+        readingSessionRepository: ReadingSessionRepositoryProtocol
     ) {
         self.book = book
         self.readingSessionRepository = readingSessionRepository
-        self.bookRepository = bookRepository
     }
 
     // MARK: - Transform
@@ -70,16 +66,6 @@ final class ReadingRecordViewModel {
             }
             .map { }
             .bind(to: reloadTrigger)
-            .disposed(by: disposeBag)
-
-        // 페이지 기록 → DB 저장 (fire-and-forget)
-        input.pageRecorded
-            .flatMapLatest { [weak self] page -> Observable<Void> in
-                guard let self else { return .empty() }
-                return rxAsync { try await self.bookRepository.updateCurrentPage(isbn13: self.book.isbn13, page: page) }
-                    .catch { _ in .empty() }
-            }
-            .subscribe()
             .disposed(by: disposeBag)
 
         // 기간 스트림 (초기값: 일별)

@@ -12,21 +12,18 @@ import RxCocoa
 import Kingfisher
 import Toast
 
-final class BookDetailViewController: UIViewController {
+final class BookDetailViewController: AdaptiveViewController {
 
     private let book: Book
     private let disposeBag          = DisposeBag()
     private lazy var viewModel      = BookDetailViewModel(
         book:               book,
-        sentenceRepository: AppContainer.shared.sentenceRepository,
-        bookRepository:     AppContainer.shared.bookRepository
+        sentenceRepository: AppContainer.shared.sentenceRepository
     )
     private let viewWillAppearRelay    = PublishRelay<Void>()
     private let deleteSentenceRelay    = PublishRelay<Sentence>()
-    private let updateCurrentPageRelay = PublishRelay<Int>()
 
     private var sentences: [Sentence] = []
-    private var highlightLayers: [(view: UIView, layer: CAGradientLayer)] = []
     private var isEditMode = false
     private var currentItemPage: Int?
     private var latestCurrentPage: Int?
@@ -40,9 +37,13 @@ final class BookDetailViewController: UIViewController {
     }()
 
     private let contentView = UIView()
+    private let viewportLayoutGuide = UILayoutGuide()
+    private let columnsLayoutGuide = UILayoutGuide()
 
     init(book: Book) {
         self.book = book
+        currentItemPage = book.itemPage
+        latestCurrentPage = book.currentPage
         super.init(nibName: nil, bundle: nil)
     }
 
@@ -51,32 +52,10 @@ final class BookDetailViewController: UIViewController {
     // MARK: - UI Components
 
     // Header
-    private lazy var backButton: UIButton = {
-        let btn = UIButton(type: .system)
-        let cfg = UIImage.SymbolConfiguration(pointSize: 17, weight: .regular)
-        btn.setImage(UIImage(systemName: "chevron.left", withConfiguration: cfg), for: .normal)
-        btn.tintColor = UIColor.accent
-        return btn
-    }()
 
-    private let titleLabel: UILabel = {
-        let l = UILabel()
-        l.text = "나의 밑줄"
-        l.font = UIFont(name: "GowunBatang-Bold", size: 34)
-            ?? .systemFont(ofSize: 34, weight: .bold)
-        l.textColor = UIColor.accent
-        return l
-    }()
-
-    private lazy var timerButton: UIButton = {
-        let btn = UIButton(type: .system)
-        let cfg = UIImage.SymbolConfiguration(pointSize: 16, weight: .regular)
-        btn.setImage(UIImage(systemName: "timer", withConfiguration: cfg), for: .normal)
-        btn.tintColor = UIColor.appPrimary
-        btn.layer.cornerRadius = 20
-        btn.clipsToBounds = true
-        return btn
-    }()
+    private let timerButton = SystemNavigationStyle.item(
+        image: "timer", label: "독서 타이머", identifier: "readingTimerButton", tint: .appPrimary, priority: .high
+    )
 
     // Quote Card
     private let quoteCard: UIView = {
@@ -119,12 +98,17 @@ final class BookDetailViewController: UIViewController {
         return v
     }()
 
+    private let bookCoverWidth: CGFloat = 60
     private let bookCoverView: UIImageView = {
         let iv = UIImageView()
         iv.backgroundColor   = UIColor.appPrimary
         iv.layer.cornerRadius = 3
         iv.clipsToBounds      = true
         iv.contentMode        = .scaleAspectFill
+        for axis in [NSLayoutConstraint.Axis.horizontal, .vertical] {
+            iv.setContentHuggingPriority(.fittingSizeLevel, for: axis)
+            iv.setContentCompressionResistancePriority(.fittingSizeLevel, for: axis)
+        }
         return iv
     }()
 
@@ -199,9 +183,7 @@ final class BookDetailViewController: UIViewController {
         let btn = UIButton(type: .system)
         let cfg = UIImage.SymbolConfiguration(pointSize: 14, weight: .medium)
         btn.setImage(UIImage(systemName: "square.and.pencil", withConfiguration: cfg), for: .normal)
-        btn.tintColor = UIColor.walnut
-        btn.layer.cornerRadius = 26
-        btn.clipsToBounds = true
+        btn.tintColor = UIColor.appPrimary
         return btn
     }()
 
@@ -214,7 +196,7 @@ final class BookDetailViewController: UIViewController {
     private lazy var sentenceUpdateButton: UIButton = {
         var config = UIButton.Configuration.plain()
         config.title = "밑줄 수정"
-        config.baseForegroundColor = UIColor.walnut
+        config.baseForegroundColor = UIColor.appPrimary
         config.titleTextAttributesTransformer = UIConfigurationTextAttributesTransformer { attrs in
             var attrs = attrs
             attrs.font = .systemFont(ofSize: 14, weight: .semibold)
@@ -222,8 +204,6 @@ final class BookDetailViewController: UIViewController {
         }
         config.contentInsets = NSDirectionalEdgeInsets(top: 0, leading: 16, bottom: 0, trailing: 16)
         let btn = UIButton(configuration: config)
-        btn.layer.cornerRadius = 26
-        btn.clipsToBounds = true
         return btn
     }()
 
@@ -232,27 +212,49 @@ final class BookDetailViewController: UIViewController {
         let btn = UIButton(type: .system)
         let cfg = UIImage.SymbolConfiguration(pointSize: 14, weight: .medium)
         btn.setImage(UIImage(systemName: "plus", withConfiguration: cfg), for: .normal)
-        btn.tintColor = UIColor.walnut
-        btn.layer.cornerRadius = 26
-        btn.clipsToBounds = true
+        btn.tintColor = UIColor.appPrimary
         return btn
     }()
 
     // MARK: - Lifecycle
+
+    private var lastQuoteWidth: CGFloat = 0
+    private var columns: ReadingColumns?
+
+    override func viewWillLayoutSubviews() {
+        super.viewWillLayoutSubviews()
+        let layout = ReadingColumns(
+            container: ContainerLayout(view: view, reservesInactiveDivisions: true),
+            usesFullWidth: traitCollection.userInterfaceIdiom == .pad
+        )
+        guard layout != columns else { return }
+        columns = layout
+        updateContentConstraints()
+    }
+
+    override func viewDidLayoutSubviews() {
+        super.viewDidLayoutSubviews()
+        let width = quoteScrollView.bounds.width
+        guard width > 0, width != lastQuoteWidth else { return }
+        lastQuoteWidth = width
+        quoteScrollView.setContentOffset(CGPoint(x: CGFloat(pageControl.currentPage) * width, y: 0), animated: false)
+    }
 
     override func viewDidLoad() {
         super.viewDidLoad()
         setupUI()
         setupConstraints()
         configureWithBook()
+        progressSectionView.configure(
+            itemPage: currentItemPage,
+            currentPage: latestCurrentPage
+        )
         bindViewModel()
         bindActions()
     }
 
     override func viewWillAppear(_ animated: Bool) {
         super.viewWillAppear(animated)
-        navigationController?.interactivePopGestureRecognizer?.delegate = nil
-        navigationController?.interactivePopGestureRecognizer?.isEnabled = true
         viewWillAppearRelay.accept(())
     }
 
@@ -261,28 +263,20 @@ final class BookDetailViewController: UIViewController {
         showTutorialIfNeeded()
     }
 
-    override func viewDidLayoutSubviews() {
-        super.viewDidLayoutSubviews()
-        for (view, gradient) in highlightLayers {
-            gradient.frame = view.bounds
-        }
-    }
-
     override var preferredStatusBarStyle: UIStatusBarStyle { .darkContent }
 
     // MARK: - Setup
 
     private func setupUI() {
+        SystemNavigationStyle.configure(self, title: "나의 밑줄")
+        SystemNavigationStyle.setTrailingItems([timerButton], on: navigationItem)
         view.backgroundColor = UIColor.background
 
-        // Header
-        view.addSubview(backButton)
-        view.addSubview(titleLabel)
-        view.addSubview(timerButton)
-
         // Scroll container
+        view.addLayoutGuide(viewportLayoutGuide)
         view.addSubview(scrollView)
         scrollView.addSubview(contentView)
+        contentView.addLayoutGuide(columnsLayoutGuide)
 
         // Quote Card
         quoteScrollView.delegate = self
@@ -309,50 +303,16 @@ final class BookDetailViewController: UIViewController {
         view.addSubview(sentenceUpdateContainer)
         sentenceUpdateContainer.addSubview(sentenceUpdateButton)
 
-        applyFabGlassStyle(to: timerButton,          cornerRadius: 20)
-        applyFabGlassStyle(to: fabButton,            cornerRadius: 26)
-        applyFabGlassStyle(to: sentenceEditButton,   cornerRadius: 26)
-        applyFabGlassStyle(to: sentenceUpdateButton, cornerRadius: 26)
+        SystemGlassButtonStyle.apply(to: fabButton, accessibilityLabel: "밑줄 추가")
+        SystemGlassButtonStyle.apply(to: sentenceEditButton, accessibilityLabel: "밑줄 편집")
+        SystemGlassButtonStyle.apply(to: sentenceUpdateButton, accessibilityLabel: "밑줄 수정")
     }
 
     private func setupConstraints() {
-        // Header (design: 헤더 높이 ≈ 62, top = safeArea)
-        backButton.snp.makeConstraints { make in
-            make.leading.equalToSuperview().inset(24)
-            make.top.equalTo(view.safeAreaLayoutGuide).offset(17)
-            make.size.equalTo(28)
-        }
-
-        titleLabel.snp.makeConstraints { make in
-            make.leading.equalTo(backButton.snp.trailing).offset(4)
-            make.centerY.equalTo(backButton)
-        }
-
-        timerButton.snp.makeConstraints { make in
-            make.trailing.equalToSuperview().inset(24)
-            make.centerY.equalTo(backButton)
-            make.size.equalTo(40)
-        }
-
         // Scroll container
+        updateContentConstraints()
         scrollView.snp.makeConstraints { make in
-            make.top.equalTo(titleLabel.snp.bottom).offset(8)
-            make.leading.trailing.equalToSuperview()
-            make.bottom.equalTo(view.safeAreaLayoutGuide)
-        }
-        scrollView.contentInset.bottom = 80
-
-        contentView.snp.makeConstraints { make in
-            make.edges.equalToSuperview()
-            make.width.equalTo(scrollView)
-        }
-
-        // Quote Card (height: 266, padding: [24,24,20,24])
-        let quoteCardWidthInset: CGFloat = UIDevice.current.userInterfaceIdiom == .pad ? 100 : 24
-        quoteCard.snp.makeConstraints { make in
-            make.top.equalToSuperview().offset(12)
-            make.leading.trailing.equalToSuperview().inset(quoteCardWidthInset)
-            make.height.equalTo(quoteCard.snp.width).multipliedBy(0.7)
+            make.edges.equalTo(viewportLayoutGuide)
         }
 
         quoteScrollView.snp.makeConstraints { make in
@@ -362,29 +322,16 @@ final class BookDetailViewController: UIViewController {
         // Page Control
         pageControl.snp.makeConstraints { make in
             make.top.equalTo(quoteCard.snp.bottom).offset(16)
-            make.centerX.equalToSuperview()
+            make.centerX.equalTo(quoteCard)
         }
 
-        // Book Info Section (cornerRadius 16, padding 16, gap 20)
-        bookInfoSection.snp.makeConstraints { make in
-            make.top.equalTo(pageControl.snp.bottom).offset(24)
-            make.leading.trailing.equalToSuperview().inset(24)
-            make.bottom.equalToSuperview().inset(24)
-        }
-
-        // Book Cover (60×83)
-        bookCoverView.snp.makeConstraints { make in
-            make.leading.equalToSuperview().inset(16)
-            make.top.equalToSuperview().inset(16)
-            make.width.equalTo(60)
-            make.height.equalTo(83)
-        }
+        updateBookCoverConstraints(aspectRatio: 83 / bookCoverWidth)
 
         // Book Title
         bookTitleLabel.snp.makeConstraints { make in
-            make.leading.equalTo(bookCoverView.snp.trailing).offset(14)
+            make.leading.equalTo(bookCoverView.snp.leading).offset(bookCoverWidth + 14)
             make.trailing.equalToSuperview().inset(16)
-            make.top.equalTo(bookCoverView)
+            make.top.equalToSuperview().inset(16)
         }
 
         bookAuthorLabel.snp.makeConstraints { make in
@@ -417,7 +364,7 @@ final class BookDetailViewController: UIViewController {
         }
 
         // Progress Section (cornerRadius 12, padding [12,14])
-        // 초기에는 description이 숨겨진 상태이므로 genreTagView 기준
+        // 도서 소개가 접혀 있으면 장르 태그 하단을 기준으로 배치한다.
         progressSectionView.snp.makeConstraints { make in
             make.top.equalTo(genreTagView.snp.bottom).offset(16)
             make.leading.trailing.equalToSuperview().inset(16)
@@ -426,19 +373,20 @@ final class BookDetailViewController: UIViewController {
 
         // FAB (52×52, trailing 24, bottom safeArea 16)
         fabButton.snp.makeConstraints { make in
-            make.trailing.equalToSuperview().inset(24)
-            make.bottom.equalTo(view.safeAreaLayoutGuide).inset(16)
+            make.trailing.equalTo(viewportLayoutGuide).inset(24)
+            make.bottom.equalTo(viewportLayoutGuide).inset(16)
             make.size.equalTo(52)
         }
 
         sentenceEditButton.snp.makeConstraints { make in
-            make.leading.equalToSuperview().inset(24)
+            make.leading.equalTo(viewportLayoutGuide).offset(24)
             make.centerY.equalTo(fabButton)
             make.size.equalTo(52)
         }
 
         sentenceUpdateContainer.snp.makeConstraints { make in
             make.leading.equalTo(sentenceEditButton.snp.trailing).offset(12)
+            make.trailing.lessThanOrEqualTo(fabButton.snp.leading).offset(-12)
             make.centerY.equalTo(sentenceEditButton)
             make.height.equalTo(52)
         }
@@ -448,10 +396,83 @@ final class BookDetailViewController: UIViewController {
         }
     }
 
+    private func updateBookCoverConstraints(aspectRatio: CGFloat) {
+        bookCoverView.snp.remakeConstraints { make in
+            make.leading.equalToSuperview().inset(16)
+            make.top.greaterThanOrEqualToSuperview().inset(16)
+            make.bottom.equalTo(genreTagView.snp.bottom)
+            make.width.lessThanOrEqualTo(bookCoverWidth)
+            make.width.equalTo(bookCoverWidth).priority(249)
+            make.height.equalTo(bookCoverView.snp.width).multipliedBy(aspectRatio)
+        }
+    }
+
+    private func updateContentConstraints() {
+        scrollView.contentInset.bottom = columns == nil ? 80 : 0
+        viewportLayoutGuide.snp.remakeConstraints { make in
+            if let columns {
+                make.left.equalTo(view).offset(columns.viewport.minX)
+                make.top.equalTo(view).offset(columns.viewport.minY)
+                make.width.equalTo(columns.viewport.width)
+                make.height.equalTo(columns.viewport.height)
+            } else {
+                make.edges.equalTo(view.adaptiveContentLayoutGuide)
+            }
+        }
+        quoteCard.snp.remakeConstraints { make in
+            make.left.equalToSuperview().offset(24)
+            if let columns {
+                make.width.equalTo(columns.leadingWidth)
+            } else {
+                make.top.equalToSuperview().offset(12)
+                make.right.equalToSuperview().inset(24)
+            }
+            make.height.equalTo(quoteCard.snp.width).multipliedBy(0.7).priority(.high)
+            make.height.lessThanOrEqualTo(scrollView.frameLayoutGuide.snp.height).multipliedBy(0.65)
+        }
+        bookInfoSection.snp.remakeConstraints { make in
+            make.right.equalToSuperview().inset(24)
+            if let columns {
+                make.left.equalTo(quoteCard.snp.right).offset(columns.gap)
+                make.centerY.equalTo(quoteCard)
+            } else {
+                make.left.equalTo(quoteCard)
+                make.top.equalTo(pageControl.snp.bottom).offset(24)
+                make.bottom.equalToSuperview().inset(24)
+            }
+        }
+        contentView.snp.remakeConstraints { make in
+            make.edges.equalTo(scrollView.contentLayoutGuide)
+            make.width.equalTo(scrollView.frameLayoutGuide)
+            if columns != nil {
+                make.height.greaterThanOrEqualTo(scrollView.frameLayoutGuide)
+                make.height.equalTo(scrollView.frameLayoutGuide).priority(249)
+            }
+        }
+        columnsLayoutGuide.snp.remakeConstraints { make in
+            if columns != nil {
+                make.leading.trailing.equalTo(contentView)
+                make.top.lessThanOrEqualTo(quoteCard)
+                make.top.lessThanOrEqualTo(bookInfoSection)
+                make.top.equalTo(quoteCard).priority(.low)
+                make.top.equalTo(bookInfoSection).priority(.low)
+                make.top.greaterThanOrEqualTo(contentView).offset(12)
+                make.top.equalTo(contentView).offset(12).priority(247)
+                make.bottom.greaterThanOrEqualTo(pageControl)
+                make.bottom.greaterThanOrEqualTo(bookInfoSection)
+                make.bottom.equalTo(pageControl).priority(.low)
+                make.bottom.equalTo(bookInfoSection).priority(.low)
+                // 긴 도서 소개는 상단부터 표시하고 하단 버튼 위까지 스크롤할 수 있게 한다.
+                make.bottom.lessThanOrEqualTo(contentView).offset(-80)
+                make.centerY.equalTo(contentView).offset(-12).priority(248)
+            }
+        }
+    }
+
     // MARK: - Book Data
 
     private func configureWithBook() {
-        bookTitleLabel.text  = book.title
+        bookTitleLabel.text  = book.displayTitle
         bookAuthorLabel.text = book.author
 
         var publisherStr = book.publisher
@@ -460,22 +481,16 @@ final class BookDetailViewController: UIViewController {
         }
         publisherLabel.text = publisherStr
 
-        if let category = book.category, !category.isEmpty {
-            genreTagLabel.text    = category
-            genreTagView.isHidden = false
-        } else {
-            genreTagView.isHidden = true
-        }
+        genreTagLabel.text = BookGenre.normalized(book.category)
+        genreTagView.isHidden = false
 
         if let coverURL = book.coverURL {
-            bookCoverView.kf.setImage(with: coverURL) { [weak self] result in
+            let request = ShelfCoverImageSource.request(for: coverURL)
+            bookCoverView.kf.setImage(with: request.url, options: request.options) { [weak self] result in
                 guard let self, case .success(let value) = result else { return }
                 let imageSize = value.image.size
-                guard imageSize.width > 0 else { return }
-                let newHeight = ceil(60.0 * imageSize.height / imageSize.width)
-                self.bookCoverView.snp.updateConstraints { make in
-                    make.height.equalTo(newHeight)
-                }
+                guard imageSize.width > 0, imageSize.height > 0 else { return }
+                self.updateBookCoverConstraints(aspectRatio: imageSize.height / imageSize.width)
             }
         }
 
@@ -497,8 +512,7 @@ final class BookDetailViewController: UIViewController {
     private func bindViewModel() {
         let output = viewModel.transform(input: BookDetailViewModel.Input(
             viewWillAppear:    viewWillAppearRelay.asObservable(),
-            deleteSentence:    deleteSentenceRelay.asObservable(),
-            updateCurrentPage: updateCurrentPageRelay.asObservable()
+            deleteSentence:    deleteSentenceRelay.asObservable()
         ))
 
         output.sentences
@@ -506,19 +520,6 @@ final class BookDetailViewController: UIViewController {
                 guard let self else { return }
                 self.sentences = sentences
                 self.renderQuotePages()
-            })
-            .disposed(by: disposeBag)
-
-        output.itemPage
-            .drive(onNext: { [weak self] itemPage in
-                guard let self, let itemPage else { return }
-                self.currentItemPage = itemPage
-                if let currentPage = self.book.currentPage, currentPage > 0 {
-                    self.latestCurrentPage = currentPage
-                    self.progressSectionView.configure(currentPage: currentPage, itemPage: itemPage)
-                } else {
-                    self.progressSectionView.showNoProgress(itemPage: itemPage)
-                }
             })
             .disposed(by: disposeBag)
 
@@ -573,16 +574,7 @@ final class BookDetailViewController: UIViewController {
 
     private func setEditMode(_ editing: Bool) {
         isEditMode = editing
-        if editing {
-            sentenceEditButton.setImage(nil, for: .normal)
-            sentenceEditButton.setTitle("완료", for: .normal)
-            sentenceEditButton.setTitleColor(UIColor.walnut, for: .normal)
-            sentenceEditButton.titleLabel?.font = .systemFont(ofSize: 14, weight: .semibold)
-        } else {
-            let cfg = UIImage.SymbolConfiguration(pointSize: 14, weight: .medium)
-            sentenceEditButton.setImage(UIImage(systemName: "square.and.pencil", withConfiguration: cfg), for: .normal)
-            sentenceEditButton.setTitle(nil, for: .normal)
-        }
+        SystemGlassButtonStyle.setEditing(editing, on: sentenceEditButton, accessibilityLabel: "밑줄 편집")
         sentenceUpdateContainer.isHidden = !editing
         renderQuotePages()
     }
@@ -708,12 +700,9 @@ final class BookDetailViewController: UIViewController {
             )
         }
 
-        backView.addSubview(memoLabel)
-
-        memoLabel.snp.makeConstraints { make in
-            make.leading.trailing.equalToSuperview().inset(24)
-            make.center.equalToSuperview()
-        }
+        let memoScroll = ScrollableTextView(label: memoLabel)
+        backView.addSubview(memoScroll)
+        memoScroll.snp.makeConstraints { $0.edges.equalToSuperview().inset(12) }
 
         page.addSubview(backView)
         backView.snp.makeConstraints { make in make.edges.equalToSuperview() }
@@ -795,78 +784,6 @@ final class BookDetailViewController: UIViewController {
         return page
     }
 
-    // MARK: - FAB Glass Style (BookshelfViewController와 동일한 스펙)
-
-    private func applyFabGlassStyle(to button: UIButton, cornerRadius: CGFloat) {
-        guard let superview = button.superview else { return }
-
-        let shadowView = UIView()
-        shadowView.isUserInteractionEnabled = false
-        shadowView.layer.cornerRadius = cornerRadius
-        shadowView.backgroundColor = .white
-        shadowView.layer.shadowColor   = UIColor.black.cgColor
-        shadowView.layer.shadowOpacity = Float(CGFloat(0x18) / 255)
-        shadowView.layer.shadowRadius  = 8
-        shadowView.layer.shadowOffset  = CGSize(width: 0, height: 6)
-        superview.insertSubview(shadowView, belowSubview: button)
-        shadowView.snp.makeConstraints { $0.edges.equalTo(button) }
-
-        let glassContainer = UIView()
-        glassContainer.isUserInteractionEnabled = false
-        glassContainer.layer.cornerRadius = cornerRadius
-        glassContainer.clipsToBounds = true
-        glassContainer.layer.borderWidth = 1
-        glassContainer.layer.borderColor = UIColor(white: 1, alpha: CGFloat(0x70) / 255).cgColor
-        superview.insertSubview(glassContainer, belowSubview: button)
-        glassContainer.snp.makeConstraints { $0.edges.equalTo(button) }
-        superview.insertSubview(shadowView, belowSubview: glassContainer)
-
-        let blurView = UIVisualEffectView(effect: UIBlurEffect(style: .systemUltraThinMaterial))
-        blurView.isUserInteractionEnabled = false
-        glassContainer.addSubview(blurView)
-        blurView.snp.makeConstraints { $0.edges.equalToSuperview() }
-
-        let solidTint = UIView()
-        solidTint.isUserInteractionEnabled = false
-        solidTint.backgroundColor = UIColor(hex: "#832C11", alpha: CGFloat(0x24) / 255)
-        blurView.contentView.addSubview(solidTint)
-        solidTint.snp.makeConstraints { $0.edges.equalToSuperview() }
-
-        let topSpecular = UIView()
-        topSpecular.isUserInteractionEnabled = false
-        blurView.contentView.addSubview(topSpecular)
-        topSpecular.snp.makeConstraints { $0.edges.equalToSuperview() }
-        let topGrad = CAGradientLayer()
-        topGrad.colors = [
-            UIColor(white: 1, alpha: CGFloat(0x50) / 255).cgColor,
-            UIColor(white: 1, alpha: CGFloat(0x10) / 255).cgColor,
-            UIColor.clear.cgColor,
-        ]
-        topGrad.locations  = [0, 0.45, 1.0]
-        topGrad.startPoint = CGPoint(x: 0.5, y: 0)
-        topGrad.endPoint   = CGPoint(x: 0.5, y: 1)
-        topSpecular.layer.addSublayer(topGrad)
-        highlightLayers.append((topSpecular, topGrad))
-
-        let bottomWarm = UIView()
-        bottomWarm.isUserInteractionEnabled = false
-        blurView.contentView.addSubview(bottomWarm)
-        bottomWarm.snp.makeConstraints { $0.edges.equalToSuperview() }
-        let bottomGrad = CAGradientLayer()
-        bottomGrad.colors = [
-            UIColor(hex: "#832C11", alpha: CGFloat(0x20) / 255).cgColor,
-            UIColor(hex: "#832C11", alpha: CGFloat(0x0C) / 255).cgColor,
-            UIColor.clear.cgColor,
-        ]
-        bottomGrad.locations  = [0, 0.5, 1.0]
-        bottomGrad.startPoint = CGPoint(x: 0.5, y: 1)
-        bottomGrad.endPoint   = CGPoint(x: 0.5, y: 0)
-        bottomWarm.layer.addSublayer(bottomGrad)
-        highlightLayers.append((bottomWarm, bottomGrad))
-
-        button.backgroundColor = .clear
-    }
-    
     private func loadSentences() {
         viewWillAppearRelay.accept(())
     }
@@ -874,17 +791,14 @@ final class BookDetailViewController: UIViewController {
     // MARK: - Bindings
 
     private func bindActions() {
-        backButton.rx.tap
-            .subscribe(onNext: { [weak self] in
-                self?.navigationController?.popViewController(animated: true)
-            })
-            .disposed(by: disposeBag)
 
         fabButton.rx.tap
             .subscribe(onNext: { [weak self] in
                 guard let self else { return }
                 let cameraVC = CameraCollectionViewController()
-                cameraVC.modalPresentationStyle = .fullScreen
+                let cameraNavigation = UINavigationController(rootViewController: cameraVC)
+                SystemNavigationStyle.configure(cameraNavigation)
+                cameraNavigation.modalPresentationStyle = .fullScreen
 
                 // 직접 수집 버튼 → OCR 없이 빈 폼으로 present
                 cameraVC.onDirectCollect = { [weak self] in
@@ -907,7 +821,7 @@ final class BookDetailViewController: UIViewController {
                     self.present(directVC, animated: true)
                 }
 
-                self.present(cameraVC, animated: true)
+                self.present(cameraNavigation, animated: true)
             })
             .disposed(by: disposeBag)
 
@@ -919,10 +833,14 @@ final class BookDetailViewController: UIViewController {
                     currentItemPage: self.currentItemPage,
                     initialPage:     self.latestCurrentPage
                 )
-                vc.onPageRecorded = { [weak self] page in
-                    guard let self, let itemPage = self.currentItemPage else { return }
-                    self.latestCurrentPage = page
-                    self.progressSectionView.configure(currentPage: page, itemPage: itemPage)
+                vc.onProgressRecorded = { [weak self] progress in
+                    guard let self else { return }
+                    self.currentItemPage = progress.itemPage
+                    self.latestCurrentPage = progress.currentPage
+                    self.progressSectionView.configure(
+                        itemPage: progress.itemPage,
+                        currentPage: progress.currentPage
+                    )
                 }
                 self.navigationController?.pushViewController(vc, animated: true)
             })
@@ -951,14 +869,21 @@ final class BookDetailViewController: UIViewController {
 
         progressSectionView.editButtonTap
             .subscribe(onNext: { [weak self] in
-                guard let self, let itemPage = self.currentItemPage else { return }
-                let vc = PageRecordViewController(itemPage: itemPage)
+                guard let self else { return }
+                let vc = PageRecordViewController(
+                    isbn13: self.book.isbn13,
+                    itemPage: self.currentItemPage,
+                    currentPage: self.latestCurrentPage
+                )
                 vc.modalPresentationStyle = .pageSheet
-                vc.onPageRecorded = { [weak self] page in
+                vc.onProgressRecorded = { [weak self] progress in
                     guard let self else { return }
-                    self.latestCurrentPage = page
-                    self.progressSectionView.configure(currentPage: page, itemPage: itemPage)
-                    self.updateCurrentPageRelay.accept(page)
+                    self.currentItemPage = progress.itemPage
+                    self.latestCurrentPage = progress.currentPage
+                    self.progressSectionView.configure(
+                        itemPage: progress.itemPage,
+                        currentPage: progress.currentPage
+                    )
                 }
                 self.present(vc, animated: true)
             })
@@ -993,7 +918,7 @@ final class BookDetailViewController: UIViewController {
             .subscribe(onNext: { [weak self] _ in
                 guard let self, !self.sentences.isEmpty else { return }
                 let sentence = self.sentences[self.pageControl.currentPage]
-                let editorVC = QuoteCardEditorViewController(sentence: sentence, bookTitle: self.book.title)
+                let editorVC = QuoteCardEditorViewController(sentence: sentence, bookTitle: self.book.displayTitle)
                 editorVC.modalPresentationStyle = .overFullScreen
                 editorVC.modalTransitionStyle   = .crossDissolve
                 self.present(editorVC, animated: true)
@@ -1011,21 +936,30 @@ extension BookDetailViewController {
 
         let steps: [TutorialStep] = [
             TutorialStep(
-                targetFrame: fabButton.convert(fabButton.bounds, to: nil),
-                message: "카메라 OCR이나 직접 입력으로\n밑줄을 수집해보세요!"
+                targetFrame: .zero,
+                message: "카메라 OCR이나 직접 입력으로\n밑줄을 수집해보세요!",
+                targetFrameProvider: { [weak self] in
+                    guard let target = self?.fabButton else { return .zero }
+                    return target.convert(target.bounds, to: nil)
+                }
             ),
             TutorialStep(
-                targetFrame: quoteCard.convert(quoteCard.bounds, to: nil),
-                message: "카드를 탭하면 앞뒷면이 뒤집혀요\n앞면은 문장, 뒷면은 메모예요"
+                targetFrame: .zero,
+                message: "카드를 탭하면 앞뒷면이 뒤집혀요\n앞면은 문장, 뒷면은 메모예요",
+                targetFrameProvider: { [weak self] in
+                    guard let target = self?.quoteCard else { return .zero }
+                    return target.convert(target.bounds, to: nil)
+                }
             ),
             TutorialStep(
-                targetFrame: quoteCard.convert(quoteCard.bounds, to: nil),
-                message: "카드를 길게 탭하면\n이미지 카드로 만들어 저장할 수 있어요"
+                targetFrame: .zero,
+                message: "카드를 길게 탭하면\n이미지 카드로 만들어 저장할 수 있어요",
+                targetFrameProvider: { [weak self] in
+                    guard let target = self?.quoteCard else { return .zero }
+                    return target.convert(target.bounds, to: nil)
+                }
             ),
-            TutorialStep(
-                targetFrame: timerButton.convert(timerButton.bounds, to: nil),
-                message: "독서 시간을 기록하고\n통계를 확인하세요"
-            ),
+            TutorialSupport.barButtonStep(item: timerButton, on: self, message: "타이머 아이콘에서 독서 시간을 기록하고\n통계를 확인하세요"),
         ]
 
         let tutorialVC = TutorialOverlayViewController()

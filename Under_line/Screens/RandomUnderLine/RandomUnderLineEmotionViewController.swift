@@ -11,7 +11,9 @@ import SnapKit
 import RxSwift
 import RxCocoa
 
-final class RandomUnderLineEmotionViewController: UIViewController {
+final class RandomUnderLineEmotionViewController: AdaptiveViewController {
+
+    private let formScrollView = ScrollableFormView()
 
     private let disposeBag       = DisposeBag()
     private let enabledEmotions: [Emotion]
@@ -66,7 +68,7 @@ final class RandomUnderLineEmotionViewController: UIViewController {
         guard let sheet = sheetPresentationController else { return }
         let customDetent = UISheetPresentationController.Detent.custom(
             identifier: .init("emotionPicker")
-        ) { _ in 200 }
+        ) { min(200, $0.maximumDetentValue) }
         sheet.detents = [customDetent]
         sheet.prefersGrabberVisible = false
         sheet.preferredCornerRadius = 52
@@ -76,7 +78,14 @@ final class RandomUnderLineEmotionViewController: UIViewController {
     // MARK: - Setup
 
     private func setupUI() {
-        view.addSubview(titleLabel)
+        view.addSubview(formScrollView)
+        // 좌우는 시트 전체 너비를 사용하고, 스크롤 뷰가 safe area 인셋을 다시 더하지 않게 한다.
+        formScrollView.contentInsetAdjustmentBehavior = .never
+        formScrollView.snp.makeConstraints { make in
+            make.leading.trailing.equalToSuperview()
+            make.top.bottom.equalTo(view.safeAreaLayoutGuide)
+        }
+        formScrollView.formContentView.addSubview(titleLabel)
 
         for emotion in Emotion.allCases {
             let chip = NeumorphicChipButton(emotion: emotion)
@@ -84,7 +93,7 @@ final class RandomUnderLineEmotionViewController: UIViewController {
             emotionChipsRow.addArrangedSubview(chip)
             emotionChips.append(chip)
         }
-        view.addSubview(emotionChipsRow)
+        formScrollView.formContentView.addSubview(emotionChipsRow)
     }
 
     private func setupConstraints() {
@@ -94,9 +103,10 @@ final class RandomUnderLineEmotionViewController: UIViewController {
         }
 
         emotionChipsRow.snp.makeConstraints { make in
-            make.centerY.equalToSuperview()
+            make.top.equalTo(titleLabel.snp.bottom).offset(20)
             make.leading.trailing.equalToSuperview().inset(16)
             make.height.equalTo(64)
+            make.bottom.equalToSuperview().inset(24)
         }
     }
 

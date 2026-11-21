@@ -11,10 +11,13 @@ import SwiftData
 final class AppContainer {
     static let shared = AppContainer()
 
+    let bookPurchasePreferenceStore: BookPurchasePreferenceStoreProtocol = BookPurchasePreferenceStore()
+    let bookPurchaseService: BookPurchaseServiceProtocol
     let modelContainer: ModelContainer
     let bookRepository: BookRepositoryProtocol
     let sentenceRepository: SentenceRepositoryProtocol
     let readingSessionRepository: ReadingSessionRepositoryProtocol
+    let wishlistRepository: WishlistRepositoryProtocol
 
     func reloadBookRelay() {
         (bookRepository as? BookRepository)?.reloadRelay()
@@ -22,15 +25,25 @@ final class AppContainer {
 
     private init() {
         do {
-            modelContainer = try ModelContainer(for: BookRecord.self, SentenceRecord.self, ReadingSessionRecord.self)
+            bookPurchaseService = try BookPurchaseService(resolvers: [
+                .kyobo: KyoboPurchaseResolver(),
+                .aladin: AladinPurchaseResolver(),
+                .yes24: YES24PurchaseResolver()
+            ])
+            modelContainer = try ModelContainer(
+                for: BookRecord.self, SentenceRecord.self, ReadingSessionRecord.self, WishlistRecord.self
+            )
         } catch {
             fatalError("SwiftData ModelContainer 초기화 실패 — 스키마 변경 또는 디스크 문제를 확인하세요. 오류: \(error)")
         }
         bookRepository = BookRepository(
-            apiService:   AladinAPIService(apiKey: AladinAPIKey.ttbKey),
-            modelContext: modelContainer.mainContext
+            bookSearchService: KakaoBookSearchService(apiKey: KakaoAPIKey.restAPIKey),
+            data4LibraryService: Data4LibraryService(apiKey: Data4LibraryAPIKey.authKey),
+            modelContext: modelContainer.mainContext,
+            recommendedCache: .persistent()
         )
         sentenceRepository = SentenceRepository(modelContext: modelContainer.mainContext)
         readingSessionRepository = ReadingSessionRepository(modelContext: modelContainer.mainContext)
+        wishlistRepository = WishlistRepository(modelContainer: modelContainer)
     }
 }

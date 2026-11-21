@@ -8,5 +8,4 @@
 
 enum WidgetSharedConstants {
     static let appGroupID     = "group.com.jade.UnderLine"
-    static let widgetCacheKey = "widget.sentenceCache"
 }

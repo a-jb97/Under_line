@@ -10,29 +10,27 @@ import SnapKit
 import RxSwift
 import RxCocoa
 
-final class ReadingRecordViewController: UIViewController {
+final class ReadingRecordViewController: AdaptiveViewController {
 
-    var onPageRecorded: ((Int) -> Void)?
+    var onProgressRecorded: ((ReadingProgress) -> Void)?
 
     private let book: Book
-    private let currentItemPage: Int?
-    private let initialPage: Int?
+    private var currentItemPage: Int?
+    private var currentPage: Int?
     private let disposeBag = DisposeBag()
 
     private lazy var viewModel = ReadingRecordViewModel(
         book: book,
-        readingSessionRepository: AppContainer.shared.readingSessionRepository,
-        bookRepository: AppContainer.shared.bookRepository
+        readingSessionRepository: AppContainer.shared.readingSessionRepository
     )
     private let viewDidAppearRelay = PublishRelay<Void>()
     private let tabSelectedRelay   = BehaviorRelay<Int>(value: 0)
     private let timerStoppedRelay  = PublishRelay<Int>()
-    private let pageRecordedRelay  = PublishRelay<Int>()
 
     init(book: Book, currentItemPage: Int?, initialPage: Int?) {
         self.book = book
         self.currentItemPage = currentItemPage
-        self.initialPage = initialPage
+        currentPage = initialPage
         super.init(nibName: nil, bundle: nil)
     }
 
@@ -40,7 +38,9 @@ final class ReadingRecordViewController: UIViewController {
 
     // MARK: - Chart State
 
-    private var gridReady = false           // 그리드 라인 1회만 추가
+    private var chartWidth: CGFloat = 0
+    private var chartPoints: [ChartPoint] = []
+    private let chartGridLayers = (0..<4).map { _ in CAShapeLayer() }
     private var yAxisLabels: [UILabel] = []
     private var chartDynamicViews: [UIView] = []
 
@@ -58,25 +58,11 @@ final class ReadingRecordViewController: UIViewController {
         return sv
     }()
     private let contentView = UIView()
+    private let timerColumn = UIView()
+    private let recordsColumn = UIView()
+    private var columns: ReadingColumns?
 
     // MARK: - Header
-
-    private lazy var backButton: UIButton = {
-        let btn = UIButton(type: .system)
-        let cfg = UIImage.SymbolConfiguration(pointSize: 17, weight: .regular)
-        btn.setImage(UIImage(systemName: "chevron.left", withConfiguration: cfg), for: .normal)
-        btn.tintColor = UIColor.accent
-        return btn
-    }()
-
-    private let titleLabel: UILabel = {
-        let l = UILabel()
-        l.text = "독서 기록"
-        l.font = UIFont(name: "GowunBatang-Bold", size: 34)
-            ?? .systemFont(ofSize: 34, weight: .bold)
-        l.textColor = UIColor.accent
-        return l
-    }()
 
     // MARK: - Timer Dial
 
@@ -149,19 +135,28 @@ final class ReadingRecordViewController: UIViewController {
         bindActions()
     }
 
-    override func viewWillAppear(_ animated: Bool) {
-        super.viewWillAppear(animated)
-        navigationController?.interactivePopGestureRecognizer?.delegate = nil
-        navigationController?.interactivePopGestureRecognizer?.isEnabled = true
+    override func viewWillLayoutSubviews() {
+        super.viewWillLayoutSubviews()
+        let layout = ReadingColumns(
+            container: ContainerLayout(view: view, reservesInactiveDivisions: true),
+            usesFullWidth: traitCollection.userInterfaceIdiom == .pad
+        )
+        guard layout != columns else { return }
+        columns = layout
+        updateColumnConstraints()
+    }
+
+    override func viewDidLayoutSubviews() {
+        super.viewDidLayoutSubviews()
+        let width = chartCard.bounds.width
+        guard width > 0, width != chartWidth else { return }
+        chartWidth = width
+        updateChartGrid()
+        renderChart(points: chartPoints)
     }
 
     override func viewDidAppear(_ animated: Bool) {
         super.viewDidAppear(animated)
-        // bounds가 확정된 시점에 그리드 1회 추가
-        if !gridReady {
-            gridReady = true
-            setupChartGrid()
-        }
         timerDialView.restoreStateIfNeeded()
         viewDidAppearRelay.accept(())
         showTutorialIfNeeded()
@@ -179,69 +174,57 @@ final class ReadingRecordViewController: UIViewController {
     // MARK: - Setup
 
     private func setupUI() {
+        SystemNavigationStyle.configure(self, title: "독서 기록")
         view.backgroundColor = UIColor.background
-        bookTitleLabel.text = book.title
+        bookTitleLabel.text = book.displayTitle
         timerDialView.persistenceKey = "timer_\(book.isbn13)"
 
         view.addSubview(scrollView)
         scrollView.addSubview(contentView)
+        contentView.addSubview(timerColumn)
+        contentView.addSubview(recordsColumn)
 
-        contentView.addSubview(backButton)
-        contentView.addSubview(titleLabel)
-        contentView.addSubview(timerDialView)
-        contentView.addSubview(bookTitleLabel)
-        contentView.addSubview(progressSectionView)
+        timerColumn.addSubview(timerDialView)
+        timerColumn.addSubview(bookTitleLabel)
+        recordsColumn.addSubview(progressSectionView)
 
         tabSelectorView.addSubview(tabDailyButton)
         tabSelectorView.addSubview(tabWeeklyButton)
         tabSelectorView.addSubview(tabMonthlyButton)
-        contentView.addSubview(chartTitleLabel)
-        contentView.addSubview(tabSelectorView)
+        recordsColumn.addSubview(chartTitleLabel)
+        recordsColumn.addSubview(tabSelectorView)
         chartCard.layer.addSublayer(chartAreaLayer)
         chartCard.layer.addSublayer(chartLineLayer)
-        contentView.addSubview(chartCard)
+        for grid in chartGridLayers {
+            grid.strokeColor = UIColor(hex: "#5d4037", alpha: CGFloat(0x08) / 255).cgColor
+            grid.lineWidth = 1
+            chartCard.layer.insertSublayer(grid, below: chartLineLayer)
+        }
+        recordsColumn.addSubview(chartCard)
     }
 
     private func setupConstraints() {
-        scrollView.snp.makeConstraints { make in
-            make.edges.equalTo(view.safeAreaLayoutGuide)
-        }
-        contentView.snp.makeConstraints { make in
-            make.edges.equalToSuperview()
-            make.width.equalTo(scrollView)
-        }
-
-        backButton.snp.makeConstraints { make in
-            make.leading.equalToSuperview().inset(24)
-            make.top.equalToSuperview().offset(17)
-            make.size.equalTo(28)
-        }
-        titleLabel.snp.makeConstraints { make in
-            make.leading.equalTo(backButton.snp.trailing).offset(4)
-            make.centerY.equalTo(backButton)
-        }
+        updateColumnConstraints()
 
         timerDialView.snp.makeConstraints { make in
-            make.leading.trailing.equalToSuperview()
-            make.top.equalTo(backButton.snp.bottom).offset(32)
+            make.leading.trailing.top.equalToSuperview()
         }
 
         bookTitleLabel.snp.makeConstraints { make in
             make.top.equalTo(timerDialView.snp.bottom).offset(24)
-            make.leading.trailing.equalToSuperview().inset(24)
+            make.leading.trailing.bottom.equalToSuperview()
         }
 
         progressSectionView.snp.makeConstraints { make in
-            make.top.equalTo(bookTitleLabel.snp.bottom).offset(24)
-            make.leading.trailing.equalToSuperview().inset(24)
+            make.top.leading.trailing.equalToSuperview()
         }
 
         chartTitleLabel.snp.makeConstraints { make in
             make.top.equalTo(progressSectionView.snp.bottom).offset(40)
-            make.leading.equalToSuperview().inset(24)
+            make.leading.equalToSuperview()
         }
         tabSelectorView.snp.makeConstraints { make in
-            make.trailing.equalToSuperview().inset(24)
+            make.trailing.equalToSuperview()
             make.centerY.equalTo(chartTitleLabel)
             make.height.equalTo(40)
         }
@@ -262,9 +245,52 @@ final class ReadingRecordViewController: UIViewController {
 
         chartCard.snp.makeConstraints { make in
             make.top.equalTo(tabSelectorView.snp.bottom).offset(16)
-            make.leading.trailing.equalToSuperview().inset(24)
+            make.leading.trailing.bottom.equalToSuperview()
             make.height.equalTo(194)
-            make.bottom.equalToSuperview().inset(24)
+        }
+    }
+
+    private func updateColumnConstraints() {
+        scrollView.snp.remakeConstraints { make in
+            if let columns {
+                make.left.equalToSuperview().offset(columns.viewport.minX)
+                make.top.equalToSuperview().offset(columns.viewport.minY)
+                make.width.equalTo(columns.viewport.width)
+                make.height.equalTo(columns.viewport.height)
+            } else {
+                make.edges.equalTo(view.adaptiveContentLayoutGuide)
+            }
+        }
+        contentView.snp.remakeConstraints { make in
+            make.edges.equalTo(scrollView.contentLayoutGuide)
+            make.width.equalTo(scrollView.frameLayoutGuide)
+            if columns != nil {
+                make.height.greaterThanOrEqualTo(scrollView.frameLayoutGuide)
+                make.height.equalTo(scrollView.frameLayoutGuide).priority(249)
+            }
+        }
+        timerColumn.snp.remakeConstraints { make in
+            make.left.equalToSuperview().offset(24)
+            if let columns {
+                make.width.equalTo(columns.leadingWidth)
+                make.centerY.equalToSuperview()
+                make.top.greaterThanOrEqualToSuperview().offset(24)
+            } else {
+                make.right.equalToSuperview().inset(24)
+                make.top.equalToSuperview().offset(24)
+            }
+        }
+        recordsColumn.snp.remakeConstraints { make in
+            make.right.equalToSuperview().inset(24)
+            if let columns {
+                make.left.equalTo(timerColumn.snp.right).offset(columns.gap)
+                make.centerY.equalToSuperview()
+                make.top.greaterThanOrEqualToSuperview().offset(24)
+            } else {
+                make.left.equalTo(timerColumn)
+                make.top.equalTo(timerColumn.snp.bottom).offset(24)
+                make.bottom.equalToSuperview().inset(24)
+            }
         }
     }
 
@@ -287,22 +313,18 @@ final class ReadingRecordViewController: UIViewController {
         updateYAxisLabels(scale: 3600)  // 초기 텍스트: 1시간/40분/20분/0분
     }
 
-    // MARK: - 그리드 라인 (viewDidAppear에서 생성 — bounds 필요)
+    // MARK: - 그리드 라인
 
-    private func setupChartGrid() {
+    private func updateChartGrid() {
         let cardW = chartCard.bounds.width
         let step = (chartBottomY - chartTopY) / 3
         let yPositions: [CGFloat] = (0...3).map { chartTopY + CGFloat($0) * step }
 
-        for pos in yPositions {
-            let grid = CAShapeLayer()
+        for (grid, pos) in zip(chartGridLayers, yPositions) {
             let path = UIBezierPath()
             path.move(to: CGPoint(x: chartLeftPad - 2, y: pos))
             path.addLine(to: CGPoint(x: cardW - chartRightPad, y: pos))
-            grid.path        = path.cgPath
-            grid.strokeColor = UIColor(hex: "#5d4037", alpha: CGFloat(0x08) / 255).cgColor
-            grid.lineWidth   = 1
-            chartCard.layer.insertSublayer(grid, below: chartLineLayer)
+            grid.path = path.cgPath
         }
     }
 
@@ -418,12 +440,7 @@ final class ReadingRecordViewController: UIViewController {
     // MARK: - Progress
 
     private func configureProgress() {
-        guard let itemPage = currentItemPage else { return }
-        if let page = initialPage, page > 0 {
-            progressSectionView.configure(currentPage: page, itemPage: itemPage)
-        } else {
-            progressSectionView.showNoProgress(itemPage: itemPage)
-        }
+        progressSectionView.configure(itemPage: currentItemPage, currentPage: currentPage)
     }
 
     // MARK: - ViewModel Binding
@@ -432,13 +449,14 @@ final class ReadingRecordViewController: UIViewController {
         let output = viewModel.transform(input: ReadingRecordViewModel.Input(
             viewDidAppear: viewDidAppearRelay.asObservable(),
             tabSelected:   tabSelectedRelay.asObservable(),
-            timerStopped:  timerStoppedRelay.asObservable(),
-            pageRecorded:  pageRecordedRelay.asObservable()
+            timerStopped:  timerStoppedRelay.asObservable()
         ))
 
         output.chartPoints
             .drive(onNext: { [weak self] points in
-                self?.renderChart(points: points)
+                guard let self else { return }
+                self.chartPoints = points
+                self.renderChart(points: points)
             })
             .disposed(by: disposeBag)
     }
@@ -446,22 +464,25 @@ final class ReadingRecordViewController: UIViewController {
     // MARK: - Bindings
 
     private func bindActions() {
-        backButton.rx.tap
-            .subscribe(onNext: { [weak self] in
-                self?.navigationController?.popViewController(animated: true)
-            })
-            .disposed(by: disposeBag)
 
         progressSectionView.editButtonTap
             .subscribe(onNext: { [weak self] in
-                guard let self, let itemPage = self.currentItemPage else { return }
-                let vc = PageRecordViewController(itemPage: itemPage)
+                guard let self else { return }
+                let vc = PageRecordViewController(
+                    isbn13: self.book.isbn13,
+                    itemPage: self.currentItemPage,
+                    currentPage: self.currentPage
+                )
                 vc.modalPresentationStyle = .pageSheet
-                vc.onPageRecorded = { [weak self] page in
+                vc.onProgressRecorded = { [weak self] progress in
                     guard let self else { return }
-                    self.progressSectionView.configure(currentPage: page, itemPage: itemPage)
-                    self.onPageRecorded?(page)
-                    self.pageRecordedRelay.accept(page)
+                    self.currentItemPage = progress.itemPage
+                    self.currentPage = progress.currentPage
+                    self.progressSectionView.configure(
+                        itemPage: progress.itemPage,
+                        currentPage: progress.currentPage
+                    )
+                    self.onProgressRecorded?(progress)
                 }
                 self.present(vc, animated: true)
             })
@@ -477,7 +498,7 @@ final class ReadingRecordViewController: UIViewController {
                 let mgr = ReadingActivityManager.shared
                 switch event {
                 case .started(let total, let remaining, let end):
-                    mgr.startActivity(bookTitle: self.book.title, isbn13: self.book.isbn13,
+                    mgr.startActivity(bookTitle: self.book.displayTitle, isbn13: self.book.isbn13,
                                       totalSeconds: total, remainingSeconds: remaining,
                                       timerEndDate: end)
                 case .paused(let remaining):
@@ -536,9 +557,13 @@ final class ReadingRecordViewController: UIViewController {
 
         let steps: [TutorialStep] = [
             TutorialStep(
-                targetFrame: timerDialView.convert(timerDialView.bounds, to: nil),
+                targetFrame: .zero,
                 message: "다이얼 바깥쪽을 돌려서 시간을 설정한 후\n시작 버튼을 탭해보세요",
-                animation: .dialRotation
+                animation: .dialRotation,
+                targetFrameProvider: { [weak self] in
+                    guard let target = self?.timerDialView else { return .zero }
+                    return target.convert(target.bounds, to: nil)
+                }
             ),
         ]
 
