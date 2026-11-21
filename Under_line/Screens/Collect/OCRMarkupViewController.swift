@@ -22,7 +22,8 @@ final class OCRMarkupViewController: AdaptiveViewController {
     }()
     private let drawingOverlay = DrawingOverlayView()
     private let activityIndicator = UIActivityIndicatorView(style: .large)
-    private let hintLabel = UILabel()
+    private let instructionLabel = UILabel()
+    private let statusLabel = UILabel()
 
     init(image: UIImage) {
         capturedImage = OCRImageGeometry.uprightImage(image)
@@ -49,25 +50,50 @@ final class OCRMarkupViewController: AdaptiveViewController {
 
     private func setupUI() {
         imageContainerView.clipsToBounds = true
-        imageContainerView.layer.cornerRadius = 12
+        imageContainerView.layer.cornerRadius = CameraCollectionStyle.previewCornerRadius
         view.addSubview(imageContainerView)
         imageContainerView.addSubview(imageView)
         imageContainerView.addSubview(drawingOverlay)
         imageContainerView.addSubview(activityIndicator)
         activityIndicator.color = .walnut
         activityIndicator.hidesWhenStopped = true
-        hintLabel.font = UIFont(name: "GoyangIlsan R", size: 13) ?? .systemFont(ofSize: 13)
-        hintLabel.textColor = UIColor.appPrimary.withAlphaComponent(0.7)
-        hintLabel.textAlignment = .center
-        hintLabel.numberOfLines = 0
-        view.addSubview(hintLabel)
-        hintLabel.snp.makeConstraints { make in
+        instructionLabel.text = "밑줄 위에 손가락을 그어 텍스트를 선택하세요"
+        instructionLabel.font = CameraCollectionStyle.instructionFont
+        instructionLabel.textColor = CameraCollectionStyle.hintColor
+        instructionLabel.textAlignment = .center
+        instructionLabel.numberOfLines = 0
+        instructionLabel.setContentCompressionResistancePriority(.required, for: .vertical)
+        view.addSubview(instructionLabel)
+        instructionLabel.snp.makeConstraints { make in
+            make.top.equalTo(imageContainerView.snp.bottom).offset(16)
+            make.leading.trailing.equalTo(view.adaptiveContentLayoutGuide).inset(16)
+        }
+        statusLabel.font = UIFont(name: "GoyangIlsan R", size: 13) ?? .systemFont(ofSize: 13)
+        statusLabel.textColor = UIColor.appPrimary.withAlphaComponent(0.7)
+        statusLabel.textAlignment = .center
+        statusLabel.numberOfLines = 0
+        statusLabel.setContentCompressionResistancePriority(.required, for: .vertical)
+        view.addSubview(statusLabel)
+        statusLabel.snp.makeConstraints { make in
             make.leading.trailing.equalTo(view.adaptiveContentLayoutGuide).inset(16)
             make.bottom.equalTo(view.adaptiveContentLayoutGuide).inset(12)
+            make.top.greaterThanOrEqualTo(instructionLabel.snp.bottom).offset(12)
+        }
+        let markupLayoutGuide = UILayoutGuide()
+        view.addLayoutGuide(markupLayoutGuide)
+        markupLayoutGuide.snp.makeConstraints { make in
+            make.top.equalTo(imageContainerView)
+            make.bottom.equalTo(instructionLabel)
+            make.leading.trailing.equalTo(view.adaptiveContentLayoutGuide)
+            make.centerY.equalTo(view.adaptiveContentLayoutGuide).priority(999)
         }
         imageContainerView.snp.makeConstraints { make in
-            make.top.leading.trailing.equalTo(view.adaptiveContentLayoutGuide).inset(8)
-            make.bottom.equalTo(hintLabel.snp.top).offset(-12)
+            make.top.greaterThanOrEqualTo(view.adaptiveContentLayoutGuide).offset(8)
+            make.centerX.equalTo(view.adaptiveContentLayoutGuide)
+            make.leading.greaterThanOrEqualTo(view.adaptiveContentLayoutGuide).offset(8)
+            make.trailing.lessThanOrEqualTo(view.adaptiveContentLayoutGuide).offset(-8)
+            make.width.equalTo(view.adaptiveContentLayoutGuide.snp.width).offset(-16).priority(998)
+            make.height.equalTo(imageContainerView.snp.width).multipliedBy(capturedImage.size.height / capturedImage.size.width)
         }
         imageView.snp.makeConstraints { $0.edges.equalToSuperview() }
         drawingOverlay.snp.makeConstraints { $0.edges.equalToSuperview() }
@@ -90,8 +116,8 @@ final class OCRMarkupViewController: AdaptiveViewController {
         }).disposed(by: disposeBag)
         Driver.combineLatest(output.isRecognizing, output.hasRecognizedText)
             .drive(onNext: { [weak self] busy, hasText in
-                self?.hintLabel.text = busy ? "텍스트를 인식하고 있습니다."
-                    : hasText ? "밑줄 위에 손가락을 그어 텍스트를 선택하세요"
+                self?.statusLabel.text = busy ? "텍스트를 인식하고 있습니다."
+                    : hasText ? nil
                     : "텍스트를 감지하지 못했습니다. 다른 사진으로 다시 시도해주세요."
             }).disposed(by: disposeBag)
         output.error.emit(onNext: { [weak self] message in

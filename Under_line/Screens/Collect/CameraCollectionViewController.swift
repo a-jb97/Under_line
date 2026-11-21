@@ -75,7 +75,7 @@ final class CameraCollectionViewController: AdaptiveViewController {
     private func setupUI() {
         cameraSectionView.backgroundColor = UIColor(hex: "#1a1a1a")
         cameraSectionView.clipsToBounds = true
-        cameraSectionView.layer.cornerRadius = 12
+        cameraSectionView.layer.cornerRadius = CameraCollectionStyle.previewCornerRadius
         controlsScrollView.backgroundColor = .background
         controlsScrollView.layer.cornerRadius = 12
         controlsScrollView.contentInsetAdjustmentBehavior = .never
@@ -83,7 +83,7 @@ final class CameraCollectionViewController: AdaptiveViewController {
         view.addSubview(controlsScrollView)
 
         instructionLabel.text = "밑줄 칠 부분을 촬영해주세요"
-        instructionLabel.font = UIFont(name: "GowunBatang-Regular", size: 14) ?? .systemFont(ofSize: 14)
+        instructionLabel.font = CameraCollectionStyle.instructionFont
         instructionLabel.textColor = .white
         instructionLabel.textAlignment = .center
         instructionLabel.numberOfLines = 0
@@ -136,7 +136,7 @@ final class CameraCollectionViewController: AdaptiveViewController {
         }
         hintLabel.text = "촬영하고 나면 밑줄을 그을 수 있습니다"
         hintLabel.font = UIFont(name: "GowunBatang-Regular", size: 12) ?? .systemFont(ofSize: 12)
-        hintLabel.textColor = .appPrimary
+        hintLabel.textColor = CameraCollectionStyle.hintColor
         hintLabel.textAlignment = .center
         hintLabel.numberOfLines = 0
         let stack = UIStackView(arrangedSubviews: [actionRow, hintLabel])
@@ -233,4 +233,10 @@ final class CameraCollectionViewController: AdaptiveViewController {
               let connection = previewLayer?.connection, connection.isVideoRotationAngleSupported(angle) else { return }
         connection.videoRotationAngle = angle
     }
+}
+
+enum CameraCollectionStyle {
+    static let previewCornerRadius: CGFloat = 12
+    static let instructionFont = UIFont(name: "GowunBatang-Regular", size: 14) ?? .systemFont(ofSize: 14)
+    static let hintColor = UIColor.appPrimary
 }
