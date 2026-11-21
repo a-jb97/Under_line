@@ -1,8 +1,14 @@
 import Foundation
+import Kingfisher
 
-/// 저장된 표지 URL은 유지하고 책장에서만 원본 후보를 선택한다.
+/// 책장과 도서 상세에서 원본 표지를 우선 요청하고, 실패하면 저장된 표지 URL을 사용한다.
 enum ShelfCoverImageSource {
-    static func originalURL(for thumbnailURL: URL) -> URL? {
+    static func request(for coverURL: URL) -> (url: URL, options: KingfisherOptionsInfo) {
+        guard let originalURL = originalURL(for: coverURL) else { return (coverURL, []) }
+        return (originalURL, [.alternativeSources([.network(KF.ImageResource(downloadURL: coverURL))])])
+    }
+
+    private static func originalURL(for thumbnailURL: URL) -> URL? {
         guard let host = thumbnailURL.host?.lowercased(), host.hasSuffix(".kakaocdn.net"),
               thumbnailURL.path.hasPrefix("/thumb/"),
               let thumbnail = URLComponents(url: thumbnailURL, resolvingAgainstBaseURL: false),
@@ -12,7 +18,6 @@ enum ShelfCoverImageSource {
               let originalHost = original.host, !originalHost.isEmpty else { return nil }
 
         // 카카오 예제의 원본 주소는 HTTP이지만 HTTPS로도 제공된다.
-        // HTTPS 원본에 접근할 수 없으면 호출부가 기존 썸네일로 돌아간다.
         original.scheme = "https"
         guard let url = original.url, url != thumbnailURL else { return nil }
         return url

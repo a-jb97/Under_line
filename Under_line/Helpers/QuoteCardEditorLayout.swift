@@ -9,30 +9,35 @@ struct QuoteCardEditorLayout {
     let actionFrames: [CGRect]
     let actionsContentSize: CGSize
 
-    init(availableBounds: CGRect, containerSize: CGSize? = nil, containerBounds: CGRect? = nil, showsColorSync: Bool = false) {
+    init(availableBounds: CGRect, containerSize: CGSize? = nil, containerBounds: CGRect? = nil,
+         usesFoldableLayout: Bool = false, showsColorSync: Bool = false) {
         let size = containerSize ?? containerBounds?.size ?? availableBounds.size
-        let isLandscape = size.width > size.height
-        let isCompactPortrait = !isLandscape && size.width < 600
-        // 가로 펼침과 접힌 화면은 safe area 대신 전체 화면을 정렬 기준으로 사용한다.
+        let isLandscape = usesFoldableLayout && size.width > size.height
+        let isCompactPortrait = usesFoldableLayout && size.width <= size.height && size.width < 600
+        // 가로 펼침과 접힌 화면은 Safe Area 여백까지 포함한 전체 화면을 기준으로 정렬한다.
         let layoutBounds = (isLandscape || isCompactPortrait) ? (containerBounds ?? availableBounds) : availableBounds
         let padding = min(16, layoutBounds.width / 2, layoutBounds.height / 2)
         let area = layoutBounds.insetBy(dx: padding, dy: padding)
         let visibleActions = showsColorSync ? [0, 1, 2, 3] : [0, 1, 3]
         let cellSize = CGSize(width: 64, height: 80)
+        // Glass 버튼이 눌려 커질 때 스크롤 영역의 위쪽 경계에 잘리지 않도록 여백을 둔다.
+        let actionTopPadding: CGFloat = 12
+        let rowHeight = actionTopPadding + cellSize.height
         var frames = [CGRect](repeating: .zero, count: 4)
         let fitScale: (CGFloat, CGFloat) -> CGFloat = { width, height in
             max(0, min(1, width / Self.canvasSize.width, height / Self.canvasSize.height))
         }
 
         if isCompactPortrait {
-            let contentHeight = CGFloat(visibleActions.count) * cellSize.height + CGFloat(visibleActions.count - 1) * 12
+            let rowStride = cellSize.height + 12
+            let contentHeight = rowHeight + CGFloat(visibleActions.count - 1) * rowStride
             actionsContentSize = CGSize(width: cellSize.width, height: contentHeight)
             let width = min(cellSize.width, area.width)
             let height = min(contentHeight, area.height)
             actionsFrame = CGRect(x: area.maxX - width - min(2, area.width - width),
                                   y: area.maxY - height, width: width, height: height)
             for (position, index) in visibleActions.enumerated() {
-                frames[index] = CGRect(x: 0, y: CGFloat(position) * 92, width: 64, height: 80)
+                frames[index] = CGRect(origin: CGPoint(x: 0, y: actionTopPadding + CGFloat(position) * rowStride), size: cellSize)
             }
 
             // 카드는 전체 화면의 중앙을 유지한다. 오른쪽 아래 버튼과 겹치지 않는 최대 크기를 선택한다.
@@ -47,8 +52,8 @@ struct QuoteCardEditorLayout {
                                   width: previewSize.width, height: previewSize.height)
         } else if isLandscape {
             let contentWidth = CGFloat(visibleActions.count) * cellSize.width
-            actionsContentSize = CGSize(width: contentWidth, height: cellSize.height)
-            let toolbarSize = CGSize(width: min(contentWidth, area.width), height: min(cellSize.height, area.height))
+            actionsContentSize = CGSize(width: contentWidth, height: rowHeight)
+            let toolbarSize = CGSize(width: min(contentWidth, area.width), height: min(rowHeight, area.height))
             let gap = min(16, max(0, area.width - toolbarSize.width) / 2)
             previewScale = fitScale(max(0, area.width - toolbarSize.width - gap), area.height)
             let previewSize = CGSize(width: Self.canvasSize.width * previewScale,
@@ -63,12 +68,12 @@ struct QuoteCardEditorLayout {
             actionsFrame = CGRect(x: previewFrame.maxX + gap, y: group.maxY - toolbarSize.height,
                                   width: toolbarSize.width, height: toolbarSize.height)
             for (position, index) in visibleActions.enumerated() {
-                frames[index] = CGRect(x: CGFloat(position) * 64, y: 0, width: 64, height: 80)
+                frames[index] = CGRect(origin: CGPoint(x: CGFloat(position) * cellSize.width, y: actionTopPadding), size: cellSize)
             }
         } else {
             let contentWidth = max(CGFloat(visibleActions.count) * cellSize.width, area.width - 4)
-            actionsContentSize = CGSize(width: contentWidth, height: cellSize.height)
-            let toolbarSize = CGSize(width: min(contentWidth, area.width), height: min(cellSize.height, area.height))
+            actionsContentSize = CGSize(width: contentWidth, height: rowHeight)
+            let toolbarSize = CGSize(width: min(contentWidth, area.width), height: min(rowHeight, area.height))
             actionsFrame = CGRect(x: area.midX - toolbarSize.width / 2, y: area.maxY - toolbarSize.height,
                                   width: toolbarSize.width, height: toolbarSize.height)
             let previewArea = CGRect(x: area.minX, y: area.minY, width: area.width,
@@ -81,8 +86,8 @@ struct QuoteCardEditorLayout {
                                   width: previewSize.width, height: previewSize.height)
             for (position, index) in visibleActions.enumerated() {
                 // 64pt 셀 안의 52pt 버튼 사이에 기존 12pt 간격을 유지한다.
-                frames[index] = CGRect(x: index == 3 ? contentWidth - 64 : CGFloat(position) * 64,
-                                       y: 0, width: 64, height: 80)
+                let x = index == 3 ? contentWidth - cellSize.width : CGFloat(position) * cellSize.width
+                frames[index] = CGRect(origin: CGPoint(x: x, y: actionTopPadding), size: cellSize)
             }
         }
         actionFrames = frames

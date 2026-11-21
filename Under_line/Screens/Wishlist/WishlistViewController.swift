@@ -5,7 +5,7 @@ import RxSwift
 import RxCocoa
 import Toast
 
-final class WishlistViewController: AdaptiveViewController, UITableViewDataSource, SFSafariViewControllerDelegate {
+final class WishlistViewController: AdaptiveViewController, UITableViewDataSource, UITableViewDelegate, SFSafariViewControllerDelegate {
     override var avoidsKeyboard: Bool { true }
 
     func safariViewController(_ controller: SFSafariViewController, didCompleteInitialLoad didLoadSuccessfully: Bool) {
@@ -22,6 +22,7 @@ final class WishlistViewController: AdaptiveViewController, UITableViewDataSourc
     private let purchaseTap = PublishRelay<String>()
     private let purchase = PublishRelay<WishlistViewModel.PurchaseRequest>()
     private let disappeared = PublishRelay<Void>()
+    private let moveToBookshelf = PublishRelay<String>()
     private let deleteISBN = PublishRelay<String>()
     private var state = WishlistViewModel.State()
     private var tutorialExampleTask: Task<Void, Never>?
@@ -86,10 +87,11 @@ final class WishlistViewController: AdaptiveViewController, UITableViewDataSourc
     }()
 
     init(repository: WishlistRepositoryProtocol? = nil,
-         purchaseService: BookPurchaseServiceProtocol? = nil) {
+         purchaseService: BookPurchaseServiceProtocol? = nil,
+         bookRepository: BookRepositoryProtocol? = nil) {
         viewModel = WishlistViewModel(
             repository: repository ?? AppContainer.shared.wishlistRepository,
-            purchaseService: purchaseService
+            purchaseService: purchaseService, bookRepository: bookRepository
         )
         super.init(nibName: nil, bundle: nil)
     }
@@ -200,9 +202,13 @@ final class WishlistViewController: AdaptiveViewController, UITableViewDataSourc
                 guard let bar = self?.searchBar else { return .zero }
                 return bar.convert(bar.bounds, to: nil)
             }),
-            TutorialStep(targetFrame: .zero, message: "도서를 탭해 책소개를 펼치고\n하트를 다시 눌러 목록에서 삭제할 수 있어요", targetFrameProvider: { [weak self] in
+            TutorialStep(targetFrame: .zero, message: "도서를 탭해 책소개를 펼치고\n셀을 왼쪽으로 스와이프하면 삭제 버튼이 나타나요", targetFrameProvider: { [weak self] in
                 guard let table = self?.listContainer else { return .zero }
                 return table.convert(table.bounds, to: nil)
+            }),
+            TutorialStep(targetFrame: .zero, message: "책장 버튼을 누르면 책장에 추가됨과 동시에\n위시리스트에서는 제거돼요.", targetFrameProvider: { [weak self] in
+                guard let self, let button = TutorialSupport.target(in: self.listContainer, identifier: "moveToBookshelfButton") else { return .zero }
+                return button.convert(button.bounds, to: nil)
             }),
             TutorialStep(targetFrame: .zero, message: purchaseMessage + "\n상품 선택과 구매는 서점 웹페이지에서 진행해요", targetFrameProvider: { [weak self] in
                 guard let self, let button = TutorialSupport.target(in: self.listContainer, identifier: "purchaseBookButton") else { return .zero }
@@ -254,10 +260,12 @@ final class WishlistViewController: AdaptiveViewController, UITableViewDataSourc
     private func bindViewModel() {
         tableView.rx.setDataSource(self).disposed(by: disposeBag)
         trailingTableView.rx.setDataSource(self).disposed(by: disposeBag)
+        tableView.rx.setDelegate(self).disposed(by: disposeBag)
+        trailingTableView.rx.setDelegate(self).disposed(by: disposeBag)
         let output = viewModel.transform(input: .init(
             screenAppeared: appeared.asObservable(), retry: retryButton.rx.tap.asObservable(),
             searchQuery: searchBar.textField.rx.text.orEmpty.asObservable(),
-            deleteISBN: deleteISBN.asObservable(), purchaseTap: purchaseTap.asObservable(), purchase: purchase.asObservable(),
+            deleteISBN: deleteISBN.asObservable(), moveToBookshelf: moveToBookshelf.asObservable(), purchaseTap: purchaseTap.asObservable(), purchase: purchase.asObservable(),
             screenDisappeared: disappeared.asObservable()
         ))
         output.selectStore.emit(onNext: { [weak self] in self?.showPurchaseStores(isbn: $0) })
@@ -344,7 +352,7 @@ final class WishlistViewController: AdaptiveViewController, UITableViewDataSourc
             trailingTableView.setContentOffset(.zero, animated: false)
         }
         for case let cell as BookRowCell in tableView.visibleCells + trailingTableView.visibleCells {
-            cell.setWishlistAction(wishlistAction(for: cell.isbn13 ?? ""))
+            cell.setSecondaryAction(bookshelfAction(for: cell.isbn13 ?? ""))
         }
         if newState.isLoading { loadingIndicator.startAnimating() } else { loadingIndicator.stopAnimating() }
         let status = newState.isLoading ? nil : newState.loadError ?? newState.emptyMessage
@@ -353,8 +361,11 @@ final class WishlistViewController: AdaptiveViewController, UITableViewDataSourc
         retryButton.isHidden = newState.loadError == nil
     }
 
-    private func wishlistAction(for isbn13: String) -> BookRowAction {
-        .wishlist(isSaved: true, isEnabled: !state.isLoading, isPending: state.deletingISBNs.contains(isbn13))
+    private func bookshelfAction(for isbn13: String) -> BookRowAction {
+        BookRowAction(symbolName: "books.vertical", isSelected: false,
+                      isEnabled: !state.isLoading && !state.pendingISBNs.contains(isbn13),
+                      accessibilityLabel: "책장에 추가하고 위시리스트에서 제거",
+                      accessibilityValue: state.pendingISBNs.contains(isbn13) ? "처리 중" : "")
     }
 
     func tableView(_ tableView: UITableView, numberOfRowsInSection section: Int) -> Int {
@@ -369,13 +380,32 @@ final class WishlistViewController: AdaptiveViewController, UITableViewDataSourc
             content: BookRowContent(item: item), displayScale: view.traitCollection.displayScale,
             descriptionWidth: max(tableView.bounds.width - 48, 1),
             isExpanded: expandedISBN == item.isbn13, isDescriptionLoading: false,
-            primaryAction: .purchase, wishlistAction: wishlistAction(for: item.isbn13)
+            primaryAction: .purchase, secondaryAction: bookshelfAction(for: item.isbn13)
         )
         cell.onPrimaryAction = { [weak self] isbn in
             self?.purchaseTap.accept(isbn)
         }
-        cell.onToggleWishlist = { [weak self] in self?.deleteISBN.accept($0) }
+        cell.onSecondaryAction = { [weak self] in self?.moveToBookshelf.accept($0) }
         return cell
+    }
+
+    func tableView(_ tableView: UITableView,
+                   trailingSwipeActionsConfigurationForRowAt indexPath: IndexPath) -> UISwipeActionsConfiguration? {
+        let index = indexPath.row + (tableView === trailingTableView ? leadingItemCount : 0)
+        guard items.indices.contains(index), !tutorialActive, !state.isLoading else { return nil }
+        let isbn13 = items[index].isbn13
+        guard expandedISBN != isbn13, !state.pendingISBNs.contains(isbn13) else { return nil }
+        let delete = UIContextualAction(style: .destructive, title: "삭제") { [weak self] _, _, completion in
+            guard let self, !self.state.isLoading,
+                  !self.state.pendingISBNs.contains(isbn13),
+                  self.state.allItems.contains(where: { $0.isbn13 == isbn13 }) else {
+                completion(false)
+                return
+            }
+            completion(true)
+            self.deleteISBN.accept(isbn13)
+        }
+        return UISwipeActionsConfiguration(actions: [delete])
     }
 
     private func showPurchaseStores(isbn: String) {
@@ -396,6 +426,8 @@ final class WishlistViewController: AdaptiveViewController, UITableViewDataSourc
         table.deselectRow(at: indexPath, animated: false)
         let index = indexPath.row + (table === trailingTableView ? leadingItemCount : 0)
         guard items.indices.contains(index) else { return }
+        tableView.setEditing(false, animated: true)
+        trailingTableView.setEditing(false, animated: true)
         let isbn13 = items[index].isbn13
         expandedISBN = expandedISBN == isbn13 ? nil : isbn13
         for case let cell as BookRowCell in tableView.visibleCells + trailingTableView.visibleCells {

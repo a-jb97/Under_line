@@ -26,15 +26,23 @@ final class BookshelfFilterViewController: AdaptiveViewController {
 
     private let disposeBag = DisposeBag()
 
-    /// 시트 최적 높이: 전부표시 버튼 하단 + 16pt
+    /// 커스텀 핸들부터 전부 표시 버튼 하단 여백까지의 콘텐츠 높이.
     static var preferredSheetHeight: CGFloat {
         let font = UIFont(name: "GowunBatang-Bold", size: 20) ?? .systemFont(ofSize: 20, weight: .bold)
         let titleH = ceil(font.lineHeight)
-        // top(20) + title + gap(12) + searchBar(48) + gap(16) + divider(1) + gap(16) + button(48) + bottom(16)
-        return 20 + titleH + 12 + 48 + 16 + 1 + 16 + 48 + 16
+        // top(12) + handle(5) + gap(11) + title + gap(12) + searchBar(48)
+        // + gap(16) + divider(1) + gap(16) + button(48) + bottom(24)
+        return 12 + 5 + 11 + titleH + 12 + 48 + 16 + 1 + 16 + 48 + 24
     }
 
     // MARK: - UI
+
+    private let handleBar: UIView = {
+        let view = UIView()
+        view.backgroundColor = UIColor.walnut.withAlphaComponent(0.25)
+        view.layer.cornerRadius = 2.5
+        return view
+    }()
 
     private let titleLabel: UILabel = {
         let l = UILabel()
@@ -123,6 +131,7 @@ final class BookshelfFilterViewController: AdaptiveViewController {
         searchBarView.addSubview(searchIconView)
         searchBarView.addSubview(searchTextField)
 
+        formScrollView.formContentView.addSubview(handleBar)
         formScrollView.formContentView.addSubview(titleLabel)
         formScrollView.formContentView.addSubview(searchBarView)
         formScrollView.formContentView.addSubview(divider)
@@ -147,8 +156,15 @@ final class BookshelfFilterViewController: AdaptiveViewController {
     }
 
     private func setupConstraints() {
+        handleBar.snp.makeConstraints { make in
+            make.top.equalToSuperview().offset(12)
+            make.centerX.equalToSuperview()
+            make.width.equalTo(36)
+            make.height.equalTo(5)
+        }
+
         titleLabel.snp.makeConstraints { make in
-            make.top.equalToSuperview().offset(20)
+            make.top.equalTo(handleBar.snp.bottom).offset(11)
             make.leading.trailing.equalToSuperview().inset(24)
         }
 

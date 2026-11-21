@@ -534,12 +534,27 @@ final class BookshelfViewController: UIViewController {
         imageView.contentMode    = .scaleAspectFit
         imageView.clipsToBounds  = true
         imageView.layer.cornerRadius = 3
-        imageView.frame = CGRect(origin: .zero, size: size)
         ghost.addSubview(imageView)
         ghost.bounds = CGRect(origin: .zero, size: size)
 
+        let fitCover: (CGSize) -> Void = { [weak ghost, weak imageView] imageSize in
+            guard imageSize.width > 0, imageSize.height > 0 else { return }
+            let scale = min(size.width / imageSize.width, size.height / imageSize.height)
+            let coverSize = CGSize(width: floor(imageSize.width * scale), height: floor(imageSize.height * scale))
+            let coverFrame = CGRect(x: (size.width - coverSize.width) / 2,
+                                    y: size.height - coverSize.height,
+                                    width: coverSize.width, height: coverSize.height)
+            imageView?.frame = coverFrame
+            ghost?.layer.shadowPath = UIBezierPath(roundedRect: coverFrame, cornerRadius: 3).cgPath
+        }
+        fitCover(CGSize(width: 88, height: 117))
+
         if let url = book.coverURL {
-            imageView.kf.setImage(with: url)
+            let request = ShelfCoverImageSource.request(for: url)
+            imageView.kf.setImage(with: request.url, options: request.options) { result in
+                guard case .success(let value) = result else { return }
+                fitCover(value.image.size)
+            }
         } else {
             imageView.backgroundColor = UIColor.appPrimary
             let label = UILabel()
@@ -737,9 +752,9 @@ final class BookshelfViewController: UIViewController {
                 vc.delegate = self
                 vc.modalPresentationStyle = .pageSheet
                 if let sheet = vc.sheetPresentationController {
-                    sheet.detents               = [.custom { min(BookshelfFilterViewController.preferredSheetHeight, $0.maximumDetentValue) }, .large()]
-                    sheet.prefersGrabberVisible = true
-                    sheet.preferredCornerRadius = 52
+                    sheet.detents               = [.custom { min(BookshelfFilterViewController.preferredSheetHeight, $0.maximumDetentValue) }]
+                    sheet.prefersScrollingExpandsWhenScrolledToEdge = false
+                    sheet.prefersGrabberVisible = false
                 }
                 self.present(vc, animated: true)
             })
@@ -754,9 +769,20 @@ final class BookshelfViewController: UIViewController {
 extension BookshelfViewController {
     private func showTutorialIfNeeded() {
         guard !UserDefaults.standard.bool(forKey: "tutorial.bookshelf") else {
-            TutorialSupport.show(on: self, key: "tutorial.bookshelfWishlist", steps: [
-                TutorialSupport.barButtonStep(item: wishlistButton, on: self, message: "하트 아이콘에서 위시리스트를 열고\n읽고 싶은 책을 관리해보세요")
-            ])
+            var steps: [TutorialStep] = []
+            var keys: [String] = []
+            if !UserDefaults.standard.bool(forKey: "tutorial.bookshelfWishlist") {
+                steps.append(TutorialSupport.barButtonStep(item: wishlistButton, on: self, message: "하트 아이콘에서 위시리스트를 열고\n읽고 싶은 책을 관리해보세요"))
+                keys.append("tutorial.bookshelfWishlist")
+            }
+            if !UserDefaults.standard.bool(forKey: "tutorial.bookshelfDrag") {
+                steps.append(bookshelfDragTutorialStep())
+                keys.append("tutorial.bookshelfDrag")
+            }
+            guard let key = keys.first else { return }
+            TutorialSupport.show(on: self, key: key, steps: steps) {
+                keys.forEach { UserDefaults.standard.set(true, forKey: $0) }
+            }
             return
         }
         guard presentedViewController == nil else { return }
@@ -791,6 +817,7 @@ extension BookshelfViewController {
         let steps: [TutorialStep] = [
             TutorialSupport.barButtonStep(item: wishlistButton, on: self, message: "하트 아이콘에서 위시리스트를 열 수 있어요"),
             TutorialSupport.barButtonStep(item: sortButton, on: self, message: "조절 아이콘에서 정렬·필터로\n원하는 책을 빠르게 찾을 수 있어요"),
+            bookshelfDragTutorialStep(),
             TutorialStep(
                 targetFrame: .zero,
                 message: "도서 검색으로 읽고 있는 책을\n책장에 추가해보세요!",
@@ -808,12 +835,29 @@ extension BookshelfViewController {
         tutorialVC.onFinished = { [weak self] in
             UserDefaults.standard.set(true, forKey: "tutorial.bookshelf")
             UserDefaults.standard.set(true, forKey: "tutorial.bookshelfWishlist")
+            UserDefaults.standard.set(true, forKey: "tutorial.bookshelfDrag")
             self?.tutorialSession = nil
             self?.tutorialLoadTask?.cancel()
             self?.tutorialBooks = []
             if self?.layoutReady == true { self?.rebuildShelfPages() }
         }
         present(tutorialVC, animated: true)
+    }
+
+    private func bookshelfDragTutorialStep() -> TutorialStep {
+        TutorialStep(
+            targetFrame: .zero,
+            message: "책을 꾹 누른 채 원하는 위치로 옮겨\n책장의 순서를 바꿀 수 있어요",
+            targetFrameProvider: { [weak self] in
+                guard let self else { return .zero }
+                let page = self.pageControl.currentPage
+                if self.shelfPages.indices.contains(page), let layout = self.shelfLayout,
+                   let bookView = self.shelfPages[page].bookView(at: page * layout.capacity) {
+                    return bookView.convert(bookView.bounds, to: nil)
+                }
+                return self.bookshelfScrollView.convert(self.bookshelfScrollView.bounds, to: nil)
+            }
+        )
     }
 }
 

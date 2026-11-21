@@ -37,6 +37,8 @@ final class BookDetailViewController: AdaptiveViewController {
     }()
 
     private let contentView = UIView()
+    private let viewportLayoutGuide = UILayoutGuide()
+    private let columnsLayoutGuide = UILayoutGuide()
 
     init(book: Book) {
         self.book = book
@@ -96,12 +98,17 @@ final class BookDetailViewController: AdaptiveViewController {
         return v
     }()
 
+    private let bookCoverWidth: CGFloat = 60
     private let bookCoverView: UIImageView = {
         let iv = UIImageView()
         iv.backgroundColor   = UIColor.appPrimary
         iv.layer.cornerRadius = 3
         iv.clipsToBounds      = true
         iv.contentMode        = .scaleAspectFill
+        for axis in [NSLayoutConstraint.Axis.horizontal, .vertical] {
+            iv.setContentHuggingPriority(.fittingSizeLevel, for: axis)
+            iv.setContentCompressionResistancePriority(.fittingSizeLevel, for: axis)
+        }
         return iv
     }()
 
@@ -212,6 +219,18 @@ final class BookDetailViewController: AdaptiveViewController {
     // MARK: - Lifecycle
 
     private var lastQuoteWidth: CGFloat = 0
+    private var columns: ReadingColumns?
+
+    override func viewWillLayoutSubviews() {
+        super.viewWillLayoutSubviews()
+        let layout = ReadingColumns(
+            container: ContainerLayout(view: view, reservesInactiveDivisions: true),
+            usesFullWidth: traitCollection.userInterfaceIdiom == .pad
+        )
+        guard layout != columns else { return }
+        columns = layout
+        updateContentConstraints()
+    }
 
     override func viewDidLayoutSubviews() {
         super.viewDidLayoutSubviews()
@@ -254,8 +273,10 @@ final class BookDetailViewController: AdaptiveViewController {
         view.backgroundColor = UIColor.background
 
         // Scroll container
+        view.addLayoutGuide(viewportLayoutGuide)
         view.addSubview(scrollView)
         scrollView.addSubview(contentView)
+        contentView.addLayoutGuide(columnsLayoutGuide)
 
         // Quote Card
         quoteScrollView.delegate = self
@@ -289,25 +310,9 @@ final class BookDetailViewController: AdaptiveViewController {
 
     private func setupConstraints() {
         // Scroll container
+        updateContentConstraints()
         scrollView.snp.makeConstraints { make in
-            make.top.equalTo(view.adaptiveContentLayoutGuide)
-            make.leading.trailing.equalTo(view.adaptiveContentLayoutGuide)
-            make.bottom.equalTo(view.adaptiveContentLayoutGuide)
-        }
-        scrollView.contentInset.bottom = 80
-
-        contentView.snp.makeConstraints { make in
-            make.edges.equalToSuperview()
-            make.width.equalTo(scrollView)
-        }
-
-        // Quote Card (height: 266, padding: [24,24,20,24])
-        let quoteCardWidthInset: CGFloat = 24
-        quoteCard.snp.makeConstraints { make in
-            make.top.equalToSuperview().offset(12)
-            make.leading.trailing.equalToSuperview().inset(quoteCardWidthInset)
-            make.height.equalTo(quoteCard.snp.width).multipliedBy(0.7).priority(.high)
-            make.height.lessThanOrEqualTo(view.adaptiveContentLayoutGuide.snp.height).multipliedBy(0.65)
+            make.edges.equalTo(viewportLayoutGuide)
         }
 
         quoteScrollView.snp.makeConstraints { make in
@@ -317,29 +322,16 @@ final class BookDetailViewController: AdaptiveViewController {
         // Page Control
         pageControl.snp.makeConstraints { make in
             make.top.equalTo(quoteCard.snp.bottom).offset(16)
-            make.centerX.equalToSuperview()
+            make.centerX.equalTo(quoteCard)
         }
 
-        // Book Info Section (cornerRadius 16, padding 16, gap 20)
-        bookInfoSection.snp.makeConstraints { make in
-            make.top.equalTo(pageControl.snp.bottom).offset(24)
-            make.leading.trailing.equalToSuperview().inset(24)
-            make.bottom.equalToSuperview().inset(24)
-        }
-
-        // Book Cover (60×83)
-        bookCoverView.snp.makeConstraints { make in
-            make.leading.equalToSuperview().inset(16)
-            make.top.equalToSuperview().inset(16)
-            make.width.equalTo(60)
-            make.height.equalTo(83)
-        }
+        updateBookCoverConstraints(aspectRatio: 83 / bookCoverWidth)
 
         // Book Title
         bookTitleLabel.snp.makeConstraints { make in
-            make.leading.equalTo(bookCoverView.snp.trailing).offset(14)
+            make.leading.equalTo(bookCoverView.snp.leading).offset(bookCoverWidth + 14)
             make.trailing.equalToSuperview().inset(16)
-            make.top.equalTo(bookCoverView)
+            make.top.equalToSuperview().inset(16)
         }
 
         bookAuthorLabel.snp.makeConstraints { make in
@@ -372,7 +364,7 @@ final class BookDetailViewController: AdaptiveViewController {
         }
 
         // Progress Section (cornerRadius 12, padding [12,14])
-        // 초기에는 description이 숨겨진 상태이므로 genreTagView 기준
+        // 도서 소개가 접혀 있으면 장르 태그 하단을 기준으로 배치한다.
         progressSectionView.snp.makeConstraints { make in
             make.top.equalTo(genreTagView.snp.bottom).offset(16)
             make.leading.trailing.equalToSuperview().inset(16)
@@ -381,13 +373,13 @@ final class BookDetailViewController: AdaptiveViewController {
 
         // FAB (52×52, trailing 24, bottom safeArea 16)
         fabButton.snp.makeConstraints { make in
-            make.trailing.equalTo(view.adaptiveContentLayoutGuide).inset(24)
-            make.bottom.equalTo(view.adaptiveContentLayoutGuide).inset(16)
+            make.trailing.equalTo(viewportLayoutGuide).inset(24)
+            make.bottom.equalTo(viewportLayoutGuide).inset(16)
             make.size.equalTo(52)
         }
 
         sentenceEditButton.snp.makeConstraints { make in
-            make.leading.equalTo(view.adaptiveContentLayoutGuide).offset(24)
+            make.leading.equalTo(viewportLayoutGuide).offset(24)
             make.centerY.equalTo(fabButton)
             make.size.equalTo(52)
         }
@@ -401,6 +393,79 @@ final class BookDetailViewController: AdaptiveViewController {
 
         sentenceUpdateButton.snp.makeConstraints { make in
             make.edges.equalToSuperview()
+        }
+    }
+
+    private func updateBookCoverConstraints(aspectRatio: CGFloat) {
+        bookCoverView.snp.remakeConstraints { make in
+            make.leading.equalToSuperview().inset(16)
+            make.top.greaterThanOrEqualToSuperview().inset(16)
+            make.bottom.equalTo(genreTagView.snp.bottom)
+            make.width.lessThanOrEqualTo(bookCoverWidth)
+            make.width.equalTo(bookCoverWidth).priority(249)
+            make.height.equalTo(bookCoverView.snp.width).multipliedBy(aspectRatio)
+        }
+    }
+
+    private func updateContentConstraints() {
+        scrollView.contentInset.bottom = columns == nil ? 80 : 0
+        viewportLayoutGuide.snp.remakeConstraints { make in
+            if let columns {
+                make.left.equalTo(view).offset(columns.viewport.minX)
+                make.top.equalTo(view).offset(columns.viewport.minY)
+                make.width.equalTo(columns.viewport.width)
+                make.height.equalTo(columns.viewport.height)
+            } else {
+                make.edges.equalTo(view.adaptiveContentLayoutGuide)
+            }
+        }
+        quoteCard.snp.remakeConstraints { make in
+            make.left.equalToSuperview().offset(24)
+            if let columns {
+                make.width.equalTo(columns.leadingWidth)
+            } else {
+                make.top.equalToSuperview().offset(12)
+                make.right.equalToSuperview().inset(24)
+            }
+            make.height.equalTo(quoteCard.snp.width).multipliedBy(0.7).priority(.high)
+            make.height.lessThanOrEqualTo(scrollView.frameLayoutGuide.snp.height).multipliedBy(0.65)
+        }
+        bookInfoSection.snp.remakeConstraints { make in
+            make.right.equalToSuperview().inset(24)
+            if let columns {
+                make.left.equalTo(quoteCard.snp.right).offset(columns.gap)
+                make.centerY.equalTo(quoteCard)
+            } else {
+                make.left.equalTo(quoteCard)
+                make.top.equalTo(pageControl.snp.bottom).offset(24)
+                make.bottom.equalToSuperview().inset(24)
+            }
+        }
+        contentView.snp.remakeConstraints { make in
+            make.edges.equalTo(scrollView.contentLayoutGuide)
+            make.width.equalTo(scrollView.frameLayoutGuide)
+            if columns != nil {
+                make.height.greaterThanOrEqualTo(scrollView.frameLayoutGuide)
+                make.height.equalTo(scrollView.frameLayoutGuide).priority(249)
+            }
+        }
+        columnsLayoutGuide.snp.remakeConstraints { make in
+            if columns != nil {
+                make.leading.trailing.equalTo(contentView)
+                make.top.lessThanOrEqualTo(quoteCard)
+                make.top.lessThanOrEqualTo(bookInfoSection)
+                make.top.equalTo(quoteCard).priority(.low)
+                make.top.equalTo(bookInfoSection).priority(.low)
+                make.top.greaterThanOrEqualTo(contentView).offset(12)
+                make.top.equalTo(contentView).offset(12).priority(247)
+                make.bottom.greaterThanOrEqualTo(pageControl)
+                make.bottom.greaterThanOrEqualTo(bookInfoSection)
+                make.bottom.equalTo(pageControl).priority(.low)
+                make.bottom.equalTo(bookInfoSection).priority(.low)
+                // 긴 도서 소개는 상단부터 표시하고 하단 버튼 위까지 스크롤할 수 있게 한다.
+                make.bottom.lessThanOrEqualTo(contentView).offset(-80)
+                make.centerY.equalTo(contentView).offset(-12).priority(248)
+            }
         }
     }
 
@@ -420,14 +485,12 @@ final class BookDetailViewController: AdaptiveViewController {
         genreTagView.isHidden = false
 
         if let coverURL = book.coverURL {
-            bookCoverView.kf.setImage(with: coverURL) { [weak self] result in
+            let request = ShelfCoverImageSource.request(for: coverURL)
+            bookCoverView.kf.setImage(with: request.url, options: request.options) { [weak self] result in
                 guard let self, case .success(let value) = result else { return }
                 let imageSize = value.image.size
-                guard imageSize.width > 0 else { return }
-                let newHeight = ceil(60.0 * imageSize.height / imageSize.width)
-                self.bookCoverView.snp.updateConstraints { make in
-                    make.height.equalTo(newHeight)
-                }
+                guard imageSize.width > 0, imageSize.height > 0 else { return }
+                self.updateBookCoverConstraints(aspectRatio: imageSize.height / imageSize.width)
             }
         }
 

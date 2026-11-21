@@ -34,6 +34,23 @@ final class BookshelfLayoutTests: XCTestCase {
         assertGeometry(value, in: container)
     }
 
+    func test_openLandscapeFold_matchesWiderLeftShelvesToRightShelves() {
+        let fold = CGRect(x: 430, y: 0, width: 30, height: 500)
+        let container = ContainerLayout(
+            bounds: CGRect(x: 0, y: 0, width: 800, height: 500),
+            reservedRegions: [.init(kind: .division, frame: fold, isActive: false)],
+            reservesInactiveDivisions: true
+        )
+        let value = BookshelfLayout(container: container)
+        let leftBoards = value.boards.filter { $0.maxX <= fold.minX }
+        let rightBoards = value.boards.filter { $0.minX >= fold.maxX }
+        XCTAssertEqual(leftBoards.count, 2)
+        XCTAssertEqual(leftBoards.map(\.width), rightBoards.map(\.width))
+        XCTAssertTrue(leftBoards.allSatisfy { $0.midX == 215 })
+        XCTAssertTrue(rightBoards.allSatisfy { $0.minX == 460 && $0.width == 340 })
+        assertGeometry(value, in: container)
+    }
+
     func test_horizontalFold_putsRowsAboveAndBelowIt() {
         let fold = CGRect(x: 0, y: 330, width: 800, height: 40)
         let container = ContainerLayout(bounds: CGRect(x: 0, y: 0, width: 800, height: 700), reservedRegions: [

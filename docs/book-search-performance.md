@@ -1,5 +1,54 @@
 # 도서 검색 성능 측정
 
+## 2026-11-19 — 인기 대출·요즘 뜨는 책 로딩
+
+### 원인 조사와 적용 정책
+
+두 목록은 기존에 검색 결과와 5분 메모리 캐시를 공유했다. 앱 재실행·만료·LRU 퇴출 뒤에는 매번 API 응답이 필요했고, 동일 목록의 진행 중 요청도 공유하지 않았다. 급상승은 전날부터 최대 7일을 직렬 탐색하므로 빈 응답이 이어지면 요청 시간이 누적된다. 이들은 코드로 확인한 대기 증폭 요인이다. 간헐적인 장시간 지연 자체는 아래 실측에서는 재현되지 않아 서버 장애나 특정 네트워크를 원인으로 확정하지 않는다.
+
+- 추천 목록 전용 `RecommendedBookCache`를 추가했다. 인기·급상승은 검색어 LRU 캐시에서 분리하고, AppContainer에서 앱 캐시 디렉터리의 `RecommendedBooks-v1` 저장소를 주입한다. SwiftData 스키마와 일반 검색 캐시는 유지한다.
+- 응답 완료 후 5분 미만은 재사용, 5분 이상·24시간 미만은 먼저 표시하고 갱신, 24시간 이상·미래 시각은 표시하지 않는다. 캐시 파일은 탭마다 원자적으로 기록하며 손상·저장 실패는 네트워크 성공을 막지 않는다. 정상 빈 응답도 빈 snapshot으로 저장해 과거 도서를 계속 표시하지 않는다.
+- 캐시가 없으면 초기 로딩 후 성공·빈 결과·실패 상태로 종료한다. 캐시가 있으면 갱신 상태를 보여주며, 실패해도 행을 유지하고 명시적 재시도를 제공한다. 조회 시각은 캐시 유효성 판단에만 사용하고 화면에는 표시하지 않는다. 캐시 디렉터리는 OS가 정리할 수 있으므로 오프라인 영구 보관 기능으로 보장하지 않는다.
+- 정보나루 목록 요청은 개별 10초, 전체 15초로 제한하고 실제 Alamofire 요청을 취소한다. 급상승의 다음 날짜 조회도 같은 전체 예산을 소비한다. 날짜 이동은 정상 빈 응답에만 수행한다. 상세 조회의 제한 시간은 변경하지 않는다.
+- 인기·급상승 각각 진행 중 요청을 공유한다. 대기자 하나의 취소는 다른 대기자를 중단하지 않으며, 마지막 대기자 취소 시 통신을 중단한다. 취소된 요청의 늦은 응답은 저장하지 않는다.
+- 같은 탭의 반복 탭은 진행 중 조회를 유지한다. 탭 왕복·검색 전환은 generation으로 늦은 응답을 차단한다. 갱신 중에는 표지 보완과 사용자 조작을 막지 않는다.
+- 동일 ISBN 순서의 갱신은 기존 셀을 유지하고 내용만 반영한다. 순서가 바뀌면 첫 표시 ISBN과 행 내부 offset을 기준으로 위치를 복원한다. 기존 표지·소개와 진행 중 보완 요청은 ISBN을 기준으로 이어간다.
+
+### 실측과 해석
+
+2026-11-19 개발 Mac에서 동일 HTTPS URL·조회 조건으로 두 API를 각각 5회 직렬 호출했다. 요청 사이에 100ms를 두었고 15초 예산을 적용했다. Python 표준 HTTPS 클라이언트의 요청 시작부터 JSON 수신·파싱까지이며, 앱·기기·UI 성능 측정이나 순수 서버 처리 시간은 아니다. 인증키·요청 URL·도서 내용은 기록하지 않았다.
+
+| 목록 | 표본(ms) | 중앙값 | 범위 | 결과 |
+| --- | --- | --- | --- | --- |
+| 인기 대출 | 521.4, 413.9, 502.0, 420.4, 481.5 | 481.5ms | 413.9–521.4ms | 5/5 성공, 각각 50건 |
+| 요즘 뜨는 책 | 506.0, 409.8, 409.5, 378.8, 400.5 | 409.5ms | 378.8–506.0ms | 5/5 성공, 각각 첫 요청에서 결과 |
+
+급상승 응답은 각 회차에 11/18·11/17·11/16의 세 날짜를 포함했다. 현재 응답에서는 추가 날짜 요청이 필요 없었다. 실제 간헐적 장애의 빈도·최댓값이나 서버 속도 개선율은 이 작은 표본으로 판단하지 않는다.
+
+iPhone Duo / iOS 27.1 Debug 테스트에서 **디스크에 저장한 50권 snapshot을 새 캐시 인스턴스로 복원하고 390×844pt 화면의 첫 셀을 구성**하는 시간을 별도로 측정했다. 네트워크는 완료되지 않은 스텁이며 프로세스·폰트·기기는 이미 실행 중이다. 실제 앱 재시작이나 화면 합성 완료 측정과 구분한다.
+
+| 캐시 상태 | 5회 중앙값 | 범위 |
+| --- | --- | --- |
+| 5분 이내 | 40.50ms | 36.52–58.81ms |
+| 5분 만료 후 갱신 대기 중 | 38.88ms | 38.17–42.01ms |
+
+500ms 목표보다 짧았지만 이는 위 합성 조건의 관찰값이다. 캐시가 전혀 없을 때 외부 API 자체의 응답 속도는 보장하지 않으며, 긴 대기 대신 제한 시간과 재시도 상태로 종료한다. 실제 기기의 앱 재실행·네트워크 변동·표지 완료까지 포함한 전후 5회 비교는 별도 현장 검증 대상이다.
+
+### 회귀 검증
+
+최종 검증: iPhone Duo / iOS 27.1에서 전체 **232개 테스트 통과**(실패 0건). Debug 앱·위젯·테스트 타깃과 generic iOS Simulator Release 앱·위젯 빌드 성공, `git diff --check` 통과. Release 빌드에는 이번에 변경하지 않은 `AdaptiveContentView.swift:85`의 actor 격리 경고가 남아 있다.
+
+기존 `Under_lineTests`에서 디스크 복원·5분/24시간 경계·파일 손상·디스크 기록 실패·빈 결과·요청 공유·대기자별 취소·늦은 성공·갱신 실패·재시도·반복 탭·탭 왕복·갱신 중 ISBN 보완·순서 변경 시 offset 보존을 검증한다. 통신 미응답은 URLProtocol로 재현해 실제 stopLoading 호출을 확인한다. 급상승의 누적 예산 테스트는 120ms 전체 예산과 50ms 빈 응답으로 빠르게 검증하며 실제 측정은 약 123ms였다.
+
+320·390·768pt 화면에 캐시와 갱신 실패를 주입해 안내·재시도·기존 행을 확인하고 XCTest 이미지 첨부물을 남긴다. 작은 화면에서 안내가 잘리던 문제는 무제한 줄바꿈과 내용에 따른 헤더 높이로 수정했다.
+
+재현할 때는 기존 전체 테스트 명령에 아래 식별자를 `-only-testing:Under_lineTests/<식별자>`로 지정할 수 있다.
+
+- `BookSearchViewModelTests/test_recommendationScreen_restoredDiskCacheRendersBeforeNetworkCompletes`: 5회씩 `RecommendationCacheRender` 로그.
+- `BookSearchViewModelTests/test_recommendationScreen_rendersStaleFailureAndRetryWithoutClipping`: 너비별 이미지 첨부.
+- `Data4LibraryServiceTests/test_popularRequest_hardTimeoutCancelsTransport`: 미응답 통신 취소.
+- `Data4LibraryServiceTests/test_trendingRequest_totalBudgetIncludesPreviousEmptyDates`: 날짜 이동의 누적 제한 시간.
+
 ## 계측 범위
 
 Debug 빌드에서만 `com.jade.UnderLine` subsystem의 `BookSearchPerformance` category에 기록한다. Xcode 콘솔에서 `stage=`로 필터링하거나 시뮬레이터 로그를 확인한다.
@@ -11,17 +60,22 @@ xcrun simctl spawn booted log show --last 15m --style compact \
 
 | stage | 시작 → 종료 |
 | --- | --- |
+| `cacheLookup` | 추천 snapshot 조회(메모리·디스크·미스) |
+| `firstListReceived` | 화면 진입·탭 선택 → 첫 snapshot 수신 |
+| `responseReceived` | 정보나루 요청 시작 → 응답 수신(네트워크·재개 대기 포함) |
+| `decoding` | 정보나루 JSONDecoder 실행 구간 |
+| `trendingAttempt` | 급상승 날짜별 요청·디코딩, attempt=전날부터의 일수, responseDays=응답 기간 수 |
 | `responseDecoded` | API 요청 직전 → Alamofire 응답 디코딩 후 호출자 복귀 |
 | `domainMapping` | DTO 배열의 `toDomain()` 시작 → 전체 변환 완료 |
-| `firstCellWillDisplay` | Controller의 목록 수신 → 해당 갱신 후 첫 `willDisplayCell` |
+| `firstCellWillDisplay` | 사용자 요청 시작(추천/검색) 또는 다음 페이지 요청 시작 → 해당 갱신 후 첫 `willDisplayCell` |
 | `coverLoaded` | 셀의 Kingfisher `setImage` 호출 → 완료 콜백 |
 
 - `ms`는 단조 증가하는 system uptime으로 측정한 밀리초다.
 - API 응답 대기에는 네트워크, 디코딩, 호출자 재개 대기가 포함된다. 순수 서버 처리 시간은 아니다.
 - `firstCellWillDisplay`는 화면 합성 완료 시간이 아니다. 4단계부터 페이지 추가 시에는 새로 삽입된 행의 첫 표시를 측정하므로 사용자가 그 행까지 스크롤하기까지의 대기도 포함할 수 있다. 초기 목록 표시와 페이지 추가 표본을 분리해 해석한다.
 - 이미지 요청은 셀 구성 시 시작되므로 화면에 보이기 전의 요청도 포함할 수 있다. 완료된 이미지마다 기록하며, 여러 이미지 시간을 합산하지 않는다.
-- API 요청과 DTO 변환은 같은 임의 `id`를 사용한다. 테이블 갱신과 그 갱신에 속한 표지는 별도의 공통 `id`를 사용한다. API와 UI의 id는 직접 연결되지 않는다.
-- `source`는 bestseller/newSpecial/search/table이다. `count`는 응답·변환·테이블의 도서 수이며 표지에서는 0이다.
+- 추천 목록은 TaskLocal의 임의 generation ID를 API·매핑·테이블·표지에 연결한다. 공유 요청은 처음 시작한 호출자의 ID로 계측한다. 일반 검색 API는 기존 별도 ID를 유지한다. `firstListReceived`의 캐시 표시는 캐시 사용 여부이고 실제 메모리/디스크 구분은 `cacheLookup`을 따른다.
+- `source`는 popular/trending/search/isbnEnrichment/data4LibraryDetail/table이다. `count`는 응답·변환·테이블의 도서 수이며 표지에서는 0이다.
 - 표지 성공 시 `cache=none/memory/disk`를 기록한다. `none`은 Kingfisher 캐시 미사용이며 OS·HTTP 캐시까지 비어 있다는 뜻은 아니다.
 - `outcome=success`만 정상 표시 표본으로 집계한다. failed/cancelled/superseded/notDisplayed/noURL은 따로 센다. 빈 목록에는 첫 셀 로그가 없다.
 - 검색어, 책 제목, ISBN, URL, API 키, 응답 본문, 오류 설명은 기록하지 않는다. Release에서는 계측 코드가 제외된다.

@@ -13,6 +13,7 @@ final class WishlistViewModel {
         let retry: Observable<Void>
         let searchQuery: Observable<String>
         let deleteISBN: Observable<String>
+        var moveToBookshelf: Observable<String> = .empty()
         var purchaseTap: Observable<String> = .empty()
         var purchase: Observable<PurchaseRequest> = .empty()
         var screenDisappeared: Observable<Void> = .empty()
@@ -25,6 +26,9 @@ final class WishlistViewModel {
         var hasLoaded = false
         var loadError: String?
         var deletingISBNs: Set<String> = []
+        var movingISBNs: Set<String> = []
+
+        var pendingISBNs: Set<String> { deletingISBNs.union(movingISBNs) }
 
         var items: [WishlistItem] {
             guard !query.isEmpty else { return allItems }
@@ -53,6 +57,7 @@ final class WishlistViewModel {
     private let destination = PublishRelay<BookPurchaseDestination>()
     private let purchaseRequest = SerialDisposable()
     private var purchaseID: UUID?
+    private let bookRepository: BookRepositoryProtocol
     private let repository: WishlistRepositoryProtocol
     private let state = BehaviorRelay<State>(value: State())
     private let message = PublishRelay<String>()
@@ -62,7 +67,9 @@ final class WishlistViewModel {
     private var needsReload = false
 
     init(repository: WishlistRepositoryProtocol, purchaseService: BookPurchaseServiceProtocol? = nil,
-         preferences: BookPurchasePreferenceStoreProtocol? = nil) {
+         preferences: BookPurchasePreferenceStoreProtocol? = nil,
+         bookRepository: BookRepositoryProtocol? = nil) {
+        self.bookRepository = bookRepository ?? AppContainer.shared.bookRepository
         self.preferences = preferences ?? AppContainer.shared.bookPurchasePreferenceStore
         self.purchaseService = purchaseService ?? AppContainer.shared.bookPurchaseService
         purchaseRequest.disposed(by: disposeBag)
@@ -88,6 +95,10 @@ final class WishlistViewModel {
 
         input.deleteISBN
             .subscribe(onNext: { [weak self] in self?.deleteItem(isbn13: $0) })
+            .disposed(by: disposeBag)
+
+        input.moveToBookshelf
+            .subscribe(onNext: { [weak self] in self?.moveToBookshelf(isbn13: $0) })
             .disposed(by: disposeBag)
 
         input.purchaseTap.subscribe(onNext: { [weak self] isbn in
@@ -129,7 +140,7 @@ final class WishlistViewModel {
     }
 
     private func reload() {
-        guard state.value.deletingISBNs.isEmpty else {
+        guard state.value.pendingISBNs.isEmpty else {
             needsReload = true
             return
         }
@@ -162,11 +173,46 @@ final class WishlistViewModel {
         })
     }
 
+    private func moveToBookshelf(isbn13: String) {
+        var value = state.value
+        guard value.hasLoaded, !value.isLoading, !value.pendingISBNs.contains(isbn13),
+              let item = value.allItems.first(where: { $0.isbn13 == isbn13 }) else { return }
+        value.movingISBNs.insert(isbn13)
+        state.accept(value)
+        let book = Book(title: item.title, author: item.author, isbn13: item.isbn13,
+                        coverURL: item.coverURL, publisher: item.publisher, publishDate: nil,
+                        category: nil, bestRank: nil, description: item.description,
+                        itemPage: nil, currentPage: nil)
+        rxAsync { [bookRepository, repository] in
+            do {
+                try await bookRepository.registerSearchedBook(book)
+            } catch {
+                // 이미 책장에 있는 도서는 기존 독서 기록을 보존하고 위시리스트만 정리한다.
+                let error = error as NSError
+                guard error.domain == "BookRepository", error.code == 409 else { throw error }
+            }
+            try await repository.deleteBook(isbn13: isbn13)
+        }.subscribe(onNext: { [weak self] in
+            self?.finishMove(isbn13: isbn13)
+        }, onError: { [weak self] error in
+            self?.finishMove(isbn13: isbn13, error: error)
+        }).disposed(by: disposeBag)
+    }
+
+    private func finishMove(isbn13: String, error: Error? = nil) {
+        var value = state.value
+        value.movingISBNs.remove(isbn13)
+        if error == nil { value.allItems.removeAll { $0.isbn13 == isbn13 } }
+        state.accept(value)
+        message.accept(error?.localizedDescription ?? "책장에 추가하고 위시리스트에서 제거했습니다.")
+        if needsReload, value.pendingISBNs.isEmpty { reload() }
+    }
+
     private func deleteItem(isbn13: String) {
         var value = state.value
         guard value.hasLoaded, !value.isLoading,
               value.allItems.contains(where: { $0.isbn13 == isbn13 }),
-              !value.deletingISBNs.contains(isbn13) else { return }
+              !value.pendingISBNs.contains(isbn13) else { return }
         value.deletingISBNs.insert(isbn13)
         state.accept(value)
         rxAsync { [repository] in try await repository.deleteBook(isbn13: isbn13) }
@@ -184,6 +230,6 @@ final class WishlistViewModel {
         if error == nil { value.allItems.removeAll { $0.isbn13 == isbn13 } }
         state.accept(value)
         message.accept(error?.localizedDescription ?? "위시리스트에서 삭제했습니다.")
-        if needsReload, value.deletingISBNs.isEmpty { reload() }
+        if needsReload, value.pendingISBNs.isEmpty { reload() }
     }
 }

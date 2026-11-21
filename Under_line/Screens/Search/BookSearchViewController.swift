@@ -18,10 +18,20 @@ final class BookSearchViewController: AdaptiveViewController {
     // MARK: - Properties
 
     private let disposeBag = DisposeBag()
-    private let viewModel = BookSearchViewModel(
-        repository: AppContainer.shared.bookRepository,
-        wishlistRepository: AppContainer.shared.wishlistRepository
-    )
+    private let viewModel: BookSearchViewModel
+
+    init(viewModel: BookSearchViewModel? = nil) {
+        self.viewModel = viewModel ?? BookSearchViewModel(
+            repository: AppContainer.shared.bookRepository,
+            wishlistRepository: AppContainer.shared.wishlistRepository
+        )
+        super.init(nibName: nil, bundle: nil)
+    }
+
+    required init?(coder: NSCoder) {
+        fatalError("Use init(viewModel:)")
+    }
+
     private let screenAppearedRelay = PublishRelay<Void>()
     private let toggleWishlistRelay = PublishRelay<Book>()
     private var wishlistState = BookSearchViewModel.WishlistState()
@@ -30,6 +40,7 @@ final class BookSearchViewController: AdaptiveViewController {
     private let registerBookRelay  = PublishRelay<Book>()
     private let descriptionBookRelay = PublishRelay<Book>()
     private let visibleRowsRelay = PublishRelay<[Int]>()
+    private let retryRelay = PublishRelay<Void>()
     private let listSelectionRelay = PublishRelay<BookSearchViewModel.BookListType>()
 
     private let coverPrefetcher = BookCoverPrefetcher()
@@ -67,7 +78,7 @@ final class BookSearchViewController: AdaptiveViewController {
             isExpanded: self?.expandedRow == indexPath.row,
             isDescriptionLoading: self?.descriptionLoadingISBN == book.isbn13,
             primaryAction: .registration(isRegistered: self?.registeredISBNs.contains(book.isbn13.trimmingCharacters(in: .whitespacesAndNewlines)) ?? false),
-            wishlistAction: self?.wishlistAction(for: book.isbn13) ?? .wishlist(isSaved: false, isEnabled: false)
+            secondaryAction: self?.wishlistAction(for: book.isbn13) ?? .wishlist(isSaved: false, isEnabled: false)
         )
         cell.onPrimaryAction = { [weak self] isbn13 in
             guard let self, let book = self.bookDataSource.books.first(where: {
@@ -75,7 +86,7 @@ final class BookSearchViewController: AdaptiveViewController {
             }) else { return }
             self.registerBookRelay.accept(book)
         }
-        cell.onToggleWishlist = { [weak self] isbn13 in
+        cell.onSecondaryAction = { [weak self] isbn13 in
             guard let self, let book = self.bookDataSource.books.first(where: {
                 $0.isbn13.trimmingCharacters(in: .whitespacesAndNewlines) == isbn13
             }) else { return }
@@ -147,6 +158,22 @@ final class BookSearchViewController: AdaptiveViewController {
         let v = UIView()
         v.backgroundColor = UIColor.background
         return v
+    }()
+
+    private let listStatusLabel: UILabel = {
+        let label = UILabel()
+        label.font = UIFont(name: "GowunBatang-Regular", size: 11) ?? .systemFont(ofSize: 11)
+        label.textColor = .secondaryLabel
+        label.numberOfLines = 0
+        return label
+    }()
+    private let retryButton: UIButton = {
+        let button = UIButton(type: .system)
+        button.setTitle("다시 시도", for: .normal)
+        button.titleLabel?.font = UIFont(name: "GowunBatang-Bold", size: 12)
+        button.setTitleColor(.appPrimary, for: .normal)
+        button.isHidden = true
+        return button
     }()
 
     private lazy var popularButton = makeListTabButton(title: "인기 대출 도서", selected: true)
@@ -239,9 +266,28 @@ final class BookSearchViewController: AdaptiveViewController {
         DispatchQueue.main.async { [weak self] in self?.showWishlistTutorial() }
         super.viewDidLayoutSubviews()
         updateLoadingFooterWidth()
+        updateListHeaderSize()
         scheduleCoverPrefetch()
         scheduleEnrichmentWindowUpdate()
         scheduleNextPageIfNeeded()
+    }
+
+    private func updateListHeaderSize() {
+        guard let header = tableView.tableHeaderView, tableView.bounds.width > 0 else { return }
+        let hasStatus = !(listStatusLabel.text ?? "").isEmpty
+        let labelWidth = max(1, tableView.bounds.width - 106)
+        let textHeight = hasStatus ? ceil(listStatusLabel.sizeThatFits(
+            CGSize(width: labelWidth, height: .greatestFiniteMagnitude)
+        ).height) : 0
+        let height = hasStatus ? 48 + max(textHeight + 8, retryButton.isHidden ? 0 : 48) : 50
+        guard header.frame.width != tableView.bounds.width || abs(header.frame.height - height) > 0.5 else { return }
+        let oldHeight = header.frame.height
+        let offset = tableView.contentOffset
+        header.frame.size = CGSize(width: tableView.bounds.width, height: height)
+        tableView.tableHeaderView = header
+        if offset.y >= oldHeight {
+            tableView.setContentOffset(CGPoint(x: offset.x, y: offset.y + height - oldHeight), animated: false)
+        }
     }
 
     private func updateLoadingFooterWidth() {
@@ -284,10 +330,22 @@ final class BookSearchViewController: AdaptiveViewController {
         listSegmentContainerView.addSubview(popularButton)
         listSegmentContainerView.addSubview(trendingButton)
         container.addSubview(listSegmentContainerView)
+        container.addSubview(listStatusLabel)
+        container.addSubview(retryButton)
+        listStatusLabel.snp.makeConstraints { make in
+            make.leading.equalToSuperview().offset(14)
+            make.top.equalTo(listSegmentContainerView.snp.bottom).offset(4)
+            make.trailing.equalTo(retryButton.snp.leading).offset(-8)
+        }
+        retryButton.snp.makeConstraints { make in
+            make.trailing.equalToSuperview().inset(14)
+            make.top.equalTo(listSegmentContainerView.snp.bottom)
+            make.width.equalTo(70)
+            make.height.equalTo(44)
+        }
         listSegmentContainerView.snp.makeConstraints { make in
             make.leading.equalToSuperview().offset(8)
             make.top.equalToSuperview().offset(10)
-            make.bottom.equalToSuperview().inset(6)
             make.height.equalTo(34)
         }
         popularButton.snp.makeConstraints { make in
@@ -299,7 +357,7 @@ final class BookSearchViewController: AdaptiveViewController {
             make.trailing.top.bottom.equalToSuperview().inset(3)
             make.width.equalTo(popularButton)
         }
-        container.frame = CGRect(x: 0, y: 0, width: 0, height: 50)
+        container.frame = CGRect(x: 0, y: 0, width: 0, height: 100)
         tableView.tableHeaderView = container
     }
 
@@ -361,10 +419,25 @@ final class BookSearchViewController: AdaptiveViewController {
             descriptionBook: descriptionBookRelay.asObservable(),
             registerBook: registerBookRelay.asObservable(),
             screenAppeared: screenAppearedRelay.asObservable(),
-            toggleWishlist: toggleWishlistRelay.asObservable()
+            toggleWishlist: toggleWishlistRelay.asObservable(),
+            retry: retryRelay.asObservable()
         )
 
         let output = viewModel.transform(input: input)
+
+        retryButton.rx.tap.bind(to: retryRelay).disposed(by: disposeBag)
+        output.recommendationState
+            .drive(onNext: { [weak self] state in
+                guard let self else { return }
+                var parts: [String] = []
+                if state.isRefreshing { parts.append("최신 목록 갱신 중…") }
+                if let message = state.message { parts.append(message) }
+                self.listStatusLabel.text = parts.joined(separator: " · ")
+                self.retryButton.isHidden = !state.canRetry
+                self.updateListHeaderSize()
+                self.view.setNeedsLayout()
+            })
+            .disposed(by: disposeBag)
 
         tableView.rx.setDataSource(bookDataSource)
             .disposed(by: disposeBag)
@@ -384,27 +457,32 @@ final class BookSearchViewController: AdaptiveViewController {
                 guard let self else { return }
                 #if DEBUG
                 switch update.change {
-                case .replace:
+                case .replace, .refresh:
                     self.firstCellDisplaySpan?.finish(.superseded)
-                    let batchID = UUID()
+                    let batchID = update.requestID ?? UUID()
                     self.performanceBatchID = batchID
                     self.firstMeasuredRow = 0
                     self.firstCellDisplaySpan = update.books.isEmpty ? nil : BookSearchPerformance.Span(
-                        .firstCellWillDisplay, source: .table, id: batchID
+                        .firstCellWillDisplay, source: .table, id: batchID, startedAt: update.startedAt
                     )
                 case .append(let start):
                     self.firstCellDisplaySpan?.finish(.superseded)
-                    let batchID = UUID()
+                    let batchID = update.requestID ?? UUID()
                     self.performanceBatchID = batchID
                     self.firstMeasuredRow = start == self.bookDataSource.books.count && start < update.books.count ? start : 0
                     self.firstCellDisplaySpan = update.books.isEmpty ? nil : BookSearchPerformance.Span(
-                        .firstCellWillDisplay, source: .table, id: batchID
+                        .firstCellWillDisplay, source: .table, id: batchID, startedAt: update.startedAt
                     )
                 case .update:
                     break
                 }
                 #endif
-                if case .replace = update.change {
+                let resetsRows: Bool
+                switch update.change {
+                case .replace, .refresh: resetsRows = true
+                default: resetsRows = false
+                }
+                if resetsRows {
                     self.pendingDescriptionISBN = nil
                     self.expandedRow = nil
                     self.descriptionLoadingISBN = nil
@@ -462,7 +540,7 @@ final class BookSearchViewController: AdaptiveViewController {
                 guard let self else { return }
                 self.wishlistState = state
                 for case let cell as BookRowCell in self.tableView.visibleCells {
-                    cell.setWishlistAction(self.wishlistAction(for: cell.isbn13 ?? ""))
+                    cell.setSecondaryAction(self.wishlistAction(for: cell.isbn13 ?? ""))
                 }
             })
             .disposed(by: disposeBag)

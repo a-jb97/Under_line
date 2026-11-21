@@ -6,6 +6,79 @@ import UIKit
 final class ContainerLayoutTests: XCTestCase {
     private let bounds = CGRect(x: 0, y: 0, width: 800, height: 600)
 
+    func test_bookDetailWhenScrolled_keepsBottomButtonsFixed() throws {
+        let book = Book(title: "책", author: "저자", isbn13: "", coverURL: nil,
+                        publisher: "", publishDate: nil, category: nil, bestRank: nil,
+                        description: "", itemPage: nil, currentPage: nil)
+
+        for size in [CGSize(width: 390, height: 620), bounds.size] {
+            let controller = BookDetailViewController(book: book)
+            let view = try XCTUnwrap(controller.view)
+            view.frame = CGRect(origin: .zero, size: size)
+            view.layoutIfNeeded()
+
+            let scrollView = try XCTUnwrap(view.subviews.compactMap { $0 as? UIScrollView }.first)
+            let buttons = try ["밑줄 편집", "밑줄 추가"].map { label in
+                try XCTUnwrap(view.subviews.first { $0.accessibilityLabel == label } as? UIButton)
+            }
+            let initialFrames = buttons.map(\.frame)
+            for button in buttons {
+                XCTAssertEqual(button.frame.maxY, scrollView.frame.maxY - 16, accuracy: 0.5)
+            }
+
+            let initialOffset = scrollView.contentOffset.y
+            // The offset can exceed the content bounds during a scroll bounce.
+            for displacement: CGFloat in [40, -30] {
+                scrollView.contentOffset.y = initialOffset + displacement
+                view.layoutIfNeeded()
+
+                XCTAssertEqual(scrollView.contentOffset.y, initialOffset + displacement, accuracy: 0.5)
+                XCTAssertEqual(buttons.map(\.frame), initialFrames)
+            }
+        }
+    }
+
+    func test_bookDetailInWideLandscape_usesTwoColumnsInsideReadableArea() throws {
+        let container = ContainerLayout(bounds: CGRect(x: 0, y: 0, width: 1194, height: 834))
+        let columns = try XCTUnwrap(ReadingColumns(container: container))
+        XCTAssertEqual(columns.viewport, CGRect(x: 217, y: 0, width: 760, height: 834))
+        XCTAssertEqual(columns.leadingWidth, 344)
+        XCTAssertEqual(columns.gap, 24)
+    }
+
+    func test_bookDetailWhenPortraitOrNarrow_usesSingleColumn() {
+        let portrait = ContainerLayout(bounds: CGRect(x: 0, y: 0, width: 834, height: 1194))
+        let narrow = ContainerLayout(bounds: CGRect(x: 0, y: 0, width: 560, height: 500))
+        XCTAssertNil(ReadingColumns(container: portrait, usesFullWidth: true))
+        XCTAssertNil(ReadingColumns(container: narrow, usesFullWidth: true))
+    }
+
+    func test_bookDetailInFullWidthLandscape_centersInsideAsymmetricSafeArea() throws {
+        let container = ContainerLayout(
+            bounds: CGRect(x: 0, y: 0, width: 1194, height: 834),
+            safeAreaInsets: UIEdgeInsets(top: 20, left: 16, bottom: 24, right: 24)
+        )
+        let columns = try XCTUnwrap(ReadingColumns(container: container, usesFullWidth: true))
+        XCTAssertEqual(columns.viewport, CGRect(x: 24, y: 20, width: 1146, height: 790))
+        XCTAssertEqual(columns.viewport.midX, container.bounds.midX)
+        XCTAssertTrue(container.safeBounds.contains(columns.viewport))
+        XCTAssertEqual(columns.leadingWidth, 537)
+        XCTAssertEqual(columns.gap, 24)
+    }
+
+    func test_bookDetailWithInactiveVerticalDivision_keepsColumnsOnOppositeSides() throws {
+        let container = ContainerLayout(
+            bounds: bounds,
+            safeAreaInsets: UIEdgeInsets(top: 20, left: 10, bottom: 30, right: 40),
+            reservedRegions: [.init(kind: .division, frame: CGRect(x: 390, y: 0, width: 20, height: 600), isActive: false)],
+            reservesInactiveDivisions: true
+        )
+        let columns = try XCTUnwrap(ReadingColumns(container: container))
+        XCTAssertEqual(columns.viewport, CGRect(x: 10, y: 20, width: 750, height: 550))
+        XCTAssertEqual(columns.viewport.minX + 24 + columns.leadingWidth, 366)
+        XCTAssertEqual(columns.viewport.minX + 24 + columns.leadingWidth + columns.gap, 434)
+    }
+
     func test_asymmetricSafeArea_insetsEveryEdgeInContainerCoordinates() {
         let layout = ContainerLayout(
             bounds: CGRect(x: 10, y: 20, width: 400, height: 300),

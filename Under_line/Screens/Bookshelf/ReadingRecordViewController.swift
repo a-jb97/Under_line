@@ -38,7 +38,9 @@ final class ReadingRecordViewController: AdaptiveViewController {
 
     // MARK: - Chart State
 
-    private var gridReady = false           // 그리드 라인 1회만 추가
+    private var chartWidth: CGFloat = 0
+    private var chartPoints: [ChartPoint] = []
+    private let chartGridLayers = (0..<4).map { _ in CAShapeLayer() }
     private var yAxisLabels: [UILabel] = []
     private var chartDynamicViews: [UIView] = []
 
@@ -56,6 +58,9 @@ final class ReadingRecordViewController: AdaptiveViewController {
         return sv
     }()
     private let contentView = UIView()
+    private let timerColumn = UIView()
+    private let recordsColumn = UIView()
+    private var columns: ReadingColumns?
 
     // MARK: - Header
 
@@ -130,17 +135,28 @@ final class ReadingRecordViewController: AdaptiveViewController {
         bindActions()
     }
 
-    override func viewWillAppear(_ animated: Bool) {
-        super.viewWillAppear(animated)
+    override func viewWillLayoutSubviews() {
+        super.viewWillLayoutSubviews()
+        let layout = ReadingColumns(
+            container: ContainerLayout(view: view, reservesInactiveDivisions: true),
+            usesFullWidth: traitCollection.userInterfaceIdiom == .pad
+        )
+        guard layout != columns else { return }
+        columns = layout
+        updateColumnConstraints()
+    }
+
+    override func viewDidLayoutSubviews() {
+        super.viewDidLayoutSubviews()
+        let width = chartCard.bounds.width
+        guard width > 0, width != chartWidth else { return }
+        chartWidth = width
+        updateChartGrid()
+        renderChart(points: chartPoints)
     }
 
     override func viewDidAppear(_ animated: Bool) {
         super.viewDidAppear(animated)
-        // bounds가 확정된 시점에 그리드 1회 추가
-        if !gridReady {
-            gridReady = true
-            setupChartGrid()
-        }
         timerDialView.restoreStateIfNeeded()
         viewDidAppearRelay.accept(())
         showTutorialIfNeeded()
@@ -165,51 +181,50 @@ final class ReadingRecordViewController: AdaptiveViewController {
 
         view.addSubview(scrollView)
         scrollView.addSubview(contentView)
+        contentView.addSubview(timerColumn)
+        contentView.addSubview(recordsColumn)
 
-        contentView.addSubview(timerDialView)
-        contentView.addSubview(bookTitleLabel)
-        contentView.addSubview(progressSectionView)
+        timerColumn.addSubview(timerDialView)
+        timerColumn.addSubview(bookTitleLabel)
+        recordsColumn.addSubview(progressSectionView)
 
         tabSelectorView.addSubview(tabDailyButton)
         tabSelectorView.addSubview(tabWeeklyButton)
         tabSelectorView.addSubview(tabMonthlyButton)
-        contentView.addSubview(chartTitleLabel)
-        contentView.addSubview(tabSelectorView)
+        recordsColumn.addSubview(chartTitleLabel)
+        recordsColumn.addSubview(tabSelectorView)
         chartCard.layer.addSublayer(chartAreaLayer)
         chartCard.layer.addSublayer(chartLineLayer)
-        contentView.addSubview(chartCard)
+        for grid in chartGridLayers {
+            grid.strokeColor = UIColor(hex: "#5d4037", alpha: CGFloat(0x08) / 255).cgColor
+            grid.lineWidth = 1
+            chartCard.layer.insertSublayer(grid, below: chartLineLayer)
+        }
+        recordsColumn.addSubview(chartCard)
     }
 
     private func setupConstraints() {
-        scrollView.snp.makeConstraints { make in
-            make.edges.equalTo(view.adaptiveContentLayoutGuide)
-        }
-        contentView.snp.makeConstraints { make in
-            make.edges.equalToSuperview()
-            make.width.equalTo(scrollView)
-        }
+        updateColumnConstraints()
 
         timerDialView.snp.makeConstraints { make in
-            make.leading.trailing.equalToSuperview()
-            make.top.equalToSuperview().offset(24)
+            make.leading.trailing.top.equalToSuperview()
         }
 
         bookTitleLabel.snp.makeConstraints { make in
             make.top.equalTo(timerDialView.snp.bottom).offset(24)
-            make.leading.trailing.equalToSuperview().inset(24)
+            make.leading.trailing.bottom.equalToSuperview()
         }
 
         progressSectionView.snp.makeConstraints { make in
-            make.top.equalTo(bookTitleLabel.snp.bottom).offset(24)
-            make.leading.trailing.equalToSuperview().inset(24)
+            make.top.leading.trailing.equalToSuperview()
         }
 
         chartTitleLabel.snp.makeConstraints { make in
             make.top.equalTo(progressSectionView.snp.bottom).offset(40)
-            make.leading.equalToSuperview().inset(24)
+            make.leading.equalToSuperview()
         }
         tabSelectorView.snp.makeConstraints { make in
-            make.trailing.equalToSuperview().inset(24)
+            make.trailing.equalToSuperview()
             make.centerY.equalTo(chartTitleLabel)
             make.height.equalTo(40)
         }
@@ -230,9 +245,52 @@ final class ReadingRecordViewController: AdaptiveViewController {
 
         chartCard.snp.makeConstraints { make in
             make.top.equalTo(tabSelectorView.snp.bottom).offset(16)
-            make.leading.trailing.equalToSuperview().inset(24)
+            make.leading.trailing.bottom.equalToSuperview()
             make.height.equalTo(194)
-            make.bottom.equalToSuperview().inset(24)
+        }
+    }
+
+    private func updateColumnConstraints() {
+        scrollView.snp.remakeConstraints { make in
+            if let columns {
+                make.left.equalToSuperview().offset(columns.viewport.minX)
+                make.top.equalToSuperview().offset(columns.viewport.minY)
+                make.width.equalTo(columns.viewport.width)
+                make.height.equalTo(columns.viewport.height)
+            } else {
+                make.edges.equalTo(view.adaptiveContentLayoutGuide)
+            }
+        }
+        contentView.snp.remakeConstraints { make in
+            make.edges.equalTo(scrollView.contentLayoutGuide)
+            make.width.equalTo(scrollView.frameLayoutGuide)
+            if columns != nil {
+                make.height.greaterThanOrEqualTo(scrollView.frameLayoutGuide)
+                make.height.equalTo(scrollView.frameLayoutGuide).priority(249)
+            }
+        }
+        timerColumn.snp.remakeConstraints { make in
+            make.left.equalToSuperview().offset(24)
+            if let columns {
+                make.width.equalTo(columns.leadingWidth)
+                make.centerY.equalToSuperview()
+                make.top.greaterThanOrEqualToSuperview().offset(24)
+            } else {
+                make.right.equalToSuperview().inset(24)
+                make.top.equalToSuperview().offset(24)
+            }
+        }
+        recordsColumn.snp.remakeConstraints { make in
+            make.right.equalToSuperview().inset(24)
+            if let columns {
+                make.left.equalTo(timerColumn.snp.right).offset(columns.gap)
+                make.centerY.equalToSuperview()
+                make.top.greaterThanOrEqualToSuperview().offset(24)
+            } else {
+                make.left.equalTo(timerColumn)
+                make.top.equalTo(timerColumn.snp.bottom).offset(24)
+                make.bottom.equalToSuperview().inset(24)
+            }
         }
     }
 
@@ -255,22 +313,18 @@ final class ReadingRecordViewController: AdaptiveViewController {
         updateYAxisLabels(scale: 3600)  // 초기 텍스트: 1시간/40분/20분/0분
     }
 
-    // MARK: - 그리드 라인 (viewDidAppear에서 생성 — bounds 필요)
+    // MARK: - 그리드 라인
 
-    private func setupChartGrid() {
+    private func updateChartGrid() {
         let cardW = chartCard.bounds.width
         let step = (chartBottomY - chartTopY) / 3
         let yPositions: [CGFloat] = (0...3).map { chartTopY + CGFloat($0) * step }
 
-        for pos in yPositions {
-            let grid = CAShapeLayer()
+        for (grid, pos) in zip(chartGridLayers, yPositions) {
             let path = UIBezierPath()
             path.move(to: CGPoint(x: chartLeftPad - 2, y: pos))
             path.addLine(to: CGPoint(x: cardW - chartRightPad, y: pos))
-            grid.path        = path.cgPath
-            grid.strokeColor = UIColor(hex: "#5d4037", alpha: CGFloat(0x08) / 255).cgColor
-            grid.lineWidth   = 1
-            chartCard.layer.insertSublayer(grid, below: chartLineLayer)
+            grid.path = path.cgPath
         }
     }
 
@@ -400,7 +454,9 @@ final class ReadingRecordViewController: AdaptiveViewController {
 
         output.chartPoints
             .drive(onNext: { [weak self] points in
-                self?.renderChart(points: points)
+                guard let self else { return }
+                self.chartPoints = points
+                self.renderChart(points: points)
             })
             .disposed(by: disposeBag)
     }

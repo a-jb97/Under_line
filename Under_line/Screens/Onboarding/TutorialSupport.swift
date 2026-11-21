@@ -4,7 +4,8 @@ import UIKit
 enum TutorialSupport {
     static let keys = ["tutorial.bookshelf", "tutorial.bookDetail", "tutorial.readingRecord",
                        "tutorial.statistics", "tutorial.cardEditor", "tutorial.bookshelfWishlist",
-                       "tutorial.searchWishlist", "tutorial.wishlist", "tutorial.purchaseSettings"]
+                       "tutorial.searchWishlist", "tutorial.wishlist", "tutorial.purchaseSettings",
+                       "tutorial.bookshelfDrag"]
 
     static func show(on controller: UIViewController, key: String, steps: [TutorialStep], completion: (() -> Void)? = nil) {
         guard controller.viewIfLoaded?.window != nil, controller.presentedViewController == nil,

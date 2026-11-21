@@ -4,8 +4,6 @@ import Foundation
 @MainActor
 final class BookSearchCache {
     enum Key: Hashable {
-        case popular
-        case trending
         case search(query: String, page: Int)
         case metadata(isbn13: String)
     }

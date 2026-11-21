@@ -231,28 +231,24 @@ final class BookRepositoryTests: XCTestCase {
             _ = try await fixture.repository.searchBooks(query: "책 \(index)", page: 1)
         }
         _ = try await fixture.repository.searchBooks(query: "책 0", page: 1)
-        _ = try await fixture.repository.fetchPopularBooks()
+        _ = try await fixture.repository.searchBooks(query: "추가 책", page: 1)
         _ = try await fixture.repository.searchBooks(query: "책 0", page: 1)
-        XCTAssertEqual(fixture.searchAPI.searchQueries.count, 30)
-        _ = try await fixture.repository.searchBooks(query: "책 1", page: 1)
         XCTAssertEqual(fixture.searchAPI.searchQueries.count, 31)
+        _ = try await fixture.repository.searchBooks(query: "책 1", page: 1)
+        XCTAssertEqual(fixture.searchAPI.searchQueries.count, 32)
     }
 
     func test_expiredEntries_areRemovedBeforeEvictingValidEntry() async throws {
         let fixture = try Fixture()
-        for index in 0..<29 {
-            _ = try await fixture.repository.searchBooks(query: "책 \(index)", page: 1)
-        }
+        for index in 0..<29 { _ = try await fixture.repository.searchBooks(query: "책 \(index)", page: 1) }
         fixture.clock.time = 100
-        _ = try await fixture.repository.fetchPopularBooks()
+        _ = try await fixture.repository.searchBooks(query: "유효한 책", page: 1)
         fixture.clock.time = 299
-        for index in 0..<29 {
-            _ = try await fixture.repository.searchBooks(query: "책 \(index)", page: 1)
-        }
+        for index in 0..<29 { _ = try await fixture.repository.searchBooks(query: "책 \(index)", page: 1) }
         fixture.clock.time = 300
-        _ = try await fixture.repository.fetchTrendingBooks()
-        _ = try await fixture.repository.fetchPopularBooks()
-        XCTAssertEqual(fixture.listAPI.popularCalls, 1)
+        _ = try await fixture.repository.searchBooks(query: "새 책", page: 1)
+        _ = try await fixture.repository.searchBooks(query: "유효한 책", page: 1)
+        XCTAssertEqual(fixture.searchAPI.searchQueries.count, 31)
     }
 
     func test_failedRequests_areNotCached() async throws {
@@ -567,7 +563,8 @@ private final class Fixture {
                 lifetime: 30 * 60,
                 capacity: 100,
                 now: { clock.time }
-            )
+            ),
+            recommendedCache: RecommendedBookCache(now: { Date(timeIntervalSince1970: clock.time) })
         )
     }
 
@@ -653,5 +650,97 @@ private final class StubBookSearchService: BookSearchServiceProtocol {
         isbnQueries.append(isbn13)
         try await onISBNRequest?()
         return isbnBook
+    }
+}
+
+@MainActor
+extension BookRepositoryTests {
+    func test_recommendationCache_survivesRecreationAndRejectsExpiredOrCorruptFiles() throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let date = Date()
+        var now = date
+        let cache = RecommendedBookCache(directory: directory, now: { now })
+        let books = StubData4LibraryService().books
+        _ = cache.insert(books, for: .popular)
+        let recreated = RecommendedBookCache(directory: directory, now: { now })
+        XCTAssertEqual(recreated.snapshot(for: .popular)?.books.first?.isbn13, "test")
+        XCTAssertNil(recreated.snapshot(for: .trending))
+        now = date.addingTimeInterval(299)
+        XCTAssertTrue(try XCTUnwrap(recreated.snapshot(for: .popular)).isFresh(at: now))
+        now = date.addingTimeInterval(300)
+        XCTAssertFalse(try XCTUnwrap(recreated.snapshot(for: .popular)).isFresh(at: now))
+        now = date.addingTimeInterval(86400)
+        XCTAssertNil(recreated.snapshot(for: .popular))
+        try Data("corrupt".utf8).write(to: directory.appendingPathComponent("popular.json"))
+        XCTAssertNil(RecommendedBookCache(directory: directory).snapshot(for: .popular))
+    }
+
+    func test_recommendationCache_diskFailureAndEmptySuccessRemainUsableInMemory() throws {
+        let file = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try Data().write(to: file)
+        defer { try? FileManager.default.removeItem(at: file) }
+        let cache = RecommendedBookCache(directory: file)
+        _ = cache.insert([], for: .trending)
+        XCTAssertEqual(cache.snapshot(for: .trending)?.books.count, 0)
+    }
+
+    func test_recommendationLoader_concurrentWaitersShareRequestAndOneMayCancel() async throws {
+        let service = StubData4LibraryService()
+        let started = expectation(description: "shared request")
+        service.onRequest = {
+            started.fulfill()
+            try await Task.sleep(for: .milliseconds(100))
+        }
+        let cache = RecommendedBookCache()
+        let loader = RecommendedBookLoader(service: service, cache: cache)
+        let first = Task { try await loader.fetch(.popular) }
+        await fulfillment(of: [started], timeout: 2)
+        let second = Task { try await loader.fetch(.popular) }
+        for _ in 0..<10 { await Task.yield() }
+        first.cancel()
+        do { _ = try await first.value; XCTFail("Cancelled waiter returned") }
+        catch is CancellationError { }
+        let result = try await second.value
+        XCTAssertEqual(result.books.count, 1)
+        XCTAssertEqual(service.popularCalls, 1)
+        _ = try await loader.fetch(.popular)
+        XCTAssertEqual(service.popularCalls, 1)
+        service.onRequest = nil
+        _ = try await loader.fetch(.popular, forceRefresh: true)
+        XCTAssertEqual(service.popularCalls, 2)
+    }
+
+    func test_recommendationLoader_lastCancellationDoesNotCacheLateSuccess() async throws {
+        let service = StubData4LibraryService()
+        let started = expectation(description: "request")
+        var continuation: CheckedContinuation<Void, Never>?
+        service.onRequest = {
+            await withCheckedContinuation { continuation = $0; started.fulfill() }
+        }
+        let cache = RecommendedBookCache()
+        let loader = RecommendedBookLoader(service: service, cache: cache)
+        let task = Task { try await loader.fetch(.popular) }
+        await fulfillment(of: [started], timeout: 2)
+        task.cancel()
+        do { _ = try await task.value; XCTFail("Cancelled waiter returned") }
+        catch is CancellationError { }
+        continuation?.resume()
+        for _ in 0..<10 { await Task.yield() }
+        XCTAssertNil(cache.snapshot(for: .popular))
+        service.onRequest = nil
+        _ = try await loader.fetch(.popular)
+        XCTAssertEqual(service.popularCalls, 2)
+    }
+
+    func test_recommendationLoader_failurePreservesPreviousSnapshot() async throws {
+        let service = StubData4LibraryService()
+        let cache = RecommendedBookCache()
+        let old = cache.insert(service.books, for: .trending)
+        let loader = RecommendedBookLoader(service: service, cache: cache)
+        service.onRequest = { throw StubError.failed }
+        do { _ = try await loader.fetch(.trending, forceRefresh: true); XCTFail("Expected failure") }
+        catch StubError.failed { }
+        XCTAssertEqual(cache.snapshot(for: .trending)?.fetchedAt, old.fetchedAt)
     }
 }

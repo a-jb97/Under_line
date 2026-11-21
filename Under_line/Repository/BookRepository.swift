@@ -20,6 +20,9 @@ protocol BookRepositoryProtocol {
     func fetchListBookMetadata(isbn13: String) async throws -> BookListMetadata?
     func fetchBookSupplement(isbn13: String) async throws -> BookDetailMetadata?
 
+    func cachedRecommendation(_ list: RecommendedBookList) -> RecommendedBookSnapshot?
+    func refreshRecommendation(_ list: RecommendedBookList) async throws -> RecommendedBookSnapshot
+
     // Local (BehaviorRelay 스트림 — Observable 유지)
     func fetchSavedBooks() -> Observable<[Book]>
     func registerSearchedBook(_ book: Book) async throws
@@ -30,6 +33,15 @@ protocol BookRepositoryProtocol {
     func reorderBooks(orderedISBNs: [String]) async throws
 }
 
+extension BookRepositoryProtocol {
+    func cachedRecommendation(_ list: RecommendedBookList) -> RecommendedBookSnapshot? { nil }
+
+    func refreshRecommendation(_ list: RecommendedBookList) async throws -> RecommendedBookSnapshot {
+        let books = try await (list == .popular ? fetchPopularBooks() : fetchTrendingBooks())
+        return RecommendedBookSnapshot(books: books, fetchedAt: Date())
+    }
+}
+
 // MARK: - Concrete Implementation
 
 final class BookRepository: BookRepositoryProtocol {
@@ -37,6 +49,7 @@ final class BookRepository: BookRepositoryProtocol {
     private let bookSearchService: BookSearchServiceProtocol
     private let data4LibraryService: Data4LibraryServiceProtocol
     private let modelContext: ModelContext
+    private let recommendedLoader: RecommendedBookLoader
     private let searchCache: BookSearchCache
     private let metadataCache: BookSearchCache
     private var metadataRequests: [String: Task<Book?, Error>] = [:]
@@ -49,10 +62,12 @@ final class BookRepository: BookRepositoryProtocol {
         data4LibraryService: Data4LibraryServiceProtocol,
         modelContext: ModelContext,
         searchCache: BookSearchCache? = nil,
-        metadataCache: BookSearchCache? = nil
+        metadataCache: BookSearchCache? = nil,
+        recommendedCache: RecommendedBookCache? = nil
     ) {
         self.bookSearchService = bookSearchService
         self.data4LibraryService = data4LibraryService
+        self.recommendedLoader = RecommendedBookLoader(service: data4LibraryService, cache: recommendedCache ?? RecommendedBookCache())
         self.modelContext = modelContext
         self.searchCache = searchCache ?? BookSearchCache()
         self.metadataCache = metadataCache ?? BookSearchCache(lifetime: 30 * 60, capacity: 100)
@@ -62,27 +77,19 @@ final class BookRepository: BookRepositoryProtocol {
     // MARK: Remote
 
     func fetchPopularBooks() async throws -> [Book] {
-        try Task.checkCancellation()
-        if let cached = searchCache.result(for: .popular) { return cached.books }
-        let books = try await data4LibraryService.fetchPopularBooks()
-        try Task.checkCancellation()
-        searchCache.insert(
-            BookSearchPage(books: books, totalResults: books.count, isEnd: true),
-            for: .popular
-        )
-        return books
+        try await recommendedLoader.fetch(.popular).books
     }
 
     func fetchTrendingBooks() async throws -> [Book] {
-        try Task.checkCancellation()
-        if let cached = searchCache.result(for: .trending) { return cached.books }
-        let books = try await data4LibraryService.fetchTrendingBooks()
-        try Task.checkCancellation()
-        searchCache.insert(
-            BookSearchPage(books: books, totalResults: books.count, isEnd: true),
-            for: .trending
-        )
-        return books
+        try await recommendedLoader.fetch(.trending).books
+    }
+
+    func cachedRecommendation(_ list: RecommendedBookList) -> RecommendedBookSnapshot? {
+        recommendedLoader.snapshot(for: list)
+    }
+
+    func refreshRecommendation(_ list: RecommendedBookList) async throws -> RecommendedBookSnapshot {
+        try await recommendedLoader.fetch(list, forceRefresh: true)
     }
 
     func searchBooks(query: String, page: Int) async throws -> BookSearchPage {
