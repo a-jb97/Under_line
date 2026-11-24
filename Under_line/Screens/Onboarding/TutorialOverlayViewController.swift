@@ -376,7 +376,7 @@ final class TutorialOverlayViewController: UIViewController {
         let iv = UIImageView()
         let config = UIImage.SymbolConfiguration(pointSize: 28, weight: .light)
         iv.image = UIImage(systemName: "hand.point.up.left.fill", withConfiguration: config)
-        iv.tintColor = UIColor.background.withAlphaComponent(0.9)
+        iv.tintColor = UIColor.accent.withAlphaComponent(0.9)
         iv.frame = CGRect(x: 0, y: 0, width: 36, height: 36)
         iv.alpha = 0
         view.addSubview(iv)
