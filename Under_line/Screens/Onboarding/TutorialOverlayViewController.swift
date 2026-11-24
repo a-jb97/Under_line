@@ -106,7 +106,9 @@ final class TutorialOverlayViewController: UIViewController {
         let btn = UIButton(type: .system)
         btn.setTitle("< 이전", for: .normal)
         btn.titleLabel?.font = UIFont(name: "GoyangIlsan R", size: 16) ?? .systemFont(ofSize: 16)
-        btn.setTitleColor(UIColor.background, for: .normal)
+        btn.setTitleColor(.accent, for: .normal)
+        btn.backgroundColor = .background
+        btn.layer.cornerRadius = 12
         return btn
     }()
 
@@ -114,7 +116,9 @@ final class TutorialOverlayViewController: UIViewController {
         let btn = UIButton(type: .system)
         btn.setTitle("다음 >", for: .normal)
         btn.titleLabel?.font = UIFont(name: "GoyangIlsan R", size: 16) ?? .boldSystemFont(ofSize: 16)
-        btn.setTitleColor(UIColor.background, for: .normal)
+        btn.setTitleColor(.accent, for: .normal)
+        btn.backgroundColor = .background
+        btn.layer.cornerRadius = 12
         return btn
     }()
 
@@ -211,11 +215,13 @@ final class TutorialOverlayViewController: UIViewController {
         }
         prevButton.snp.makeConstraints { make in
             make.leading.equalToSuperview().inset(24)
-            make.centerY.equalToSuperview()
+            make.top.bottom.equalToSuperview()
+            make.width.equalTo(84)
         }
         nextButton.snp.makeConstraints { make in
             make.trailing.equalToSuperview().inset(24)
-            make.centerY.equalToSuperview()
+            make.top.bottom.equalToSuperview()
+            make.width.equalTo(84)
         }
 
         // 튜토리얼 버튼만 터치를 허용
