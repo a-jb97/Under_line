@@ -1338,6 +1338,8 @@ private final class ControlledRepository: BookRepositoryProtocol {
             ))
         }
     }
+    func fetchRelatedBooks(isbn13: String) async throws -> [Book] { [] }
+    func enrichRelatedBook(_ book: Book) async throws -> Book { book }
     func fetchBookSupplement(isbn13: String) async throws -> BookDetailMetadata? {
         supplementISBNs.append(isbn13)
         onSupplementRequested?()

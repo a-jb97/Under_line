@@ -23,17 +23,20 @@ final class BookDetailViewModel {
     struct Output {
         let sentences:    Driver<[Sentence]>  // 문장 목록
         let errorMessage: Signal<String>      // Toast 메시지 (1회성)
+        let relatedBooks: Driver<[Book]>
     }
 
     // MARK: - Dependencies
 
     private let book: Book
     private let sentenceRepository: SentenceRepositoryProtocol
+    private let bookRepository: BookRepositoryProtocol
     private let disposeBag = DisposeBag()
 
-    init(book: Book, sentenceRepository: SentenceRepositoryProtocol) {
+    init(book: Book, sentenceRepository: SentenceRepositoryProtocol, bookRepository: BookRepositoryProtocol) {
         self.book                = book
         self.sentenceRepository  = sentenceRepository
+        self.bookRepository = bookRepository
     }
 
     // MARK: - Transform
@@ -72,7 +75,29 @@ final class BookDetailViewModel {
 
         return Output(
             sentences:    sentences.asDriver(),
-            errorMessage: errorMessage.asSignal()
+            errorMessage: errorMessage.asSignal(),
+            relatedBooks: relatedBooks(on: input.viewWillAppear)
         )
+    }
+
+    private func relatedBooks(on firstAppearance: Observable<Void>) -> Driver<[Book]> {
+        let repository = bookRepository
+        let isbn = book.isbn13
+        return firstAppearance
+            .take(1)
+            .flatMap { rxAsync { try await repository.fetchRelatedBooks(isbn13: isbn) } }
+            .flatMap { books -> Observable<[Book]> in
+                let updates = books.map { book in
+                    rxAsync { try await repository.enrichRelatedBook(book) }
+                        .catch { _ in .empty() }
+                }
+                return .concat(
+                    .just(books),
+                    Observable.merge(updates).scan(books) { current, updated in
+                        current.map { $0.isbn13 == updated.isbn13 ? updated : $0 }
+                    }
+                )
+            }
+            .asDriver(onErrorJustReturn: [])
     }
 }

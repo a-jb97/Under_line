@@ -515,6 +515,8 @@ private final class WishlistBookRepository: BookRepositoryProtocol {
         BookSearchPage(books: [], totalResults: 0, isEnd: true)
     }
     func fetchListBookMetadata(isbn13: String) async throws -> BookListMetadata? { nil }
+    func fetchRelatedBooks(isbn13: String) async throws -> [Book] { [] }
+    func enrichRelatedBook(_ book: Book) async throws -> Book { book }
     func fetchBookSupplement(isbn13: String) async throws -> BookDetailMetadata? { nil }
     func saveBook(_ book: Book) async throws { XCTFail("기존 검색 도서 등록 경로를 사용해야 합니다") }
     func deleteBook(_ book: Book) async throws { XCTFail("기존 책장 도서를 삭제하면 안 됩니다") }
