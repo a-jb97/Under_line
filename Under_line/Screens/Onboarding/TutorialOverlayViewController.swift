@@ -106,8 +106,8 @@ final class TutorialOverlayViewController: UIViewController {
         let btn = UIButton(type: .system)
         btn.setTitle("< 이전", for: .normal)
         btn.titleLabel?.font = UIFont(name: "GoyangIlsan R", size: 16) ?? .systemFont(ofSize: 16)
-        btn.setTitleColor(.accent, for: .normal)
-        btn.backgroundColor = .background
+        btn.setTitleColor(.background, for: .normal)
+        btn.backgroundColor = .accent
         btn.layer.cornerRadius = 12
         return btn
     }()
@@ -116,8 +116,8 @@ final class TutorialOverlayViewController: UIViewController {
         let btn = UIButton(type: .system)
         btn.setTitle("다음 >", for: .normal)
         btn.titleLabel?.font = UIFont(name: "GoyangIlsan R", size: 16) ?? .boldSystemFont(ofSize: 16)
-        btn.setTitleColor(.accent, for: .normal)
-        btn.backgroundColor = .background
+        btn.setTitleColor(.background, for: .normal)
+        btn.backgroundColor = .accent
         btn.layer.cornerRadius = 12
         return btn
     }()
