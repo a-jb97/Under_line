@@ -52,8 +52,9 @@ final class SettingsViewController: AdaptiveViewController {
 
     private lazy var backupRow:          UIButton = makeChevronRow(title: "내 밑줄 기록 백업하기")
     private lazy var restoreRow:         UIButton = makeChevronRow(title: "내 밑줄 기록 불러오기")
-    private lazy var randomUnderLineRow: UIButton = makeChevronRow(title: "랜덤 밑줄 기능 켜기/끄기")
-    private lazy var relatedBooksRow = makeRelatedBooksRow()
+    private lazy var randomUnderLineRow = makeSwitchRow(title: "랜덤 밑줄 기능", toggle: randomUnderLineSwitch)
+    private lazy var relatedBooksRow = makeSwitchRow(title: "이 책과 함께 읽기 좋은 책", toggle: relatedBooksSwitch)
+    private let randomUnderLineSwitch = UISwitch()
     private let relatedBooksSwitch = UISwitch()
     private lazy var tutorialRow:        UIButton = makeChevronRow(title: "튜토리얼 다시 보기")
     private lazy var feedbackRow: UIButton = makeChevronRow(title: "의견 보내기")
@@ -232,27 +233,27 @@ final class SettingsViewController: AdaptiveViewController {
         return container
     }
 
-    private func makeRelatedBooksRow() -> UIView {
+    private func makeSwitchRow(title text: String, toggle: UISwitch) -> UIView {
         let row = UIView()
         let title = UILabel()
-        title.text = "이 책과 함께 읽기 좋은 책"
+        title.text = text
         title.font = UIFont(name: "GowunBatang-Regular", size: 16) ?? .systemFont(ofSize: 16)
         title.textColor = .accent
         title.numberOfLines = 2
         title.isAccessibilityElement = false
 
-        relatedBooksSwitch.onTintColor = .appPrimary
-        relatedBooksSwitch.accessibilityLabel = title.text
+        toggle.onTintColor = .appPrimary
+        toggle.accessibilityLabel = text
         row.addSubview(title)
-        row.addSubview(relatedBooksSwitch)
+        row.addSubview(toggle)
 
-        relatedBooksSwitch.snp.makeConstraints { make in
+        toggle.snp.makeConstraints { make in
             make.trailing.equalToSuperview().inset(24)
             make.centerY.equalToSuperview()
         }
         title.snp.makeConstraints { make in
             make.leading.equalToSuperview().inset(24)
-            make.trailing.lessThanOrEqualTo(relatedBooksSwitch.snp.leading).offset(-12)
+            make.trailing.lessThanOrEqualTo(toggle.snp.leading).offset(-12)
             make.centerY.equalToSuperview()
         }
         return row
@@ -263,10 +264,15 @@ final class SettingsViewController: AdaptiveViewController {
     private func bindActions() {
         let output = viewModel.transform(input: SettingsViewModel.Input(
             preferenceSelected: preferenceSelected.asObservable(),
+            randomUnderLineToggled: randomUnderLineSwitch.rx.isOn.changed.asObservable(),
             relatedBooksToggled: relatedBooksSwitch.rx.isOn.changed.asObservable(),
             backupTap:         backupRow.rx.tap.asObservable(),
             restoreFilePicked: restoreFilePickedRelay.asObservable()
         ))
+
+        output.randomUnderLineEnabled
+            .drive(randomUnderLineSwitch.rx.isOn)
+            .disposed(by: disposeBag)
 
         output.relatedBooksEnabled
             .drive(relatedBooksSwitch.rx.isOn)
@@ -331,28 +337,6 @@ final class SettingsViewController: AdaptiveViewController {
                 picker.delegate = self
                 self.isImportMode = true
                 self.present(picker, animated: true)
-            })
-            .disposed(by: disposeBag)
-
-        randomUnderLineRow.rx.tap
-            .subscribe(onNext: { [weak self] in
-                guard let self else { return }
-                let isEnabled = !UserDefaults.standard.bool(forKey: "randomUnderLine.isDisabled")
-                let alert = UIAlertController(
-                    title:   "랜덤 밑줄 기능",
-                    message: isEnabled
-                        ? "앱 실행 시 감정을 선택해 랜덤 문장을 표시하는 기능을 끄시겠습니까?"
-                        : "앱 실행 시 감정을 선택해 랜덤 문장을 표시하는 기능을 켜시겠습니까?",
-                    preferredStyle: .alert
-                )
-                alert.addAction(UIAlertAction(title: "취소", style: .cancel))
-                alert.addAction(UIAlertAction(
-                    title: isEnabled ? "끄기" : "켜기",
-                    style: isEnabled ? .destructive : .default
-                ) { _ in
-                    UserDefaults.standard.set(isEnabled, forKey: "randomUnderLine.isDisabled")
-                })
-                self.present(alert, animated: true)
             })
             .disposed(by: disposeBag)
 

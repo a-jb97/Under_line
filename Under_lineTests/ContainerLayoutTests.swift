@@ -1,5 +1,7 @@
 import XCTest
 import UIKit
+import RxSwift
+import RxCocoa
 @testable import Under_line
 
 @MainActor
@@ -15,7 +17,7 @@ final class ContainerLayoutTests: XCTestCase {
         let scrollView = try XCTUnwrap(view.subviews.compactMap { $0 as? UIScrollView }.first)
         let table = try XCTUnwrap(scrollView.subviews.first)
         let randomUnderlineRow = try XCTUnwrap(table.subviews.first { row in
-            row.subviews.contains { ($0 as? UILabel)?.text == "랜덤 밑줄 기능 켜기/끄기" }
+            row.subviews.contains { ($0 as? UISwitch)?.accessibilityLabel == "랜덤 밑줄 기능" }
         })
         let relatedBooksRow = try XCTUnwrap(table.subviews.first { row in
             row.subviews.contains { ($0 as? UISwitch)?.accessibilityLabel == "이 책과 함께 읽기 좋은 책" }
@@ -23,6 +25,34 @@ final class ContainerLayoutTests: XCTestCase {
 
         XCTAssertEqual(relatedBooksRow.frame.minY, randomUnderlineRow.frame.maxY, accuracy: 0.5)
         XCTAssertGreaterThan(relatedBooksRow.frame.height, 0)
+    }
+
+    func test_randomUnderlineSwitch_preservesAndUpdatesExistingSetting() throws {
+        let suiteName = UUID().uuidString
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let preference = RandomUnderLinePreference(defaults: defaults)
+        let legacyKey = "randomUnderLine.isDisabled"
+        XCTAssertTrue(preference.isEnabled)
+        defaults.set(true, forKey: legacyKey)
+
+        let toggles = PublishRelay<Bool>()
+        let viewModel = SettingsViewModel(randomUnderLinePreference: preference)
+        let output = viewModel.transform(input: .init(
+            randomUnderLineToggled: toggles.asObservable(), backupTap: .never(), restoreFilePicked: .never()
+        ))
+        let toggle = UISwitch()
+        let binding = output.randomUnderLineEnabled.drive(toggle.rx.isOn)
+        defer { binding.dispose() }
+        XCTAssertFalse(toggle.isOn)
+
+        toggles.accept(true)
+        XCTAssertFalse(defaults.bool(forKey: legacyKey))
+        XCTAssertTrue(preference.isEnabled)
+
+        toggles.accept(false)
+        XCTAssertTrue(defaults.bool(forKey: legacyKey))
+        XCTAssertFalse(preference.isEnabled)
     }
 
     func test_relatedBooksView_pagesAtFullWidthAndResizesForExpandedDescription() throws {
