@@ -38,19 +38,19 @@
     <th>문장 카드 편집</th>
   </tr>
   <tr>
-    <td><img src="docs/images/bookshelf.jpg" alt="책장 화면"></td>
-    <td><img src="docs/images/ocr.jpg" alt="OCR 밑줄 선택 화면"></td>
-    <td><img src="docs/images/quote-card.jpg" alt="문장 카드 편집 화면"></td>
+    <td><img src="docs/images/bookshelf.png" alt="책장 화면"></td>
+    <td><img src="docs/images/ocr.png" alt="OCR 밑줄 선택 화면"></td>
+    <td><img src="docs/images/quote-card.png" alt="문장 카드 편집 화면"></td>
   </tr>
   <tr>
     <th>독서 타이머</th>
     <th>독서 통계</th>
-    <th>데이터 백업</th>
+    <th>데이터 백업 및 복원</th>
   </tr>
   <tr>
-    <td><img src="docs/images/timer.jpg" alt="독서 타이머 화면"></td>
-    <td><img src="docs/images/statistics.jpg" alt="독서 통계 화면"></td>
-    <td><img src="docs/images/backup.jpg" alt="데이터 백업 화면"></td>
+    <td><img src="docs/images/timer.png" alt="독서 타이머 화면"></td>
+    <td><img src="docs/images/statistics.png" alt="독서 통계 화면"></td>
+    <td><img src="docs/images/backup.png" alt="백업 및 복원 메뉴가 있는 설정 화면"></td>
   </tr>
 </table>
 
