@@ -6,6 +6,25 @@ import UIKit
 final class ContainerLayoutTests: XCTestCase {
     private let bounds = CGRect(x: 0, y: 0, width: 800, height: 600)
 
+    func test_settings_placesRelatedBooksSwitchImmediatelyBelowRandomUnderline() throws {
+        let controller = SettingsViewController()
+        let view = try XCTUnwrap(controller.view)
+        view.frame = CGRect(x: 0, y: 0, width: 390, height: 700)
+        view.layoutIfNeeded()
+
+        let scrollView = try XCTUnwrap(view.subviews.compactMap { $0 as? UIScrollView }.first)
+        let table = try XCTUnwrap(scrollView.subviews.first)
+        let randomUnderlineRow = try XCTUnwrap(table.subviews.first { row in
+            row.subviews.contains { ($0 as? UILabel)?.text == "랜덤 밑줄 기능 켜기/끄기" }
+        })
+        let relatedBooksRow = try XCTUnwrap(table.subviews.first { row in
+            row.subviews.contains { ($0 as? UISwitch)?.accessibilityLabel == "이 책과 함께 읽기 좋은 책" }
+        })
+
+        XCTAssertEqual(relatedBooksRow.frame.minY, randomUnderlineRow.frame.maxY, accuracy: 0.5)
+        XCTAssertGreaterThan(relatedBooksRow.frame.height, 0)
+    }
+
     func test_relatedBooksView_pagesAtFullWidthAndResizesForExpandedDescription() throws {
         let host = UIView(frame: CGRect(x: 0, y: 0, width: 310, height: 700))
         let recommendation = RelatedBooksView()

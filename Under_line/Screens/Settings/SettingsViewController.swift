@@ -53,6 +53,8 @@ final class SettingsViewController: AdaptiveViewController {
     private lazy var backupRow:          UIButton = makeChevronRow(title: "내 밑줄 기록 백업하기")
     private lazy var restoreRow:         UIButton = makeChevronRow(title: "내 밑줄 기록 불러오기")
     private lazy var randomUnderLineRow: UIButton = makeChevronRow(title: "랜덤 밑줄 기능 켜기/끄기")
+    private lazy var relatedBooksRow = makeRelatedBooksRow()
+    private let relatedBooksSwitch = UISwitch()
     private lazy var tutorialRow:        UIButton = makeChevronRow(title: "튜토리얼 다시 보기")
     private lazy var feedbackRow: UIButton = makeChevronRow(title: "의견 보내기")
     private lazy var reviewRow:   UIButton = makeChevronRow(title: "앱 리뷰 작성하기")
@@ -104,6 +106,7 @@ final class SettingsViewController: AdaptiveViewController {
             (backupRow,          true),
             (restoreRow,         true),
             (randomUnderLineRow, true),
+            (relatedBooksRow,     true),
             (purchaseRow, true),
             (tutorialRow,        true),
             (feedbackRow, true),
@@ -229,14 +232,45 @@ final class SettingsViewController: AdaptiveViewController {
         return container
     }
 
+    private func makeRelatedBooksRow() -> UIView {
+        let row = UIView()
+        let title = UILabel()
+        title.text = "이 책과 함께 읽기 좋은 책"
+        title.font = UIFont(name: "GowunBatang-Regular", size: 16) ?? .systemFont(ofSize: 16)
+        title.textColor = .accent
+        title.numberOfLines = 2
+        title.isAccessibilityElement = false
+
+        relatedBooksSwitch.onTintColor = .appPrimary
+        relatedBooksSwitch.accessibilityLabel = title.text
+        row.addSubview(title)
+        row.addSubview(relatedBooksSwitch)
+
+        relatedBooksSwitch.snp.makeConstraints { make in
+            make.trailing.equalToSuperview().inset(24)
+            make.centerY.equalToSuperview()
+        }
+        title.snp.makeConstraints { make in
+            make.leading.equalToSuperview().inset(24)
+            make.trailing.lessThanOrEqualTo(relatedBooksSwitch.snp.leading).offset(-12)
+            make.centerY.equalToSuperview()
+        }
+        return row
+    }
+
     // MARK: - Bindings
 
     private func bindActions() {
         let output = viewModel.transform(input: SettingsViewModel.Input(
             preferenceSelected: preferenceSelected.asObservable(),
+            relatedBooksToggled: relatedBooksSwitch.rx.isOn.changed.asObservable(),
             backupTap:         backupRow.rx.tap.asObservable(),
             restoreFilePicked: restoreFilePickedRelay.asObservable()
         ))
+
+        output.relatedBooksEnabled
+            .drive(relatedBooksSwitch.rx.isOn)
+            .disposed(by: disposeBag)
 
         output.purchasePreference.drive(onNext: { [weak self] value in
             self?.currentPreference = value

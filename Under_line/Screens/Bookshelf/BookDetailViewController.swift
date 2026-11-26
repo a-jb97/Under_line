@@ -18,7 +18,8 @@ final class BookDetailViewController: AdaptiveViewController {
     private lazy var viewModel      = BookDetailViewModel(
         book:               book,
         sentenceRepository: AppContainer.shared.sentenceRepository,
-        bookRepository: AppContainer.shared.bookRepository
+        bookRepository: AppContainer.shared.bookRepository,
+        relatedBooksPreference: AppContainer.shared.relatedBooksPreference
     )
     private let viewWillAppearRelay    = PublishRelay<Void>()
     private let deleteSentenceRelay    = PublishRelay<Sentence>()

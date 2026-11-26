@@ -31,12 +31,19 @@ final class BookDetailViewModel {
     private let book: Book
     private let sentenceRepository: SentenceRepositoryProtocol
     private let bookRepository: BookRepositoryProtocol
+    private let relatedBooksPreference: RelatedBooksPreference
     private let disposeBag = DisposeBag()
 
-    init(book: Book, sentenceRepository: SentenceRepositoryProtocol, bookRepository: BookRepositoryProtocol) {
+    init(
+        book: Book,
+        sentenceRepository: SentenceRepositoryProtocol,
+        bookRepository: BookRepositoryProtocol,
+        relatedBooksPreference: RelatedBooksPreference
+    ) {
         self.book                = book
         self.sentenceRepository  = sentenceRepository
         self.bookRepository = bookRepository
+        self.relatedBooksPreference = relatedBooksPreference
     }
 
     // MARK: - Transform
@@ -81,11 +88,19 @@ final class BookDetailViewModel {
     }
 
     private func relatedBooks(on firstAppearance: Observable<Void>) -> Driver<[Book]> {
-        let repository = bookRepository
-        let isbn = book.isbn13
+        let preference = relatedBooksPreference
+        let books = fetchRelatedBooks().catchAndReturn([])
         return firstAppearance
             .take(1)
-            .flatMap { rxAsync { try await repository.fetchRelatedBooks(isbn13: isbn) } }
+            .flatMap { preference.changes }
+            .flatMapLatest { enabled in enabled ? books : .just([]) }
+            .asDriver(onErrorJustReturn: [])
+    }
+
+    private func fetchRelatedBooks() -> Observable<[Book]> {
+        let repository = bookRepository
+        let isbn = book.isbn13
+        return rxAsync { try await repository.fetchRelatedBooks(isbn13: isbn) }
             .flatMap { books -> Observable<[Book]> in
                 let updates = books.map { book in
                     rxAsync { try await repository.enrichRelatedBook(book) }
@@ -98,6 +113,5 @@ final class BookDetailViewModel {
                     }
                 )
             }
-            .asDriver(onErrorJustReturn: [])
     }
 }

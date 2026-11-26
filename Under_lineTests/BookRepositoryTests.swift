@@ -39,10 +39,12 @@ final class BookRepositoryTests: XCTestCase {
             description: "책소개", category: "문학"
         )
         fixture.searchAPI.onISBNRequest = { throw URLError(.notConnectedToInternet) }
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: UUID().uuidString))
         let viewModel = BookDetailViewModel(
             book: current,
-            sentenceRepository: SentenceRepository(modelContext: fixture.container.mainContext),
-            bookRepository: fixture.repository
+            sentenceRepository: EmptySentenceRepository(),
+            bookRepository: fixture.repository,
+            relatedBooksPreference: RelatedBooksPreference(defaults: defaults)
         )
         let appears = PublishRelay<Void>()
         let output = viewModel.transform(input: .init(viewWillAppear: appears.asObservable(), deleteSentence: .never()))
@@ -68,6 +70,61 @@ final class BookRepositoryTests: XCTestCase {
         XCTAssertEqual(snapshots.last?.category, "문학")
         XCTAssertNil(snapshots.last?.coverURL)
         XCTAssertTrue(try fixture.savedRecords.isEmpty)
+    }
+
+    func test_relatedBooksPreference_disablingSkipsFetchAndHidesRecommendations() async throws {
+        let fixture = try Fixture()
+        let current = relatedBook(isbn: "9788983921987")
+        fixture.listAPI.coLoanBooks = [relatedBook(isbn: "9788937460586")]
+        let suiteName = UUID().uuidString
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let preference = RelatedBooksPreference(defaults: defaults)
+        let toggle = PublishRelay<Bool>()
+        let settings = SettingsViewModel(relatedBooksPreference: preference)
+        let settingsOutput = settings.transform(input: .init(
+            relatedBooksToggled: toggle.asObservable(),
+            backupTap: .never(),
+            restoreFilePicked: .never()
+        ))
+        let disposeBag = DisposeBag()
+        var switchIsOn: Bool?
+        settingsOutput.relatedBooksEnabled.drive(onNext: { switchIsOn = $0 }).disposed(by: disposeBag)
+        XCTAssertEqual(switchIsOn, true)
+        toggle.accept(false)
+        XCTAssertEqual(switchIsOn, false)
+
+        var restoredValue: Bool?
+        let restoredPreference = RelatedBooksPreference(defaults: defaults)
+        restoredPreference.changes.take(1)
+            .subscribe(onNext: { restoredValue = $0 })
+            .disposed(by: disposeBag)
+        XCTAssertEqual(restoredValue, false)
+
+        let detail = BookDetailViewModel(
+            book: current,
+            sentenceRepository: EmptySentenceRepository(),
+            bookRepository: fixture.repository,
+            relatedBooksPreference: preference
+        )
+        let appears = PublishRelay<Void>()
+        let output = detail.transform(input: .init(viewWillAppear: appears.asObservable(), deleteSentence: .never()))
+        let loaded = expectation(description: "추천 도서 수신")
+        var latestBooks: [Book]?
+        output.relatedBooks.drive(onNext: { books in
+            if latestBooks?.isEmpty == true, !books.isEmpty { loaded.fulfill() }
+            latestBooks = books
+        }).disposed(by: disposeBag)
+
+        appears.accept(())
+        XCTAssertEqual(latestBooks?.isEmpty, true)
+        XCTAssertTrue(fixture.listAPI.coLoanISBNs.isEmpty)
+
+        toggle.accept(true)
+        await fulfillment(of: [loaded], timeout: 3)
+        XCTAssertEqual(fixture.listAPI.coLoanISBNs, [current.isbn13])
+        toggle.accept(false)
+        XCTAssertEqual(latestBooks?.isEmpty, true)
     }
 
     private func relatedBook(isbn: String, title: String = "추천 도서") -> Book {
@@ -599,6 +656,14 @@ final class BookRepositoryTests: XCTestCase {
         XCTAssertEqual(fixture.searchAPI.searchQueries.map(\.query), ["어린 왕자", "어린 왕자"])
         XCTAssertEqual(fixture.searchAPI.searchQueries.map(\.page), [1, 2])
     }
+}
+
+private struct EmptySentenceRepository: SentenceRepositoryProtocol {
+    func saveSentence(_ sentence: Sentence) async throws {}
+    func updateSentence(_ sentence: Sentence) async throws {}
+    func fetchSentences(for bookISBN: String) async throws -> [Sentence] { [] }
+    func deleteSentence(_ sentence: Sentence) async throws {}
+    func fetchAllSentences() async throws -> [Sentence] { [] }
 }
 
 private enum StubError: Error {

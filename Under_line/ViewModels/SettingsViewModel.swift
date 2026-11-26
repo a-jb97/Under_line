@@ -15,12 +15,14 @@ final class SettingsViewModel {
 
     struct Input {
         var preferenceSelected: Observable<BookPurchasePreference> = .empty()
+        var relatedBooksToggled: Observable<Bool> = .empty()
         let backupTap: Observable<Void>
         let restoreFilePicked: Observable<URL>
     }
 
     struct Output {
         let purchasePreference: Driver<BookPurchasePreference>
+        let relatedBooksEnabled: Driver<Bool>
         let exportFileURL: Observable<URL>
         let toastMessage: Observable<String>
         let restoreSucceeded: Observable<Void>
@@ -28,13 +30,15 @@ final class SettingsViewModel {
 
     private let preferences: BookPurchasePreferenceStoreProtocol
     private let preference: BehaviorRelay<BookPurchasePreference>
+    private let relatedBooksPreference: RelatedBooksPreference
     private let backupService: BackupService
     private let disposeBag = DisposeBag()
 
-    init(preferences: BookPurchasePreferenceStoreProtocol? = nil) {
+    init(preferences: BookPurchasePreferenceStoreProtocol? = nil, relatedBooksPreference: RelatedBooksPreference? = nil) {
         let preferences = preferences ?? AppContainer.shared.bookPurchasePreferenceStore
         self.preferences = preferences
         self.preference = BehaviorRelay(value: preferences.current)
+        self.relatedBooksPreference = relatedBooksPreference ?? AppContainer.shared.relatedBooksPreference
         self.backupService = BackupService(modelContext: AppContainer.shared.modelContainer.mainContext)
     }
 
@@ -43,6 +47,9 @@ final class SettingsViewModel {
             self?.preferences.save(value)
             self?.preference.accept(value)
         }).disposed(by: disposeBag)
+        input.relatedBooksToggled
+            .subscribe(onNext: { [relatedBooksPreference] in relatedBooksPreference.setEnabled($0) })
+            .disposed(by: disposeBag)
         let exportResult = input.backupTap
             .flatMapLatest { [weak self] _ -> Observable<Result<URL, Error>> in
                 guard let self else { return .empty() }
@@ -104,6 +111,7 @@ final class SettingsViewModel {
 
         return Output(
             purchasePreference: preference.asDriver(),
+            relatedBooksEnabled: relatedBooksPreference.changes.asDriver(onErrorJustReturn: true),
             exportFileURL:    exportFileURL,
             toastMessage:     toastMessage,
             restoreSucceeded: restoreSucceeded
