@@ -86,18 +86,9 @@ final class BookDetailViewController: AdaptiveViewController {
         return pc
     }()
 
-    // Book Info Section (neumorphic)
-    private let bookInfoSection: UIView = {
-        let v = UIView()
-        v.backgroundColor   = UIColor.background
-        v.layer.cornerRadius = 16
-        v.layer.shadowColor   = UIColor(hex: "#5d4037").cgColor
-        v.layer.shadowOpacity = Float(CGFloat(0x30) / 255)
-        v.layer.shadowRadius  = 4
-        v.layer.shadowOffset  = CGSize(width: 4, height: 4)
-        return v
-    }()
-
+    private let bookSectionsStack = UIStackView()
+    private let bookInfoSection = BookDetailViewController.makeBookSection()
+    private let relatedBooksSection = BookDetailViewController.makeBookSection()
     private let bookInfoView = BookDetailInfoView()
     private let progressSectionView = ProgressSectionView()
     private let relatedBooksView = RelatedBooksView()
@@ -192,6 +183,17 @@ final class BookDetailViewController: AdaptiveViewController {
 
     // MARK: - Setup
 
+    private static func makeBookSection() -> UIView {
+        let section = UIView()
+        section.backgroundColor = .background
+        section.layer.cornerRadius = 16
+        section.layer.shadowColor = UIColor(hex: "#5d4037").cgColor
+        section.layer.shadowOpacity = Float(CGFloat(0x30) / 255)
+        section.layer.shadowRadius = 4
+        section.layer.shadowOffset = CGSize(width: 4, height: 4)
+        return section
+    }
+
     private func setupUI() {
         SystemNavigationStyle.configure(self, title: "나의 밑줄")
         SystemNavigationStyle.setTrailingItems([timerButton], on: navigationItem)
@@ -213,9 +215,15 @@ final class BookDetailViewController: AdaptiveViewController {
         bookInfoStack.spacing = 16
         bookInfoStack.addArrangedSubview(bookInfoView)
         bookInfoStack.addArrangedSubview(progressSectionView)
-        bookInfoStack.addArrangedSubview(relatedBooksView)
         bookInfoSection.addSubview(bookInfoStack)
-        contentView.addSubview(bookInfoSection)
+        relatedBooksSection.isHidden = true
+        relatedBooksSection.addSubview(relatedBooksView)
+
+        bookSectionsStack.axis = .vertical
+        bookSectionsStack.spacing = 24
+        bookSectionsStack.addArrangedSubview(bookInfoSection)
+        bookSectionsStack.addArrangedSubview(relatedBooksSection)
+        contentView.addSubview(bookSectionsStack)
         let updateBookInfoHeight: () -> Void = { [weak self] in
             self?.view.setNeedsLayout()
             UIView.animate(withDuration: 0.25) {
@@ -255,6 +263,10 @@ final class BookDetailViewController: AdaptiveViewController {
 
         bookInfoStack.snp.makeConstraints { make in
             make.edges.equalToSuperview().inset(16)
+        }
+        relatedBooksView.snp.makeConstraints { make in
+            make.top.leading.trailing.equalToSuperview().inset(16)
+            make.bottom.equalToSuperview().inset(16).priority(999)
         }
 
         // FAB (52×52, trailing 24, bottom safeArea 16)
@@ -305,7 +317,7 @@ final class BookDetailViewController: AdaptiveViewController {
             make.height.equalTo(quoteCard.snp.width).multipliedBy(0.7).priority(.high)
             make.height.lessThanOrEqualTo(scrollView.frameLayoutGuide.snp.height).multipliedBy(0.65)
         }
-        bookInfoSection.snp.remakeConstraints { make in
+        bookSectionsStack.snp.remakeConstraints { make in
             make.right.equalToSuperview().inset(24)
             if let columns {
                 make.left.equalTo(quoteCard.snp.right).offset(columns.gap)
@@ -328,15 +340,15 @@ final class BookDetailViewController: AdaptiveViewController {
             if columns != nil {
                 make.leading.trailing.equalTo(contentView)
                 make.top.lessThanOrEqualTo(quoteCard)
-                make.top.lessThanOrEqualTo(bookInfoSection)
+                make.top.lessThanOrEqualTo(bookSectionsStack)
                 make.top.equalTo(quoteCard).priority(.low)
-                make.top.equalTo(bookInfoSection).priority(.low)
+                make.top.equalTo(bookSectionsStack).priority(.low)
                 make.top.greaterThanOrEqualTo(contentView).offset(12)
                 make.top.equalTo(contentView).offset(12).priority(247)
                 make.bottom.greaterThanOrEqualTo(pageControl)
-                make.bottom.greaterThanOrEqualTo(bookInfoSection)
+                make.bottom.greaterThanOrEqualTo(bookSectionsStack)
                 make.bottom.equalTo(pageControl).priority(.low)
-                make.bottom.equalTo(bookInfoSection).priority(.low)
+                make.bottom.equalTo(bookSectionsStack).priority(.low)
                 // 긴 도서 소개는 상단부터 표시하고 하단 버튼 위까지 스크롤할 수 있게 한다.
                 make.bottom.lessThanOrEqualTo(contentView).offset(-80)
                 make.centerY.equalTo(contentView).offset(-12).priority(248)
@@ -362,7 +374,7 @@ final class BookDetailViewController: AdaptiveViewController {
 
         output.relatedBooks
             .drive(onNext: { [weak self] books in
-                self?.relatedBooksView.configure(with: books)
+                self?.configureRelatedBooks(books)
             })
             .disposed(by: disposeBag)
 
@@ -374,6 +386,11 @@ final class BookDetailViewController: AdaptiveViewController {
                 self?.view.makeToast(message, duration: 1.2, position: .center, style: style)
             })
             .disposed(by: disposeBag)
+    }
+
+    func configureRelatedBooks(_ books: [Book]) {
+        relatedBooksView.configure(with: books)
+        relatedBooksSection.isHidden = books.isEmpty
     }
 
     // MARK: - Sentences

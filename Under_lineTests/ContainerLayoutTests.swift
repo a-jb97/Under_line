@@ -27,6 +27,8 @@ final class ContainerLayoutTests: XCTestCase {
         host.layoutIfNeeded()
 
         let stack = try XCTUnwrap(recommendation.subviews.first as? UIStackView)
+        let title = try XCTUnwrap(stack.arrangedSubviews.compactMap { $0 as? UILabel }.first)
+        XCTAssertEqual(title.font.fontName, "GoyangIlsanR-Regular")
         let pager = try XCTUnwrap(stack.arrangedSubviews.compactMap { $0 as? UIScrollView }.first)
         let pageControl = try XCTUnwrap(stack.arrangedSubviews.compactMap { $0 as? UIPageControl }.first)
         let pages = pager.subviews.compactMap { $0 as? BookDetailInfoView }
@@ -87,19 +89,29 @@ final class ContainerLayoutTests: XCTestCase {
             }
 
             let content = try XCTUnwrap(scrollView.subviews.first { $0.subviews.contains { $0 is UIPageControl } })
-            let infoStack = try XCTUnwrap(content.subviews.flatMap(\.subviews).compactMap { $0 as? UIStackView }
-                .first { $0.arrangedSubviews.contains { $0 is RelatedBooksView } })
+            let sections = try XCTUnwrap(content.subviews.compactMap { $0 as? UIStackView }.first)
+            let infoSection = try XCTUnwrap(sections.arrangedSubviews.first)
+            let relatedSection = try XCTUnwrap(sections.arrangedSubviews.last)
+            let infoStack = try XCTUnwrap(infoSection.subviews.compactMap { $0 as? UIStackView }.first)
             let progress = try XCTUnwrap(infoStack.arrangedSubviews.compactMap { $0 as? ProgressSectionView }.first)
-            let related = try XCTUnwrap(infoStack.arrangedSubviews.compactMap { $0 as? RelatedBooksView }.first)
-            XCTAssertTrue(related.isHidden)
-            related.configure(with: [book])
+            let related = try XCTUnwrap(relatedSection.subviews.compactMap { $0 as? RelatedBooksView }.first)
+            XCTAssertTrue(relatedSection.isHidden)
+            let heightWithoutRelatedBooks = sections.bounds.height
+            controller.configureRelatedBooks([book])
             view.layoutIfNeeded()
-            XCTAssertEqual(related.frame.minY, progress.frame.maxY + 16, accuracy: 0.5)
+            XCTAssertFalse(relatedSection.isHidden)
+            XCTAssertEqual(relatedSection.frame.minY, infoSection.frame.maxY + 24, accuracy: 0.5)
+            XCTAssertEqual(relatedSection.frame.width, infoSection.frame.width, accuracy: 0.5)
             XCTAssertGreaterThan(related.frame.height, 60)
             progress.configure(itemPage: 300, currentPage: 120)
             view.layoutIfNeeded()
-            XCTAssertFalse(related.isHidden)
-            XCTAssertEqual(related.frame.minY, progress.frame.maxY + 16, accuracy: 0.5)
+            XCTAssertFalse(relatedSection.isHidden)
+            XCTAssertEqual(relatedSection.frame.minY, infoSection.frame.maxY + 24, accuracy: 0.5)
+            progress.configure(itemPage: nil, currentPage: nil)
+            controller.configureRelatedBooks([])
+            view.layoutIfNeeded()
+            XCTAssertTrue(relatedSection.isHidden)
+            XCTAssertEqual(sections.bounds.height, heightWithoutRelatedBooks, accuracy: 0.5)
 
             let initialOffset = scrollView.contentOffset.y
             // The offset can exceed the content bounds during a scroll bounce.

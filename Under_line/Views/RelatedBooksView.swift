@@ -20,7 +20,7 @@ final class RelatedBooksView: UIView, UIScrollViewDelegate {
         super.init(frame: frame)
         isHidden = true
         titleLabel.text = "이 책과 함께 읽기 좋은 책"
-        titleLabel.font = UIFont(name: "GowunBatang-Bold", size: 15) ?? .systemFont(ofSize: 15, weight: .bold)
+        titleLabel.font = UIFont(name: "GoyangIlsanR-Regular", size: 15) ?? .systemFont(ofSize: 15)
         titleLabel.textColor = .accent
         titleLabel.accessibilityTraits.insert(.header)
 
