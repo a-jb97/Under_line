@@ -5,6 +5,7 @@ protocol Data4LibraryServiceProtocol {
     func fetchPopularBooks() async throws -> [Book]
     func fetchTrendingBooks() async throws -> [Book]
     func fetchBookDetail(isbn13: String) async throws -> BookDetailMetadata?
+    func fetchCoLoanBooks(isbn13: String) async throws -> [Book]
 }
 
 enum Data4LibraryError: LocalizedError, Equatable {
@@ -60,14 +61,22 @@ enum Data4LibraryRequestBuilder {
     }
 
     static func makeDetailRequest(apiKey: String, isbn13: String) throws -> URLRequest {
+        return try makeRequest(endpoint: "srchDtlList", apiKey: apiKey, parameters: [
+            try isbnParameter(isbn13),
+            URLQueryItem(name: "loaninfoYN", value: "N")
+        ])
+    }
+
+    static func makeUsageRequest(apiKey: String, isbn13: String) throws -> URLRequest {
+        try makeRequest(endpoint: "usageAnalysisList", apiKey: apiKey, parameters: [isbnParameter(isbn13)])
+    }
+
+    private static func isbnParameter(_ isbn13: String) throws -> URLQueryItem {
         let normalizedISBN = isbn13.trimmingCharacters(in: .whitespacesAndNewlines)
         guard ISBN13Parser.isbn13(in: normalizedISBN) == normalizedISBN else {
             throw Data4LibraryError.invalidISBN
         }
-        return try makeRequest(endpoint: "srchDtlList", apiKey: apiKey, parameters: [
-            URLQueryItem(name: "isbn13", value: normalizedISBN),
-            URLQueryItem(name: "loaninfoYN", value: "N")
-        ])
+        return URLQueryItem(name: "isbn13", value: normalizedISBN)
     }
 
     private static func makeRequest(
@@ -96,7 +105,7 @@ enum Data4LibraryRequestBuilder {
 
 final class Data4LibraryService: Data4LibraryServiceProtocol {
     private enum RequestSource {
-        case popular, trending, detail
+        case popular, trending, detail, coLoan
     }
 
     private let listRequestTimeout: TimeInterval
@@ -209,6 +218,16 @@ final class Data4LibraryService: Data4LibraryServiceProtocol {
             .first { $0.isbn13 == normalizedISBN }
     }
 
+    func fetchCoLoanBooks(isbn13: String) async throws -> [Book] {
+        let request = try Data4LibraryRequestBuilder.makeUsageRequest(apiKey: apiKey, isbn13: isbn13)
+        let decoded: Data4LibraryUsageResponse = try await execute(
+            request,
+            source: .coLoan,
+            deadline: ProcessInfo.processInfo.systemUptime + listTotalTimeout
+        )
+        return decoded.response.coLoanBooks.compactMap { $0.toDomain(bestRank: nil) }
+    }
+
     private func popularDateRange() throws -> (start: String, end: String) {
         guard let end = calendar.date(byAdding: .day, value: -1, to: now()),
               let start = calendar.date(byAdding: .day, value: -29, to: end) else {
@@ -245,6 +264,7 @@ final class Data4LibraryService: Data4LibraryServiceProtocol {
         case .popular: .popular
         case .trending: .trending
         case .detail: .data4LibraryDetail
+        case .coLoan: .coLoan
         }
         let responseSpan = BookSearchPerformance.Span(
             .responseDecoded,

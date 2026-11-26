@@ -19,6 +19,8 @@ protocol BookRepositoryProtocol {
     func searchBooks(query: String, page: Int) async throws -> BookSearchPage
     func fetchListBookMetadata(isbn13: String) async throws -> BookListMetadata?
     func fetchBookSupplement(isbn13: String) async throws -> BookDetailMetadata?
+    func fetchRelatedBooks(isbn13: String) async throws -> [Book]
+    func enrichRelatedBook(_ book: Book) async throws -> Book
 
     func cachedRecommendation(_ list: RecommendedBookList) -> RecommendedBookSnapshot?
     func refreshRecommendation(_ list: RecommendedBookList) async throws -> RecommendedBookSnapshot
@@ -90,6 +92,35 @@ final class BookRepository: BookRepositoryProtocol {
 
     func refreshRecommendation(_ list: RecommendedBookList) async throws -> RecommendedBookSnapshot {
         try await recommendedLoader.fetch(list, forceRefresh: true)
+    }
+
+    func fetchRelatedBooks(isbn13: String) async throws -> [Book] {
+        guard let normalizedISBN = ISBN13Parser.isbn13(in: isbn13) else { return [] }
+        let candidates = try await data4LibraryService.fetchCoLoanBooks(isbn13: normalizedISBN)
+        var seenISBNs = Set([normalizedISBN])
+        let uniqueBooks = candidates.filter {
+            ISBN13Parser.isValidISBN13($0.isbn13)
+                && !$0.title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                && seenISBNs.insert($0.isbn13).inserted
+        }
+        return Array(uniqueBooks.prefix(uniqueBooks.count >= 3 ? 3 : 1))
+    }
+
+    func enrichRelatedBook(_ book: Book) async throws -> Book {
+        async let detail = try? fetchBookSupplement(isbn13: book.isbn13)
+        async let cover = try? fetchListBookMetadata(isbn13: book.isbn13)
+        let (metadata, coverMetadata) = await (detail, cover)
+        try Task.checkCancellation()
+        return book.mergingDetailMetadata(from: BookDetailMetadata(
+            isbn13: book.isbn13,
+            title: metadata?.title ?? "",
+            author: metadata?.author ?? "",
+            publisher: metadata?.publisher ?? "",
+            publishDate: metadata?.publishDate,
+            coverURL: coverMetadata?.coverURL,
+            description: metadata?.description ?? "",
+            category: metadata?.category
+        ))
     }
 
     func searchBooks(query: String, page: Int) async throws -> BookSearchPage {

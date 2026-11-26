@@ -1,5 +1,39 @@
 import Foundation
 
+struct Data4LibraryUsageResponse: Decodable, Sendable {
+    struct Body: Decodable, Sendable {
+        let coLoanBooks: [Data4LibraryBookDocument]
+
+        nonisolated init(from decoder: any Decoder) throws {
+            let container = try decoder.container(keyedBy: CodingKeys.self)
+            coLoanBooks = try container.decodeIfPresent([Entry].self, forKey: .coLoanBooks)?
+                .compactMap(\.book) ?? []
+        }
+
+        private enum CodingKeys: String, CodingKey { case coLoanBooks }
+
+        private struct Entry: Decodable, Sendable {
+            let book: Data4LibraryBookDocument?
+
+            nonisolated init(from decoder: any Decoder) {
+                let container = try? decoder.container(keyedBy: CodingKeys.self)
+                book = try? container?.decode(Data4LibraryBookDocument.self, forKey: .book)
+            }
+
+            private enum CodingKeys: String, CodingKey { case book }
+        }
+    }
+
+    let response: Body
+
+    nonisolated init(from decoder: any Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        response = try container.decode(Body.self, forKey: .response)
+    }
+
+    private enum CodingKeys: String, CodingKey { case response }
+}
+
 struct Data4LibraryPopularResponse: Decodable, Sendable {
     let response: Data4LibraryPopularBody
 

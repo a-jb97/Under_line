@@ -1,10 +1,121 @@
 import XCTest
 import UIKit
+import RxSwift
+import RxCocoa
 @testable import Under_line
 
 @MainActor
 final class ContainerLayoutTests: XCTestCase {
     private let bounds = CGRect(x: 0, y: 0, width: 800, height: 600)
+
+    func test_settings_placesRelatedBooksSwitchImmediatelyBelowRandomUnderline() throws {
+        let controller = SettingsViewController()
+        let view = try XCTUnwrap(controller.view)
+        view.frame = CGRect(x: 0, y: 0, width: 390, height: 700)
+        view.layoutIfNeeded()
+
+        let scrollView = try XCTUnwrap(view.subviews.compactMap { $0 as? UIScrollView }.first)
+        let table = try XCTUnwrap(scrollView.subviews.first)
+        let randomUnderlineRow = try XCTUnwrap(table.subviews.first { row in
+            row.subviews.contains { ($0 as? UISwitch)?.accessibilityLabel == "랜덤 밑줄 기능" }
+        })
+        let relatedBooksRow = try XCTUnwrap(table.subviews.first { row in
+            row.subviews.contains { ($0 as? UISwitch)?.accessibilityLabel == "이 책과 함께 읽기 좋은 책" }
+        })
+
+        XCTAssertEqual(relatedBooksRow.frame.minY, randomUnderlineRow.frame.maxY, accuracy: 0.5)
+        XCTAssertGreaterThan(relatedBooksRow.frame.height, 0)
+    }
+
+    func test_randomUnderlineSwitch_preservesAndUpdatesExistingSetting() throws {
+        let suiteName = UUID().uuidString
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let preference = RandomUnderLinePreference(defaults: defaults)
+        let legacyKey = "randomUnderLine.isDisabled"
+        XCTAssertTrue(preference.isEnabled)
+        defaults.set(true, forKey: legacyKey)
+
+        let toggles = PublishRelay<Bool>()
+        let viewModel = SettingsViewModel(randomUnderLinePreference: preference)
+        let output = viewModel.transform(input: .init(
+            randomUnderLineToggled: toggles.asObservable(), backupTap: .never(), restoreFilePicked: .never()
+        ))
+        let toggle = UISwitch()
+        let binding = output.randomUnderLineEnabled.drive(toggle.rx.isOn)
+        defer { binding.dispose() }
+        XCTAssertFalse(toggle.isOn)
+
+        toggles.accept(true)
+        XCTAssertFalse(defaults.bool(forKey: legacyKey))
+        XCTAssertTrue(preference.isEnabled)
+
+        toggles.accept(false)
+        XCTAssertTrue(defaults.bool(forKey: legacyKey))
+        XCTAssertFalse(preference.isEnabled)
+    }
+
+    func test_relatedBooksView_pagesAtFullWidthAndResizesForExpandedDescription() throws {
+        let host = UIView(frame: CGRect(x: 0, y: 0, width: 310, height: 700))
+        let recommendation = RelatedBooksView()
+        recommendation.onHeightChange = { [weak host] in host?.setNeedsLayout() }
+        recommendation.translatesAutoresizingMaskIntoConstraints = false
+        host.addSubview(recommendation)
+        NSLayoutConstraint.activate([
+            recommendation.topAnchor.constraint(equalTo: host.topAnchor),
+            recommendation.leadingAnchor.constraint(equalTo: host.leadingAnchor),
+            recommendation.trailingAnchor.constraint(equalTo: host.trailingAnchor)
+        ])
+        let books = (1...3).map { index in
+            Book(title: "추천 도서 \(index)", author: "저자", isbn13: "\(index)", coverURL: nil,
+                 publisher: "출판사", publishDate: "2026", category: "문학", bestRank: nil,
+                 description: String(repeating: "긴 책소개 문장입니다. ", count: 28),
+                 itemPage: nil, currentPage: nil)
+        }
+        recommendation.configure(with: books)
+        host.layoutIfNeeded()
+
+        let stack = try XCTUnwrap(recommendation.subviews.first as? UIStackView)
+        let title = try XCTUnwrap(stack.arrangedSubviews.compactMap { $0 as? UILabel }.first)
+        XCTAssertEqual(title.font.fontName, "GoyangIlsanR-Regular")
+        let pager = try XCTUnwrap(stack.arrangedSubviews.compactMap { $0 as? UIScrollView }.first)
+        let pageControl = try XCTUnwrap(stack.arrangedSubviews.compactMap { $0 as? UIPageControl }.first)
+        let pages = pager.subviews.compactMap { $0 as? BookDetailInfoView }
+        XCTAssertEqual(pageControl.numberOfPages, 3)
+        XCTAssertEqual(pager.contentSize.width, 930, accuracy: 0.5)
+        XCTAssertEqual(pages.map(\.frame.width), [310, 310, 310])
+        XCTAssertGreaterThan(pager.bounds.height, 60)
+        let collapsedHeight = pager.bounds.height
+
+        pager.contentOffset.x = 310
+        pager.delegate?.scrollViewDidEndDecelerating?(pager)
+        XCTAssertEqual(pageControl.currentPage, 1)
+        let header = try XCTUnwrap(pages[1].subviews.first)
+        let moreButton = try XCTUnwrap(header.subviews.compactMap { $0 as? UIButton }.first)
+        moreButton.sendActions(for: .touchUpInside)
+        host.layoutIfNeeded()
+        XCTAssertGreaterThan(pager.bounds.height, collapsedHeight + 50)
+        XCTAssertEqual(moreButton.title(for: .normal), "가리기")
+
+        host.frame.size.width = 450
+        host.layoutIfNeeded()
+        XCTAssertEqual(pageControl.currentPage, 1)
+        XCTAssertEqual(pager.contentOffset.x, 450, accuracy: 0.5)
+        XCTAssertEqual(pager.contentSize.width, 1350, accuracy: 0.5)
+
+        moreButton.sendActions(for: .touchUpInside)
+        host.layoutIfNeeded()
+        XCTAssertEqual(pager.bounds.height, collapsedHeight, accuracy: 1)
+
+        recommendation.configure(with: Array(books.prefix(1)))
+        host.layoutIfNeeded()
+        XCTAssertTrue(pageControl.isHidden)
+        XCTAssertFalse(pager.isScrollEnabled)
+        XCTAssertEqual(pager.contentOffset.x, 0, accuracy: 0.5)
+
+        recommendation.configure(with: [])
+        XCTAssertTrue(recommendation.isHidden)
+    }
 
     func test_bookDetailWhenScrolled_keepsBottomButtonsFixed() throws {
         let book = Book(title: "책", author: "저자", isbn13: "", coverURL: nil,
@@ -25,6 +136,31 @@ final class ContainerLayoutTests: XCTestCase {
             for button in buttons {
                 XCTAssertEqual(button.frame.maxY, scrollView.frame.maxY - 16, accuracy: 0.5)
             }
+
+            let content = try XCTUnwrap(scrollView.subviews.first { $0.subviews.contains { $0 is UIPageControl } })
+            let sections = try XCTUnwrap(content.subviews.compactMap { $0 as? UIStackView }.first)
+            let infoSection = try XCTUnwrap(sections.arrangedSubviews.first)
+            let relatedSection = try XCTUnwrap(sections.arrangedSubviews.last)
+            let infoStack = try XCTUnwrap(infoSection.subviews.compactMap { $0 as? UIStackView }.first)
+            let progress = try XCTUnwrap(infoStack.arrangedSubviews.compactMap { $0 as? ProgressSectionView }.first)
+            let related = try XCTUnwrap(relatedSection.subviews.compactMap { $0 as? RelatedBooksView }.first)
+            XCTAssertTrue(relatedSection.isHidden)
+            let heightWithoutRelatedBooks = sections.bounds.height
+            controller.configureRelatedBooks([book])
+            view.layoutIfNeeded()
+            XCTAssertFalse(relatedSection.isHidden)
+            XCTAssertEqual(relatedSection.frame.minY, infoSection.frame.maxY + 24, accuracy: 0.5)
+            XCTAssertEqual(relatedSection.frame.width, infoSection.frame.width, accuracy: 0.5)
+            XCTAssertGreaterThan(related.frame.height, 60)
+            progress.configure(itemPage: 300, currentPage: 120)
+            view.layoutIfNeeded()
+            XCTAssertFalse(relatedSection.isHidden)
+            XCTAssertEqual(relatedSection.frame.minY, infoSection.frame.maxY + 24, accuracy: 0.5)
+            progress.configure(itemPage: nil, currentPage: nil)
+            controller.configureRelatedBooks([])
+            view.layoutIfNeeded()
+            XCTAssertTrue(relatedSection.isHidden)
+            XCTAssertEqual(sections.bounds.height, heightWithoutRelatedBooks, accuracy: 0.5)
 
             let initialOffset = scrollView.contentOffset.y
             // The offset can exceed the content bounds during a scroll bounce.

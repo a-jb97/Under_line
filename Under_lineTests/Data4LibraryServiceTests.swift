@@ -138,6 +138,46 @@ final class Data4LibraryServiceTests: XCTestCase {
         XCTAssertNil(detail)
     }
 
+    func test_coLoanRequest_mapsOnlyCoLoanBooksInResponseOrder() async throws {
+        Data4LibraryStubURLProtocol.handler = { request in
+            XCTAssertEqual(request.url?.path, "/api/usageAnalysisList")
+            XCTAssertEqual(Self.queryValue("isbn13", in: request), "9788983921987")
+            XCTAssertEqual(Self.queryValue("format", in: request), "json")
+            XCTAssertEqual(Self.queryValue("authKey", in: request), "test-key")
+            let data = Data("""
+            {"response":{
+              "coLoanBooks":[
+                {"book":{"isbn13":9788937460586,"bookname":"어린 왕자 &amp; 여우",
+                         "authors":"지은이 : 생텍쥐페리","publisher":"출판사","publication_year":2026}},
+                null,
+                {"book":{"isbn13":"invalid","bookname":"잘못된 ISBN"}},
+                {"book":{"isbn13":"9788936439996","bookname":"두 번째 도서","publication_year":"2024"}}
+              ],
+              "maniaRecBooks":[{"book":{"isbn13":"9791162245651","bookname":"마니아 추천"}}]
+            }}
+            """.utf8)
+            return (Self.response(for: request), data)
+        }
+
+        let books = try await makeService().fetchCoLoanBooks(isbn13: " 9788983921987\n")
+
+        XCTAssertEqual(books.map(\.isbn13), ["9788937460586", "9788936439996"])
+        XCTAssertEqual(books.map(\.title), ["어린 왕자 & 여우", "두 번째 도서"])
+        XCTAssertEqual(books.first?.author, "생텍쥐페리")
+        XCTAssertEqual(books.first?.publisher, "출판사")
+        XCTAssertEqual(books.compactMap(\.publishDate), ["2026", "2024"])
+    }
+
+    func test_coLoanResponse_withoutCoLoanBooks_returnsEmptyList() async throws {
+        Data4LibraryStubURLProtocol.handler = { request in
+            (Self.response(for: request), Data(#"{"response":{}}"#.utf8))
+        }
+
+        let books = try await makeService().fetchCoLoanBooks(isbn13: "9788983921987")
+
+        XCTAssertTrue(books.isEmpty)
+    }
+
     func test_service_mapsEmbeddedAPIErrorReturnedWithHTTP200() async throws {
         Data4LibraryStubURLProtocol.handler = { request in
             let data = Data(#"{"response":{"error":"인증키가 유효하지 않습니다.","errCode":"E01"}}"#.utf8)
