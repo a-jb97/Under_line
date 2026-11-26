@@ -6,6 +6,133 @@ import RxCocoa
 
 @MainActor
 final class BookRepositoryTests: XCTestCase {
+    func test_relatedBooks_keepsResponseOrderAndShowsThreeOrOne() async throws {
+        let fixture = try Fixture()
+        let currentISBN = "9788983921987"
+        let isbns = ["9788937460586", "9791162245651", "9788936439996", "9788996991342"]
+        let candidates = isbns.map { relatedBook(isbn: $0) }
+        let rejected = [
+            relatedBook(isbn: currentISBN),
+            relatedBook(isbn: "invalid"),
+            relatedBook(isbn: isbns[0], title: " ")
+        ]
+
+        for (count, visibleCount) in [0, 1, 1, 3, 3].enumerated() {
+            let available = Array(candidates.prefix(count))
+            fixture.listAPI.coLoanBooks = rejected + Array(available.prefix(1)) + available
+            let result = try await fixture.repository.fetchRelatedBooks(isbn13: currentISBN)
+            XCTAssertEqual(result.map(\.isbn13), Array(isbns.prefix(visibleCount)))
+        }
+        let invalid = try await fixture.repository.fetchRelatedBooks(isbn13: "")
+        XCTAssertTrue(invalid.isEmpty)
+        XCTAssertEqual(fixture.listAPI.coLoanISBNs, Array(repeating: currentISBN, count: 5))
+    }
+
+    func test_relatedBooks_loadsOnceAndPublishesBaseCardBeforeEnrichment() async throws {
+        let fixture = try Fixture()
+        let current = relatedBook(isbn: "9788983921987")
+        let related = relatedBook(isbn: "9788937460586")
+        fixture.listAPI.coLoanBooks = [related]
+        fixture.listAPI.detail = BookDetailMetadata(
+            isbn13: related.isbn13, title: "다른 제목", author: "", publisher: "",
+            publishDate: nil, coverURL: URL(string: "https://example.com/library.jpg"),
+            description: "책소개", category: "문학"
+        )
+        fixture.searchAPI.onISBNRequest = { throw URLError(.notConnectedToInternet) }
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: UUID().uuidString))
+        let viewModel = BookDetailViewModel(
+            book: current,
+            sentenceRepository: EmptySentenceRepository(),
+            bookRepository: fixture.repository,
+            relatedBooksPreference: RelatedBooksPreference(defaults: defaults)
+        )
+        let appears = PublishRelay<Void>()
+        let output = viewModel.transform(input: .init(viewWillAppear: appears.asObservable(), deleteSentence: .never()))
+        let enriched = expectation(description: "책소개 수신")
+        var snapshots: [Book] = []
+        let disposable = output.relatedBooks.drive(onNext: { books in
+            guard let book = books.first else { return }
+            snapshots.append(book)
+            if !book.description.isEmpty { enriched.fulfill() }
+        })
+        defer { disposable.dispose() }
+
+        appears.accept(())
+        appears.accept(())
+        await fulfillment(of: [enriched], timeout: 3)
+        appears.accept(())
+
+        XCTAssertEqual(fixture.listAPI.coLoanISBNs, [current.isbn13])
+        XCTAssertEqual(fixture.listAPI.detailCalls, [related.isbn13])
+        XCTAssertEqual(fixture.searchAPI.isbnQueries, [related.isbn13])
+        XCTAssertEqual(snapshots.map(\.description), ["", "책소개"])
+        XCTAssertEqual(snapshots.last?.title, related.title)
+        XCTAssertEqual(snapshots.last?.category, "문학")
+        XCTAssertNil(snapshots.last?.coverURL)
+        XCTAssertTrue(try fixture.savedRecords.isEmpty)
+    }
+
+    func test_relatedBooksPreference_disablingSkipsFetchAndHidesRecommendations() async throws {
+        let fixture = try Fixture()
+        let current = relatedBook(isbn: "9788983921987")
+        fixture.listAPI.coLoanBooks = [relatedBook(isbn: "9788937460586")]
+        let suiteName = UUID().uuidString
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let preference = RelatedBooksPreference(defaults: defaults)
+        let toggle = PublishRelay<Bool>()
+        let settings = SettingsViewModel(relatedBooksPreference: preference)
+        let settingsOutput = settings.transform(input: .init(
+            relatedBooksToggled: toggle.asObservable(),
+            backupTap: .never(),
+            restoreFilePicked: .never()
+        ))
+        let disposeBag = DisposeBag()
+        var switchIsOn: Bool?
+        settingsOutput.relatedBooksEnabled.drive(onNext: { switchIsOn = $0 }).disposed(by: disposeBag)
+        XCTAssertEqual(switchIsOn, true)
+        toggle.accept(false)
+        XCTAssertEqual(switchIsOn, false)
+
+        var restoredValue: Bool?
+        let restoredPreference = RelatedBooksPreference(defaults: defaults)
+        restoredPreference.changes.take(1)
+            .subscribe(onNext: { restoredValue = $0 })
+            .disposed(by: disposeBag)
+        XCTAssertEqual(restoredValue, false)
+
+        let detail = BookDetailViewModel(
+            book: current,
+            sentenceRepository: EmptySentenceRepository(),
+            bookRepository: fixture.repository,
+            relatedBooksPreference: preference
+        )
+        let appears = PublishRelay<Void>()
+        let output = detail.transform(input: .init(viewWillAppear: appears.asObservable(), deleteSentence: .never()))
+        let loaded = expectation(description: "추천 도서 수신")
+        var latestBooks: [Book]?
+        output.relatedBooks.drive(onNext: { books in
+            if latestBooks?.isEmpty == true, !books.isEmpty { loaded.fulfill() }
+            latestBooks = books
+        }).disposed(by: disposeBag)
+
+        appears.accept(())
+        XCTAssertEqual(latestBooks?.isEmpty, true)
+        XCTAssertTrue(fixture.listAPI.coLoanISBNs.isEmpty)
+
+        toggle.accept(true)
+        await fulfillment(of: [loaded], timeout: 3)
+        XCTAssertEqual(fixture.listAPI.coLoanISBNs, [current.isbn13])
+        toggle.accept(false)
+        XCTAssertEqual(latestBooks?.isEmpty, true)
+    }
+
+    private func relatedBook(isbn: String, title: String = "추천 도서") -> Book {
+        Book(title: title, author: "저자", isbn13: isbn, coverURL: nil,
+             publisher: "출판사", publishDate: "2025", category: nil, bestRank: nil,
+             description: "", itemPage: nil, currentPage: nil)
+    }
+
     func test_tutorial_usesTopNineAndEnrichesCoversWithoutSaving() async throws {
         let fixture = try Fixture()
         let cover = URL(string: "https://example.com/cover.jpg")!
@@ -531,6 +658,14 @@ final class BookRepositoryTests: XCTestCase {
     }
 }
 
+private struct EmptySentenceRepository: SentenceRepositoryProtocol {
+    func saveSentence(_ sentence: Sentence) async throws {}
+    func updateSentence(_ sentence: Sentence) async throws {}
+    func fetchSentences(for bookISBN: String) async throws -> [Sentence] { [] }
+    func deleteSentence(_ sentence: Sentence) async throws {}
+    func fetchAllSentences() async throws -> [Sentence] { [] }
+}
+
 private enum StubError: Error {
     case failed
 }
@@ -613,6 +748,14 @@ private final class StubData4LibraryService: Data4LibraryServiceProtocol {
         trendingCalls += 1
         try await onRequest?()
         return books
+    }
+
+    var coLoanBooks: [Book] = []
+    var coLoanISBNs: [String] = []
+
+    func fetchCoLoanBooks(isbn13: String) async throws -> [Book] {
+        coLoanISBNs.append(isbn13)
+        return coLoanBooks
     }
 
     func fetchBookDetail(isbn13: String) async throws -> BookDetailMetadata? {
