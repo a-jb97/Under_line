@@ -9,7 +9,6 @@ import UIKit
 import SnapKit
 import RxSwift
 import RxCocoa
-import Kingfisher
 import Toast
 
 final class BookDetailViewController: AdaptiveViewController {
@@ -18,7 +17,9 @@ final class BookDetailViewController: AdaptiveViewController {
     private let disposeBag          = DisposeBag()
     private lazy var viewModel      = BookDetailViewModel(
         book:               book,
-        sentenceRepository: AppContainer.shared.sentenceRepository
+        sentenceRepository: AppContainer.shared.sentenceRepository,
+        bookRepository: AppContainer.shared.bookRepository,
+        relatedBooksPreference: AppContainer.shared.relatedBooksPreference
     )
     private let viewWillAppearRelay    = PublishRelay<Void>()
     private let deleteSentenceRelay    = PublishRelay<Sentence>()
@@ -86,97 +87,13 @@ final class BookDetailViewController: AdaptiveViewController {
         return pc
     }()
 
-    // Book Info Section (neumorphic)
-    private let bookInfoSection: UIView = {
-        let v = UIView()
-        v.backgroundColor   = UIColor.background
-        v.layer.cornerRadius = 16
-        v.layer.shadowColor   = UIColor(hex: "#5d4037").cgColor
-        v.layer.shadowOpacity = Float(CGFloat(0x30) / 255)
-        v.layer.shadowRadius  = 4
-        v.layer.shadowOffset  = CGSize(width: 4, height: 4)
-        return v
-    }()
-
-    private let bookCoverWidth: CGFloat = 60
-    private let bookCoverView: UIImageView = {
-        let iv = UIImageView()
-        iv.backgroundColor   = UIColor.appPrimary
-        iv.layer.cornerRadius = 3
-        iv.clipsToBounds      = true
-        iv.contentMode        = .scaleAspectFill
-        for axis in [NSLayoutConstraint.Axis.horizontal, .vertical] {
-            iv.setContentHuggingPriority(.fittingSizeLevel, for: axis)
-            iv.setContentCompressionResistancePriority(.fittingSizeLevel, for: axis)
-        }
-        return iv
-    }()
-
-    private let bookTitleLabel: UILabel = {
-        let l = UILabel()
-        l.text      = "사랑의 기술"
-        l.font      = UIFont(name: "GowunBatang-Bold", size: 17)
-            ?? .systemFont(ofSize: 17, weight: .bold)
-        l.textColor = UIColor.accent
-        return l
-    }()
-
-    private let bookAuthorLabel: UILabel = {
-        let l = UILabel()
-        l.text      = "에리히 프롬"
-        l.font      = UIFont(name: "GowunBatang-Regular", size: 13)
-            ?? .systemFont(ofSize: 13)
-        l.textColor = UIColor.appPrimary
-        return l
-    }()
-
-    private let publisherLabel: UILabel = {
-        let l = UILabel()
-        l.text      = "문예출판사 · 2023"
-        l.font      = UIFont(name: "GoyangIlsan R", size: 11)
-            ?? .systemFont(ofSize: 11)
-        l.textColor = UIColor.appPrimary.withAlphaComponent(0.5)
-        return l
-    }()
-
-    private let genreTagView: UIView = {
-        let v = UIView()
-        v.backgroundColor   = UIColor.appPrimary.withAlphaComponent(0.7)
-        v.layer.cornerRadius = 3
-        return v
-    }()
-
-    private let genreTagLabel: UILabel = {
-        let l = UILabel()
-        l.text      = "철학/심리학"
-        l.font      = UIFont(name: "GoyangIlsan R", size: 10)
-            ?? .systemFont(ofSize: 10)
-        l.textColor = .white
-        return l
-    }()
-
-    private lazy var moreButton: UIButton = {
-        let btn = UIButton(type: .system)
-        btn.setTitle("더 보기", for: .normal)
-        btn.titleLabel?.font = UIFont(name: "GoyangIlsan R", size: 11)
-            ?? .systemFont(ofSize: 11)
-        btn.setTitleColor(UIColor.appPrimary.withAlphaComponent(0.7), for: .normal)
-        btn.contentHorizontalAlignment = .right
-        return btn
-    }()
-
-    private let descriptionLabel: UILabel = {
-        let l = UILabel()
-        l.numberOfLines = 0
-        l.font = UIFont(name: "GoyangIlsan R", size: 12)
-            ?? .systemFont(ofSize: 12)
-        l.textColor = UIColor.appPrimary.withAlphaComponent(0.75)
-        l.isHidden = true
-        return l
-    }()
-
-    // Progress Section
+    private let bookSectionsStack = UIStackView()
+    private let bookInfoSection = BookDetailViewController.makeBookSection()
+    private let relatedBooksSection = BookDetailViewController.makeBookSection()
+    private let bookInfoView = BookDetailInfoView()
     private let progressSectionView = ProgressSectionView()
+    private let relatedBooksView = RelatedBooksView()
+    private let bookInfoStack = UIStackView()
 
     // 문장 편집 버튼 (BookshelfViewController의 editButton과 동일)
     private lazy var sentenceEditButton: UIButton = {
@@ -244,7 +161,7 @@ final class BookDetailViewController: AdaptiveViewController {
         super.viewDidLoad()
         setupUI()
         setupConstraints()
-        configureWithBook()
+        bookInfoView.configure(with: book)
         progressSectionView.configure(
             itemPage: currentItemPage,
             currentPage: latestCurrentPage
@@ -267,6 +184,17 @@ final class BookDetailViewController: AdaptiveViewController {
 
     // MARK: - Setup
 
+    private static func makeBookSection() -> UIView {
+        let section = UIView()
+        section.backgroundColor = .background
+        section.layer.cornerRadius = 16
+        section.layer.shadowColor = UIColor(hex: "#5d4037").cgColor
+        section.layer.shadowOpacity = Float(CGFloat(0x30) / 255)
+        section.layer.shadowRadius = 4
+        section.layer.shadowOffset = CGSize(width: 4, height: 4)
+        return section
+    }
+
     private func setupUI() {
         SystemNavigationStyle.configure(self, title: "나의 밑줄")
         SystemNavigationStyle.setTrailingItems([timerButton], on: navigationItem)
@@ -284,18 +212,27 @@ final class BookDetailViewController: AdaptiveViewController {
         contentView.addSubview(quoteCard)
         contentView.addSubview(pageControl)
 
-        // Book Info Section
-        genreTagView.addSubview(genreTagLabel)
-        bookInfoSection.addSubview(bookCoverView)
-        bookInfoSection.addSubview(bookTitleLabel)
-        bookInfoSection.addSubview(bookAuthorLabel)
-        bookInfoSection.addSubview(publisherLabel)
-        bookInfoSection.addSubview(genreTagView)
-        bookInfoSection.addSubview(moreButton)
-        bookInfoSection.addSubview(descriptionLabel)
+        bookInfoStack.axis = .vertical
+        bookInfoStack.spacing = 16
+        bookInfoStack.addArrangedSubview(bookInfoView)
+        bookInfoStack.addArrangedSubview(progressSectionView)
+        bookInfoSection.addSubview(bookInfoStack)
+        relatedBooksSection.isHidden = true
+        relatedBooksSection.addSubview(relatedBooksView)
 
-        bookInfoSection.addSubview(progressSectionView)
-        contentView.addSubview(bookInfoSection)
+        bookSectionsStack.axis = .vertical
+        bookSectionsStack.spacing = 24
+        bookSectionsStack.addArrangedSubview(bookInfoSection)
+        bookSectionsStack.addArrangedSubview(relatedBooksSection)
+        contentView.addSubview(bookSectionsStack)
+        let updateBookInfoHeight: () -> Void = { [weak self] in
+            self?.view.setNeedsLayout()
+            UIView.animate(withDuration: 0.25) {
+                self?.view.layoutIfNeeded()
+            }
+        }
+        bookInfoView.onHeightChange = updateBookInfoHeight
+        relatedBooksView.onHeightChange = updateBookInfoHeight
 
         // FAB
         view.addSubview(fabButton)
@@ -325,50 +262,12 @@ final class BookDetailViewController: AdaptiveViewController {
             make.centerX.equalTo(quoteCard)
         }
 
-        updateBookCoverConstraints(aspectRatio: 83 / bookCoverWidth)
-
-        // Book Title
-        bookTitleLabel.snp.makeConstraints { make in
-            make.leading.equalTo(bookCoverView.snp.leading).offset(bookCoverWidth + 14)
-            make.trailing.equalToSuperview().inset(16)
-            make.top.equalToSuperview().inset(16)
+        bookInfoStack.snp.makeConstraints { make in
+            make.edges.equalToSuperview().inset(16)
         }
-
-        bookAuthorLabel.snp.makeConstraints { make in
-            make.leading.trailing.equalTo(bookTitleLabel)
-            make.top.equalTo(bookTitleLabel.snp.bottom).offset(4)
-        }
-
-        publisherLabel.snp.makeConstraints { make in
-            make.leading.trailing.equalTo(bookTitleLabel)
-            make.top.equalTo(bookAuthorLabel.snp.bottom).offset(4)
-        }
-
-        genreTagView.snp.makeConstraints { make in
-            make.leading.equalTo(bookTitleLabel)
-            make.top.equalTo(publisherLabel.snp.bottom).offset(6)
-        }
-
-        genreTagLabel.snp.makeConstraints { make in
-            make.edges.equalToSuperview().inset(UIEdgeInsets(top: 2, left: 8, bottom: 2, right: 8))
-        }
-
-        moreButton.snp.makeConstraints { make in
-            make.trailing.equalToSuperview().inset(16)
-            make.centerY.equalTo(genreTagView)
-        }
-
-        descriptionLabel.snp.makeConstraints { make in
-            make.leading.trailing.equalToSuperview().inset(16)
-            make.top.equalTo(genreTagView.snp.bottom).offset(10)
-        }
-
-        // Progress Section (cornerRadius 12, padding [12,14])
-        // 도서 소개가 접혀 있으면 장르 태그 하단을 기준으로 배치한다.
-        progressSectionView.snp.makeConstraints { make in
-            make.top.equalTo(genreTagView.snp.bottom).offset(16)
-            make.leading.trailing.equalToSuperview().inset(16)
-            make.bottom.equalToSuperview().inset(16)
+        relatedBooksView.snp.makeConstraints { make in
+            make.top.leading.trailing.equalToSuperview().inset(16)
+            make.bottom.equalToSuperview().inset(16).priority(999)
         }
 
         // FAB (52×52, trailing 24, bottom safeArea 16)
@@ -396,17 +295,6 @@ final class BookDetailViewController: AdaptiveViewController {
         }
     }
 
-    private func updateBookCoverConstraints(aspectRatio: CGFloat) {
-        bookCoverView.snp.remakeConstraints { make in
-            make.leading.equalToSuperview().inset(16)
-            make.top.greaterThanOrEqualToSuperview().inset(16)
-            make.bottom.equalTo(genreTagView.snp.bottom)
-            make.width.lessThanOrEqualTo(bookCoverWidth)
-            make.width.equalTo(bookCoverWidth).priority(249)
-            make.height.equalTo(bookCoverView.snp.width).multipliedBy(aspectRatio)
-        }
-    }
-
     private func updateContentConstraints() {
         scrollView.contentInset.bottom = columns == nil ? 80 : 0
         viewportLayoutGuide.snp.remakeConstraints { make in
@@ -430,7 +318,7 @@ final class BookDetailViewController: AdaptiveViewController {
             make.height.equalTo(quoteCard.snp.width).multipliedBy(0.7).priority(.high)
             make.height.lessThanOrEqualTo(scrollView.frameLayoutGuide.snp.height).multipliedBy(0.65)
         }
-        bookInfoSection.snp.remakeConstraints { make in
+        bookSectionsStack.snp.remakeConstraints { make in
             make.right.equalToSuperview().inset(24)
             if let columns {
                 make.left.equalTo(quoteCard.snp.right).offset(columns.gap)
@@ -453,58 +341,20 @@ final class BookDetailViewController: AdaptiveViewController {
             if columns != nil {
                 make.leading.trailing.equalTo(contentView)
                 make.top.lessThanOrEqualTo(quoteCard)
-                make.top.lessThanOrEqualTo(bookInfoSection)
+                make.top.lessThanOrEqualTo(bookSectionsStack)
                 make.top.equalTo(quoteCard).priority(.low)
-                make.top.equalTo(bookInfoSection).priority(.low)
+                make.top.equalTo(bookSectionsStack).priority(.low)
                 make.top.greaterThanOrEqualTo(contentView).offset(12)
                 make.top.equalTo(contentView).offset(12).priority(247)
                 make.bottom.greaterThanOrEqualTo(pageControl)
-                make.bottom.greaterThanOrEqualTo(bookInfoSection)
+                make.bottom.greaterThanOrEqualTo(bookSectionsStack)
                 make.bottom.equalTo(pageControl).priority(.low)
-                make.bottom.equalTo(bookInfoSection).priority(.low)
+                make.bottom.equalTo(bookSectionsStack).priority(.low)
                 // 긴 도서 소개는 상단부터 표시하고 하단 버튼 위까지 스크롤할 수 있게 한다.
                 make.bottom.lessThanOrEqualTo(contentView).offset(-80)
                 make.centerY.equalTo(contentView).offset(-12).priority(248)
             }
         }
-    }
-
-    // MARK: - Book Data
-
-    private func configureWithBook() {
-        bookTitleLabel.text  = book.displayTitle
-        bookAuthorLabel.text = book.author
-
-        var publisherStr = book.publisher
-        if let date = book.publishDate, !date.isEmpty {
-            publisherStr += " · \(date)"
-        }
-        publisherLabel.text = publisherStr
-
-        genreTagLabel.text = BookGenre.normalized(book.category)
-        genreTagView.isHidden = false
-
-        if let coverURL = book.coverURL {
-            let request = ShelfCoverImageSource.request(for: coverURL)
-            bookCoverView.kf.setImage(with: request.url, options: request.options) { [weak self] result in
-                guard let self, case .success(let value) = result else { return }
-                let imageSize = value.image.size
-                guard imageSize.width > 0, imageSize.height > 0 else { return }
-                self.updateBookCoverConstraints(aspectRatio: imageSize.height / imageSize.width)
-            }
-        }
-
-        let descStyle = NSMutableParagraphStyle()
-        descStyle.lineHeightMultiple = 1.5
-        descriptionLabel.attributedText = NSAttributedString(
-            string: book.description,
-            attributes: [
-                .font:            UIFont(name: "GoyangIlsan R", size: 12) ?? .systemFont(ofSize: 12),
-                .foregroundColor: UIColor.appPrimary.withAlphaComponent(0.75),
-                .paragraphStyle:  descStyle,
-            ]
-        )
-        moreButton.isHidden = book.description.isEmpty
     }
 
     // MARK: - ViewModel Binding
@@ -523,6 +373,12 @@ final class BookDetailViewController: AdaptiveViewController {
             })
             .disposed(by: disposeBag)
 
+        output.relatedBooks
+            .drive(onNext: { [weak self] books in
+                self?.configureRelatedBooks(books)
+            })
+            .disposed(by: disposeBag)
+
         output.errorMessage
             .emit(onNext: { [weak self] message in
                 var style = ToastStyle()
@@ -531,6 +387,11 @@ final class BookDetailViewController: AdaptiveViewController {
                 self?.view.makeToast(message, duration: 1.2, position: .center, style: style)
             })
             .disposed(by: disposeBag)
+    }
+
+    func configureRelatedBooks(_ books: [Book]) {
+        relatedBooksView.configure(with: books)
+        relatedBooksSection.isHidden = books.isEmpty
     }
 
     // MARK: - Sentences
@@ -843,27 +704,6 @@ final class BookDetailViewController: AdaptiveViewController {
                     )
                 }
                 self.navigationController?.pushViewController(vc, animated: true)
-            })
-            .disposed(by: disposeBag)
-
-        moreButton.rx.tap
-            .subscribe(onNext: { [weak self] in
-                guard let self else { return }
-                let isExpanded = !self.descriptionLabel.isHidden
-                self.descriptionLabel.isHidden = isExpanded
-                self.progressSectionView.snp.remakeConstraints { make in
-                    if isExpanded {
-                        make.top.equalTo(self.genreTagView.snp.bottom).offset(16)
-                    } else {
-                        make.top.equalTo(self.descriptionLabel.snp.bottom).offset(16)
-                    }
-                    make.leading.trailing.equalToSuperview().inset(16)
-                    make.bottom.equalToSuperview().inset(16)
-                }
-                UIView.animate(withDuration: 0.25) {
-                    self.view.layoutIfNeeded()
-                }
-                self.moreButton.setTitle(isExpanded ? "더 보기" : "가리기", for: .normal)
             })
             .disposed(by: disposeBag)
 

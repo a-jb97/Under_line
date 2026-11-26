@@ -12,6 +12,7 @@ final class AppContainer {
     static let shared = AppContainer()
 
     let bookPurchasePreferenceStore: BookPurchasePreferenceStoreProtocol = BookPurchasePreferenceStore()
+    let relatedBooksPreference = RelatedBooksPreference()
     let bookPurchaseService: BookPurchaseServiceProtocol
     let modelContainer: ModelContainer
     let bookRepository: BookRepositoryProtocol

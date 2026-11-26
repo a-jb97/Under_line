@@ -80,7 +80,7 @@ final class MainTabBarController: UITabBarController {
             .emit(onNext: { [weak self] enabledEmotions in
                 guard let self,
                       !enabledEmotions.isEmpty,
-                      !UserDefaults.standard.bool(forKey: "randomUnderLine.isDisabled") else { return }
+                      RandomUnderLinePreference().isEnabled else { return }
                 let vc = RandomUnderLineEmotionViewController(
                     enabledEmotions: enabledEmotions,
                     onEmotionSelected: { [weak self] emotion in
