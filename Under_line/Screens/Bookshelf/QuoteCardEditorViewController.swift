@@ -252,7 +252,7 @@ final class QuoteCardEditorViewController: AdaptiveViewController {
 
     override func viewDidAppear(_ animated: Bool) {
         super.viewDidAppear(animated)
-        if !showsMarkedPhoto { showTutorialIfNeeded() }
+        showTutorialIfNeeded()
     }
 
     // MARK: - Setup
@@ -609,6 +609,14 @@ extension QuoteCardEditorViewController: PHPickerViewControllerDelegate {
 
 extension QuoteCardEditorViewController {
     private func showTutorialIfNeeded() {
+        if showsMarkedPhoto {
+            let step = TutorialSupport.viewStep(
+                target: saveButton,
+                message: "‘사진 저장’을 누르면\n밑줄이 그어진 사진이 사진 앱에 저장돼요."
+            )
+            TutorialSupport.show(on: self, key: TutorialSupport.markedPhotoSaveKey, steps: [step])
+            return
+        }
         guard !UserDefaults.standard.bool(forKey: "tutorial.cardEditor") else { return }
 
         let steps: [TutorialStep] = [

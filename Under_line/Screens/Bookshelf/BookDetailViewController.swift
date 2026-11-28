@@ -800,7 +800,14 @@ final class BookDetailViewController: AdaptiveViewController {
 
 extension BookDetailViewController {
     private func showTutorialIfNeeded() {
-        guard !UserDefaults.standard.bool(forKey: "tutorial.bookDetail") else { return }
+        let markedPhotoStep = TutorialSupport.viewStep(
+            target: quoteCard,
+            message: "촬영한 밑줄을 등록하면 사진도 함께 저장돼요.\n해당 카드를 두 번 탭해 사진을 열어보세요."
+        )
+        guard !UserDefaults.standard.bool(forKey: "tutorial.bookDetail") else {
+            TutorialSupport.show(on: self, key: TutorialSupport.markedPhotoCardKey, steps: [markedPhotoStep])
+            return
+        }
 
         let steps: [TutorialStep] = [
             TutorialStep(
@@ -827,17 +834,13 @@ extension BookDetailViewController {
                     return target.convert(target.bounds, to: nil)
                 }
             ),
+            markedPhotoStep,
             TutorialSupport.barButtonStep(item: timerButton, on: self, message: "타이머 아이콘에서 독서 시간을 기록하고\n통계를 확인하세요"),
         ]
 
-        let tutorialVC = TutorialOverlayViewController()
-        tutorialVC.steps = steps
-        tutorialVC.modalPresentationStyle = .overFullScreen
-        tutorialVC.modalTransitionStyle = .crossDissolve
-        tutorialVC.onFinished = {
-            UserDefaults.standard.set(true, forKey: "tutorial.bookDetail")
+        TutorialSupport.show(on: self, key: "tutorial.bookDetail", steps: steps) {
+            UserDefaults.standard.set(true, forKey: TutorialSupport.markedPhotoCardKey)
         }
-        present(tutorialVC, animated: true)
     }
 }
 
