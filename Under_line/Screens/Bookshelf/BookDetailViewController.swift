@@ -29,6 +29,7 @@ final class BookDetailViewController: AdaptiveViewController {
     private var currentItemPage: Int?
     private var latestCurrentPage: Int?
     private var flippedSentenceIDs: Set<UUID> = []
+    private var quotePageDisposeBag = DisposeBag()
 
     private let scrollView: UIScrollView = {
         let sv = UIScrollView()
@@ -397,6 +398,7 @@ final class BookDetailViewController: AdaptiveViewController {
     // MARK: - Sentences
 
     private func renderQuotePages() {
+        quotePageDisposeBag = DisposeBag()
         quoteScrollView.subviews.forEach { $0.removeFromSuperview() }
 
         guard !sentences.isEmpty else {
@@ -580,7 +582,27 @@ final class BookDetailViewController: AdaptiveViewController {
         tapGesture.cancelsTouchesInView = false
         page.addGestureRecognizer(tapGesture)
 
+        if !isEditMode, let photoData = sentence.markedPhotoData {
+            let doubleTap = UITapGestureRecognizer()
+            doubleTap.numberOfTapsRequired = 2
+            doubleTap.cancelsTouchesInView = false
+            page.addGestureRecognizer(doubleTap)
+            tapGesture.require(toFail: doubleTap)
+            doubleTap.rx.event
+                .filter { $0.state == .recognized }
+                .subscribe(onNext: { [weak self] _ in
+                    guard let self, self.presentedViewController == nil else { return }
+                    guard let preview = QuoteCardEditorViewController(markedPhotoData: photoData) else {
+                        self.view.makeToast("밑줄 사진을 열지 못했어요.", position: .center)
+                        return
+                    }
+                    self.presentCardOverlay(preview)
+                })
+                .disposed(by: quotePageDisposeBag)
+        }
+
         tapGesture.rx.event
+            .filter { $0.state == .recognized }
             .subscribe(onNext: { [weak self, weak page, weak frontView, weak backView] _ in
                 guard let self, let page, let frontView, let backView,
                       !self.isEditMode else { return }
@@ -596,7 +618,7 @@ final class BookDetailViewController: AdaptiveViewController {
                     backView.isHidden  = !toFlip
                 }, completion: nil)
             })
-            .disposed(by: disposeBag)
+            .disposed(by: quotePageDisposeBag)
 
         // ── 편집 모드 삭제 버튼 (탭 버튼 위) ─────────────────────
         if isEditMode {
@@ -614,7 +636,7 @@ final class BookDetailViewController: AdaptiveViewController {
                 .subscribe(onNext: { [weak self] in
                     self?.deleteSentence(sentence)
                 })
-                .disposed(by: disposeBag)
+                .disposed(by: quotePageDisposeBag)
         }
 
         return page
@@ -671,11 +693,12 @@ final class BookDetailViewController: AdaptiveViewController {
                 }
 
                 // 수집하기(촬영) → OCR 텍스트 추출 후 pre-fill
-                cameraVC.onOCRTextExtracted = { [weak self] extractedText in
+                cameraVC.onMarkupConfirmed = { [weak self] extractedText, photoData in
                     guard let self else { return }
                     let directVC = DirectCollectViewController(
                         bookISBN:        self.book.isbn13,
-                        initialSentence: extractedText
+                        initialSentence: extractedText,
+                        markedPhotoData: photoData
                     )
                     directVC.modalPresentationStyle = .pageSheet
                     directVC.onSaved = { [weak self] in self?.loadSentences() }
@@ -756,14 +779,19 @@ final class BookDetailViewController: AdaptiveViewController {
         longPress.rx.event
             .filter { $0.state == .began }
             .subscribe(onNext: { [weak self] _ in
-                guard let self, !self.sentences.isEmpty else { return }
+                guard let self, self.presentedViewController == nil,
+                      self.sentences.indices.contains(self.pageControl.currentPage) else { return }
                 let sentence = self.sentences[self.pageControl.currentPage]
                 let editorVC = QuoteCardEditorViewController(sentence: sentence, bookTitle: self.book.displayTitle)
-                editorVC.modalPresentationStyle = .overFullScreen
-                editorVC.modalTransitionStyle   = .crossDissolve
-                self.present(editorVC, animated: true)
+                self.presentCardOverlay(editorVC)
             })
             .disposed(by: disposeBag)
+    }
+
+    private func presentCardOverlay(_ controller: QuoteCardEditorViewController) {
+        controller.modalPresentationStyle = .overFullScreen
+        controller.modalTransitionStyle = .crossDissolve
+        present(controller, animated: true)
     }
 
 }
@@ -772,7 +800,14 @@ final class BookDetailViewController: AdaptiveViewController {
 
 extension BookDetailViewController {
     private func showTutorialIfNeeded() {
-        guard !UserDefaults.standard.bool(forKey: "tutorial.bookDetail") else { return }
+        let markedPhotoStep = TutorialSupport.viewStep(
+            target: quoteCard,
+            message: "촬영한 밑줄을 등록하면 사진도 함께 저장돼요.\n해당 카드를 두 번 탭해 사진을 열어보세요."
+        )
+        guard !UserDefaults.standard.bool(forKey: "tutorial.bookDetail") else {
+            TutorialSupport.show(on: self, key: TutorialSupport.markedPhotoCardKey, steps: [markedPhotoStep])
+            return
+        }
 
         let steps: [TutorialStep] = [
             TutorialStep(
@@ -799,17 +834,13 @@ extension BookDetailViewController {
                     return target.convert(target.bounds, to: nil)
                 }
             ),
+            markedPhotoStep,
             TutorialSupport.barButtonStep(item: timerButton, on: self, message: "타이머 아이콘에서 독서 시간을 기록하고\n통계를 확인하세요"),
         ]
 
-        let tutorialVC = TutorialOverlayViewController()
-        tutorialVC.steps = steps
-        tutorialVC.modalPresentationStyle = .overFullScreen
-        tutorialVC.modalTransitionStyle = .crossDissolve
-        tutorialVC.onFinished = {
-            UserDefaults.standard.set(true, forKey: "tutorial.bookDetail")
+        TutorialSupport.show(on: self, key: "tutorial.bookDetail", steps: steps) {
+            UserDefaults.standard.set(true, forKey: TutorialSupport.markedPhotoCardKey)
         }
-        present(tutorialVC, animated: true)
     }
 }
 

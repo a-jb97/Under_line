@@ -15,4 +15,17 @@ struct Sentence {
     let emotion: Emotion
     let memo: String?
     let date: Date
+    let markedPhotoData: Data?
+
+    init(id: UUID, bookISBN: String, sentence: String, page: Int, emotion: Emotion, memo: String?,
+         date: Date, markedPhotoData: Data? = nil) {
+        self.id = id
+        self.bookISBN = bookISBN
+        self.sentence = sentence
+        self.page = page
+        self.emotion = emotion
+        self.memo = memo
+        self.date = date
+        self.markedPhotoData = markedPhotoData
+    }
 }

@@ -26,15 +26,27 @@ final class QuoteCardEditorViewController: AdaptiveViewController {
     }
     private var maskGeometry: [ObjectIdentifier: MaskGeometry] = [:]
     private let disposeBag = DisposeBag()
-    private let sentence: Sentence
-    private let bookTitle: String
+    private enum Content {
+        case quote(Sentence, bookTitle: String)
+        case markedPhoto(UIImage, Data)
+    }
+    private let content: Content
+    private var showsMarkedPhoto: Bool {
+        if case .markedPhoto = content { return true }
+        return false
+    }
     private let ciContext = CIContext(options: [.useSoftwareRenderer: false])
     private var isDominantColorEnabled = false
     private var dominantTextColor: UIColor = .appPrimary
 
     init(sentence: Sentence, bookTitle: String) {
-        self.sentence  = sentence
-        self.bookTitle = bookTitle
+        content = .quote(sentence, bookTitle: bookTitle)
+        super.init(nibName: nil, bundle: nil)
+    }
+
+    init?(markedPhotoData: Data) {
+        guard let image = UIImage(data: markedPhotoData) else { return nil }
+        content = .markedPhoto(image, markedPhotoData)
         super.init(nibName: nil, bundle: nil)
     }
 
@@ -164,7 +176,8 @@ final class QuoteCardEditorViewController: AdaptiveViewController {
     lazy var saveButton: UIButton = {
         let btn = UIButton(type: .system)
         let cfg = UIImage.SymbolConfiguration(pointSize: 14, weight: .medium)
-        btn.setImage(UIImage(systemName: "square.and.arrow.up", withConfiguration: cfg), for: .normal)
+        let symbol = showsMarkedPhoto ? "square.and.arrow.down" : "square.and.arrow.up"
+        btn.setImage(UIImage(systemName: symbol, withConfiguration: cfg), for: .normal)
         btn.tintColor = UIColor.appPrimary
         return btn
     }()
@@ -172,7 +185,8 @@ final class QuoteCardEditorViewController: AdaptiveViewController {
     private let removeLogoLabel = QuoteCardEditorViewController.makeActionLabel("로고 제거")
     private let backgroundLabel = QuoteCardEditorViewController.makeActionLabel("배경 지정")
     private let colorSyncLabel  = QuoteCardEditorViewController.makeActionLabel("색상 동기화")
-    private let saveLabel       = QuoteCardEditorViewController.makeActionLabel("공유하기")
+    private var saveTitle: String { showsMarkedPhoto ? "사진 저장" : "공유하기" }
+    private lazy var saveLabel = Self.makeActionLabel(saveTitle)
 
     private static func makeActionLabel(_ text: String) -> UILabel {
         let l = UILabel()
@@ -225,8 +239,8 @@ final class QuoteCardEditorViewController: AdaptiveViewController {
         actionsScrollView.frame = layout.actionsFrame
         actionsScrollView.contentSize = layout.actionsContentSize
         if actionsChanged { actionsScrollView.contentOffset = .zero }
-        for (cell, frame) in zip(actionCells, layout.actionFrames) {
-            cell.isHidden = frame.isEmpty
+        for (index, (cell, frame)) in zip(actionCells, layout.actionFrames).enumerated() {
+            cell.isHidden = frame.isEmpty || (showsMarkedPhoto && index != actionCells.count - 1)
             cell.frame = frame
         }
         cardView.layoutIfNeeded()
@@ -285,7 +299,7 @@ final class QuoteCardEditorViewController: AdaptiveViewController {
         SystemGlassButtonStyle.apply(to: removeLogoButton, accessibilityLabel: "로고 제거")
         SystemGlassButtonStyle.apply(to: colorSyncButton, accessibilityLabel: "색상 동기화")
         SystemGlassButtonStyle.apply(to: backgroundButton, accessibilityLabel: "배경 지정")
-        SystemGlassButtonStyle.apply(to: saveButton, accessibilityLabel: "공유하기")
+        SystemGlassButtonStyle.apply(to: saveButton, accessibilityLabel: saveTitle)
     }
 
     private func setupConstraints() {
@@ -333,13 +347,25 @@ final class QuoteCardEditorViewController: AdaptiveViewController {
     // MARK: - Configure
 
     private func configure() {
-        updateTextColor(nil)
-        pageLabel.text = "p.\(sentence.page)"
+        switch content {
+        case let .quote(sentence, _):
+            updateTextColor(nil)
+            pageLabel.text = "p.\(sentence.page)"
+        case let .markedPhoto(image, _):
+            cardView.backgroundColor = .black
+            backgroundImageView.image = image
+            backgroundImageView.contentMode = .scaleAspectFit
+            backgroundImageView.isHidden = false
+            logoImageView.isHidden = true
+            labelStack.isHidden = true
+            bookTitleLabel.isHidden = true
+        }
     }
 
     /// dominant가 nil이면 기본 색상(sentence/page → appPrimary, bookTitle → accent),
     /// non-nil이면 세 레이블 모두 dominant color를 적용
     private func updateTextColor(_ dominant: UIColor?) {
+        guard case let .quote(sentence, bookTitle) = content else { return }
         let bodyColor  = dominant ?? .appPrimary
         let titleColor = dominant ?? .accent
 
@@ -372,6 +398,19 @@ final class QuoteCardEditorViewController: AdaptiveViewController {
         dismissButton.rx.tap
             .subscribe(onNext: { [weak self] in self?.dismiss(animated: true) })
             .disposed(by: disposeBag)
+
+        if case let .markedPhoto(_, data) = content {
+            let viewModel = UnderlinePhotoViewModel(photoData: data)
+            let output = viewModel.transform(input: .init(saveTap: saveButton.rx.tap
+                .do(onNext: { [weak self] in self?.saveButton.isEnabled = false })))
+            output.saveMessage
+                .emit(onNext: { [weak self] message in
+                    self?.saveButton.isEnabled = true
+                    self?.view.makeToast(message, position: .center)
+                })
+                .disposed(by: disposeBag)
+            return
+        }
 
         removeLogoButton.rx.tap
             .subscribe(onNext: { [weak self] in
@@ -570,6 +609,14 @@ extension QuoteCardEditorViewController: PHPickerViewControllerDelegate {
 
 extension QuoteCardEditorViewController {
     private func showTutorialIfNeeded() {
+        if showsMarkedPhoto {
+            let step = TutorialSupport.viewStep(
+                target: saveButton,
+                message: "‘사진 저장’을 누르면\n밑줄이 그어진 사진이 사진 앱에 저장돼요."
+            )
+            TutorialSupport.show(on: self, key: TutorialSupport.markedPhotoSaveKey, steps: [step])
+            return
+        }
         guard !UserDefaults.standard.bool(forKey: "tutorial.cardEditor") else { return }
 
         let steps: [TutorialStep] = [
