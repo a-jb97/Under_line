@@ -9,7 +9,7 @@ final class OCRMarkupViewController: AdaptiveViewController {
     private let disposeBag = DisposeBag()
     private let capturedImage: UIImage
     private lazy var viewModel = OCRMarkupViewModel(image: capturedImage)
-    private let strokes = BehaviorRelay<[[CGPoint]]>(value: [])
+    private let strokes = BehaviorRelay<[OCRMarkupStroke]>(value: [])
     private var selectedText = ""
     private let cancelItem = SystemNavigationStyle.item(image: "xmark", label: "닫기", identifier: "closeOCRButton", priority: .high)
     private let clearItem = SystemNavigationStyle.item(image: "eraser", label: "지우기", identifier: "clearOCRButton")
@@ -23,6 +23,7 @@ final class OCRMarkupViewController: AdaptiveViewController {
     private let drawingOverlay = DrawingOverlayView()
     private let activityIndicator = UIActivityIndicatorView(style: .large)
     private let instructionLabel = UILabel()
+    private let penButton = UIButton(type: .system)
     private let statusLabel = UILabel()
 
     init(image: UIImage) {
@@ -57,17 +58,27 @@ final class OCRMarkupViewController: AdaptiveViewController {
         imageContainerView.addSubview(activityIndicator)
         activityIndicator.color = .walnut
         activityIndicator.hidesWhenStopped = true
-        instructionLabel.text = "밑줄 위에 손가락을 그어 텍스트를 선택하세요"
         instructionLabel.font = CameraCollectionStyle.instructionFont
         instructionLabel.textColor = CameraCollectionStyle.hintColor
         instructionLabel.textAlignment = .center
         instructionLabel.numberOfLines = 0
         instructionLabel.setContentCompressionResistancePriority(.required, for: .vertical)
-        view.addSubview(instructionLabel)
-        instructionLabel.snp.makeConstraints { make in
+        let symbol = UIImage.SymbolConfiguration(pointSize: 14, weight: .medium)
+        penButton.setImage(UIImage(systemName: "pencil", withConfiguration: symbol), for: .normal)
+        SystemGlassButtonStyle.apply(to: penButton, accessibilityLabel: "펜 선택")
+        penButton.accessibilityIdentifier = "ocrPenPickerButton"
+        penButton.showsMenuAsPrimaryAction = true
+        selectDrawingTool(.pen)
+
+        let instructionRow = UIStackView(arrangedSubviews: [instructionLabel, penButton])
+        instructionRow.alignment = .bottom
+        instructionRow.spacing = 12
+        view.addSubview(instructionRow)
+        instructionRow.snp.makeConstraints { make in
             make.top.equalTo(imageContainerView.snp.bottom).offset(16)
             make.leading.trailing.equalTo(view.adaptiveContentLayoutGuide).inset(16)
         }
+        penButton.snp.makeConstraints { $0.size.equalTo(52) }
         statusLabel.font = UIFont(name: "GoyangIlsan R", size: 13) ?? .systemFont(ofSize: 13)
         statusLabel.textColor = UIColor.appPrimary.withAlphaComponent(0.7)
         statusLabel.textAlignment = .center
@@ -77,13 +88,13 @@ final class OCRMarkupViewController: AdaptiveViewController {
         statusLabel.snp.makeConstraints { make in
             make.leading.trailing.equalTo(view.adaptiveContentLayoutGuide).inset(16)
             make.bottom.equalTo(view.adaptiveContentLayoutGuide).inset(12)
-            make.top.greaterThanOrEqualTo(instructionLabel.snp.bottom).offset(12)
+            make.top.greaterThanOrEqualTo(instructionRow.snp.bottom).offset(12)
         }
         let markupLayoutGuide = UILayoutGuide()
         view.addLayoutGuide(markupLayoutGuide)
         markupLayoutGuide.snp.makeConstraints { make in
             make.top.equalTo(imageContainerView)
-            make.bottom.equalTo(instructionLabel)
+            make.bottom.equalTo(instructionRow)
             make.leading.trailing.equalTo(view.adaptiveContentLayoutGuide)
             make.centerY.equalTo(view.adaptiveContentLayoutGuide).priority(999)
         }
@@ -101,6 +112,20 @@ final class OCRMarkupViewController: AdaptiveViewController {
         drawingOverlay.onStrokesChanged = { [weak self] in self?.strokes.accept($0) }
     }
 
+    private func selectDrawingTool(_ tool: OCRMarkupStroke.Tool) {
+        drawingOverlay.tool = tool
+        instructionLabel.text = tool == .pen
+            ? "밑줄 위에 손가락을 그어 텍스트를 선택하세요"
+            : "글자 위에 손가락을 그어 텍스트를 선택하세요"
+        penButton.accessibilityValue = tool.title
+        penButton.menu = UIMenu(options: .singleSelection, children: OCRMarkupStroke.Tool.allCases.map { option in
+            UIAction(title: option.title, image: UIImage(systemName: option.symbolName),
+                     state: option == tool ? .on : .off) { [weak self] _ in
+                self?.selectDrawingTool(option)
+            }
+        })
+    }
+
     private func bindActions() {
         let output = viewModel.transform(input: .init(recognize: .just(()), strokes: strokes.asObservable()))
         output.text.drive(onNext: { [weak self] text in
@@ -113,6 +138,7 @@ final class OCRMarkupViewController: AdaptiveViewController {
             if busy { self.activityIndicator.startAnimating() }
             else { self.activityIndicator.stopAnimating() }
             self.drawingOverlay.isUserInteractionEnabled = !busy
+            self.penButton.isEnabled = !busy
         }).disposed(by: disposeBag)
         Driver.combineLatest(output.isRecognizing, output.hasRecognizedText)
             .drive(onNext: { [weak self] busy, hasText in
@@ -143,10 +169,16 @@ final class OCRMarkupViewController: AdaptiveViewController {
 /// 밑줄은 이미지 좌상단을 원점으로 한 0...1 좌표로 보관한다.
 /// 뷰 크기가 달라져도 경로를 다시 계산해 그릴 뿐 저장된 선택은 바꾸지 않는다.
 private final class DrawingOverlayView: UIView {
-    var onStrokesChanged: (([[CGPoint]]) -> Void)?
+    var onStrokesChanged: (([OCRMarkupStroke]) -> Void)?
+    var tool: OCRMarkupStroke.Tool = .pen
     private var imageRect = CGRect.zero
-    private var completedStrokes: [[CGPoint]] = []
-    private var currentStroke: [CGPoint] = []
+    private var completedStrokes: [OCRMarkupStroke] = []
+    private var currentStroke: OCRMarkupStroke?
+
+    private var visibleStrokes: [OCRMarkupStroke] {
+        guard let currentStroke else { return completedStrokes }
+        return completedStrokes + [currentStroke]
+    }
 
     override init(frame: CGRect) {
         super.init(frame: frame)
@@ -166,7 +198,7 @@ private final class DrawingOverlayView: UIView {
 
     func clearAll() {
         completedStrokes = []
-        currentStroke = []
+        currentStroke = nil
         onStrokesChanged?([])
         setNeedsDisplay()
     }
@@ -174,22 +206,22 @@ private final class DrawingOverlayView: UIView {
     override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent?) {
         guard let point = touches.first?.location(in: self), imageRect.contains(point),
               let normalized = OCRImageGeometry.normalizedPoint(point, in: imageRect) else { return }
-        currentStroke = [normalized]
+        currentStroke = OCRMarkupStroke(tool: tool, points: [normalized])
         setNeedsDisplay()
     }
 
     override func touchesMoved(_ touches: Set<UITouch>, with event: UIEvent?) {
-        guard !currentStroke.isEmpty, let point = touches.first?.location(in: self),
+        guard currentStroke != nil, let point = touches.first?.location(in: self),
               let normalized = OCRImageGeometry.normalizedPoint(point, in: imageRect) else { return }
-        currentStroke.append(normalized)
-        onStrokesChanged?(completedStrokes + [currentStroke])
+        currentStroke?.points.append(normalized)
+        onStrokesChanged?(visibleStrokes)
         setNeedsDisplay()
     }
 
     override func touchesEnded(_ touches: Set<UITouch>, with event: UIEvent?) {
-        if !currentStroke.isEmpty, let point = touches.first?.location(in: self),
+        if let point = touches.first?.location(in: self),
            let normalized = OCRImageGeometry.normalizedPoint(point, in: imageRect) {
-            currentStroke.append(normalized)
+            currentStroke?.points.append(normalized)
         }
         finishStroke()
     }
@@ -197,25 +229,41 @@ private final class DrawingOverlayView: UIView {
     override func touchesCancelled(_ touches: Set<UITouch>, with event: UIEvent?) { finishStroke() }
 
     private func finishStroke() {
-        guard !currentStroke.isEmpty else { return }
-        if currentStroke.count > 1 { completedStrokes.append(currentStroke) }
-        currentStroke = []
+        guard let currentStroke else { return }
+        if currentStroke.points.count > 1 { completedStrokes.append(currentStroke) }
+        self.currentStroke = nil
         onStrokesChanged?(completedStrokes)
         setNeedsDisplay()
     }
 
     override func draw(_ rect: CGRect) {
         guard !imageRect.isEmpty else { return }
-        UIColor.appPrimary.setStroke()
-        for stroke in completedStrokes + (currentStroke.isEmpty ? [] : [currentStroke]) {
-            guard let first = stroke.first else { continue }
+        for stroke in visibleStrokes {
+            guard let first = stroke.points.first else { continue }
             let path = UIBezierPath()
             path.move(to: OCRImageGeometry.viewPoint(first, in: imageRect))
-            for point in stroke.dropFirst() { path.addLine(to: OCRImageGeometry.viewPoint(point, in: imageRect)) }
-            path.lineWidth = 6
+            for point in stroke.points.dropFirst() { path.addLine(to: OCRImageGeometry.viewPoint(point, in: imageRect)) }
+            path.lineWidth = stroke.tool == .pen ? 6 : 18
             path.lineCapStyle = .round
             path.lineJoinStyle = .round
+            UIColor.appPrimary.withAlphaComponent(stroke.tool == .pen ? 1 : 0.3).setStroke()
             path.stroke()
+        }
+    }
+}
+
+private extension OCRMarkupStroke.Tool {
+    var title: String {
+        switch self {
+        case .pen: "기본 펜"
+        case .highlighter: "형광펜"
+        }
+    }
+
+    var symbolName: String {
+        switch self {
+        case .pen: "pencil"
+        case .highlighter: "highlighter"
         }
     }
 }
