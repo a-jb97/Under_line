@@ -6,8 +6,10 @@ import RxCocoa
 final class OCRMarkupViewController: AdaptiveViewController {
     var onConfirm: ((String) -> Void)?
 
+    private static let drawingToolKey = "ocrMarkup.drawingTool"
     private let disposeBag = DisposeBag()
     private let capturedImage: UIImage
+    private let defaults: UserDefaults
     private lazy var viewModel = OCRMarkupViewModel(image: capturedImage)
     private let strokes = BehaviorRelay<[OCRMarkupStroke]>(value: [])
     private var selectedText = ""
@@ -26,8 +28,9 @@ final class OCRMarkupViewController: AdaptiveViewController {
     private let penButton = UIButton(type: .system)
     private let statusLabel = UILabel()
 
-    init(image: UIImage) {
+    init(image: UIImage, defaults: UserDefaults = .standard) {
         capturedImage = OCRImageGeometry.uprightImage(image)
+        self.defaults = defaults
         super.init(nibName: nil, bundle: nil)
         modalPresentationStyle = .fullScreen
     }
@@ -63,15 +66,14 @@ final class OCRMarkupViewController: AdaptiveViewController {
         instructionLabel.textAlignment = .center
         instructionLabel.numberOfLines = 0
         instructionLabel.setContentCompressionResistancePriority(.required, for: .vertical)
-        let symbol = UIImage.SymbolConfiguration(pointSize: 14, weight: .medium)
-        penButton.setImage(UIImage(systemName: "pencil", withConfiguration: symbol), for: .normal)
         SystemGlassButtonStyle.apply(to: penButton, accessibilityLabel: "펜 선택")
         penButton.accessibilityIdentifier = "ocrPenPickerButton"
         penButton.showsMenuAsPrimaryAction = true
-        selectDrawingTool(.pen)
+        let savedTool = defaults.string(forKey: Self.drawingToolKey).flatMap(OCRMarkupStroke.Tool.init(rawValue:))
+        updateDrawingTool(savedTool ?? .pen)
 
         let instructionRow = UIStackView(arrangedSubviews: [instructionLabel, penButton])
-        instructionRow.alignment = .bottom
+        instructionRow.alignment = .center
         instructionRow.spacing = 12
         view.addSubview(instructionRow)
         instructionRow.snp.makeConstraints { make in
@@ -112,16 +114,22 @@ final class OCRMarkupViewController: AdaptiveViewController {
         drawingOverlay.onStrokesChanged = { [weak self] in self?.strokes.accept($0) }
     }
 
-    private func selectDrawingTool(_ tool: OCRMarkupStroke.Tool) {
+    private func updateDrawingTool(_ tool: OCRMarkupStroke.Tool) {
         drawingOverlay.tool = tool
         instructionLabel.text = tool == .pen
-            ? "밑줄 위에 손가락을 그어 텍스트를 선택하세요"
-            : "글자 위에 손가락을 그어 텍스트를 선택하세요"
+            ? "수집할 문장에 밑줄을 그으세요"
+            : "수집할 문장 위로 형광펜을 그으세요"
+        let symbol = UIImage.SymbolConfiguration(pointSize: 14, weight: .medium)
+        var configuration = penButton.configuration
+        configuration?.image = SystemGlassButtonStyle.icon(UIImage(systemName: tool.symbolName, withConfiguration: symbol))
+        penButton.configuration = configuration
         penButton.accessibilityValue = tool.title
         penButton.menu = UIMenu(options: .singleSelection, children: OCRMarkupStroke.Tool.allCases.map { option in
             UIAction(title: option.title, image: UIImage(systemName: option.symbolName),
                      state: option == tool ? .on : .off) { [weak self] _ in
-                self?.selectDrawingTool(option)
+                guard let self else { return }
+                self.defaults.set(option.rawValue, forKey: Self.drawingToolKey)
+                self.updateDrawingTool(option)
             }
         })
     }

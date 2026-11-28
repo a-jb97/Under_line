@@ -50,12 +50,15 @@ final class OCRMarkupViewModelTests: XCTestCase {
     }
 
     func test_markupWithBothTools_resizesClearsAndConfirmsSelection() async throws {
+        let suiteName = UUID().uuidString
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
         let image = makeImage(["Morning sunlight", "Evening breeze"])
         let observations = try recognize(image).sorted { $0.boundingBox.midY > $1.boundingBox.midY }
         XCTAssertEqual(observations.count, 2)
         let firstLine = try XCTUnwrap(observations.first).boundingBox
         let secondLine = try XCTUnwrap(observations.last).boundingBox
-        let controller = OCRMarkupViewController(image: image)
+        let controller = OCRMarkupViewController(image: image, defaults: defaults)
         let navigation = UINavigationController(rootViewController: controller)
         let scene = try XCTUnwrap(UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first)
         let previousKeyWindow = scene.keyWindow
@@ -78,10 +81,15 @@ final class OCRMarkupViewModelTests: XCTestCase {
         let items = controller.navigationItem.trailingItemGroups.flatMap(\.barButtonItems)
         let clear = try XCTUnwrap(items.first { $0.accessibilityIdentifier == "clearOCRButton" })
         let confirm = try XCTUnwrap(items.first { $0.accessibilityIdentifier == "confirmOCRButton" })
+        let symbol = UIImage.SymbolConfiguration(pointSize: 14, weight: .medium)
+        let penIcon = try XCTUnwrap(SystemGlassButtonStyle.icon(UIImage(systemName: "pencil", withConfiguration: symbol)))
+        let highlighterIcon = try XCTUnwrap(SystemGlassButtonStyle.icon(UIImage(systemName: "highlighter", withConfiguration: symbol)))
 
         XCTAssertFalse(picker.isEnabled)
         XCTAssertTrue(picker.showsMenuAsPrimaryAction)
         XCTAssertEqual(picker.accessibilityValue, "기본 펜")
+        XCTAssertEqual(picker.configuration?.image, penIcon)
+        XCTAssertEqual(instructions.text, "수집할 문장에 밑줄을 그으세요")
         try await waitUntil { picker.isEnabled }
         XCTAssertNil(status.text)
         let originalFrame = view.frame
@@ -89,7 +97,7 @@ final class OCRMarkupViewModelTests: XCTestCase {
             view.frame.size = size
             view.layoutIfNeeded()
             XCTAssertEqual(picker.bounds.size, CGSize(width: 52, height: 52))
-            XCTAssertEqual(instructions.frame.maxY, picker.frame.maxY, accuracy: 0.5)
+            XCTAssertEqual(instructions.frame.midY, picker.frame.midY, accuracy: 0.5)
             XCTAssertLessThan(instructions.frame.maxX, picker.frame.minX)
             XCTAssertGreaterThanOrEqual(status.frame.minY - row.frame.maxY, 11.5)
         }
@@ -103,7 +111,8 @@ final class OCRMarkupViewModelTests: XCTestCase {
         let highlighter = try XCTUnwrap(menuActions.first { $0.title == "형광펜" })
         UIButton(configuration: .plain(), primaryAction: highlighter).sendActions(for: .primaryActionTriggered)
         XCTAssertEqual(picker.accessibilityValue, "형광펜")
-        XCTAssertEqual(instructions.text, "글자 위에 손가락을 그어 텍스트를 선택하세요")
+        XCTAssertEqual(picker.configuration?.image, highlighterIcon)
+        XCTAssertEqual(instructions.text, "수집할 문장 위로 형광펜을 그으세요")
         XCTAssertEqual(picker.menu?.children.compactMap { ($0 as? UIAction)?.state }, [.off, .on])
         try draw(on: photo, in: view, across: secondLine, y: 1 - secondLine.midY)
 
@@ -121,6 +130,21 @@ final class OCRMarkupViewModelTests: XCTestCase {
         try tap(confirm)
         try await waitUntil { confirmedText != nil }
         XCTAssertEqual(confirmedText, "Evening breeze")
+
+        let reopenedDefaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        let reopened = OCRMarkupViewController(image: image, defaults: reopenedDefaults)
+        let reopenedRow = try XCTUnwrap(reopened.view.subviews.compactMap { $0 as? UIStackView }.first)
+        let reopenedPicker = try XCTUnwrap(reopenedRow.arrangedSubviews.compactMap { $0 as? UIButton }.first)
+        let reopenedInstructions = try XCTUnwrap(reopenedRow.arrangedSubviews.compactMap { $0 as? UILabel }.first)
+        XCTAssertEqual(reopenedPicker.accessibilityValue, "형광펜")
+        XCTAssertEqual(reopenedPicker.configuration?.image, highlighterIcon)
+        XCTAssertEqual(reopenedInstructions.text, "수집할 문장 위로 형광펜을 그으세요")
+        XCTAssertEqual(reopenedPicker.menu?.children.compactMap { ($0 as? UIAction)?.state }, [.off, .on])
+
+        let pen = try XCTUnwrap(reopenedPicker.menu?.children.first as? UIAction)
+        UIButton(configuration: .plain(), primaryAction: pen).sendActions(for: .primaryActionTriggered)
+        XCTAssertEqual(reopenedPicker.accessibilityValue, "기본 펜")
+        XCTAssertEqual(reopenedPicker.configuration?.image, penIcon)
     }
 
     private func makeImage(_ lines: [String]) -> UIImage {

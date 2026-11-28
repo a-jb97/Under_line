@@ -1,7 +1,7 @@
 import CoreGraphics
 
 struct OCRMarkupStroke {
-    enum Tool: CaseIterable {
+    enum Tool: String, CaseIterable {
         case pen
         case highlighter
     }
