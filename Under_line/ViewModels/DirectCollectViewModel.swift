@@ -34,12 +34,19 @@ final class DirectCollectViewModel {
     private let bookISBN: String
     private let repository: SentenceRepositoryProtocol
     private let editingSentence: Sentence?
+    private let markedPhotoData: Data?
     private let disposeBag = DisposeBag()
 
-    init(bookISBN: String, repository: SentenceRepositoryProtocol, editingSentence: Sentence? = nil) {
+    init(
+        bookISBN: String,
+        repository: SentenceRepositoryProtocol,
+        editingSentence: Sentence? = nil,
+        markedPhotoData: Data? = nil
+    ) {
         self.bookISBN        = bookISBN
         self.repository      = repository
         self.editingSentence = editingSentence
+        self.markedPhotoData = markedPhotoData
     }
 
     // MARK: - Transform
@@ -68,7 +75,7 @@ final class DirectCollectViewModel {
 
         input.saveTap
             .withLatestFrom(formData)
-            .flatMapLatest { [weak self] (sentence, page, emotion, memo) -> Observable<Void> in
+            .flatMapFirst { [weak self] (sentence, page, emotion, memo) -> Observable<Void> in
                 guard let self,
                       let pageNum = Int(page.trimmingCharacters(in: .whitespacesAndNewlines)),
                       let localEmotion = emotion else { return .empty() }
@@ -84,7 +91,8 @@ final class DirectCollectViewModel {
                         page:     pageNum,
                         emotion:  localEmotion,
                         memo:     memoText.isEmpty ? nil : memoText,
-                        date:     existing.date
+                        date:     existing.date,
+                        markedPhotoData: existing.markedPhotoData
                     )
                     return rxAsync { try await self.repository.updateSentence(updated) }
                         .catch { error in
@@ -99,7 +107,8 @@ final class DirectCollectViewModel {
                         page:     pageNum,
                         emotion:  localEmotion,
                         memo:     memoText.isEmpty ? nil : memoText,
-                        date:     Date()
+                        date:     Date(),
+                        markedPhotoData: self.markedPhotoData
                     )
                     return rxAsync { try await self.repository.saveSentence(newSentence) }
                         .catch { error in
@@ -108,6 +117,7 @@ final class DirectCollectViewModel {
                         }
                 }
             }
+            .take(1)
             .bind(to: saveCompleted)
             .disposed(by: disposeBag)
 

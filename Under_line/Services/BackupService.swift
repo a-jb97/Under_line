@@ -41,6 +41,7 @@ struct SentenceBackup: Codable {
     let emotionRawValue: Int
     let memo: String?
     let date: Date
+    let markedPhotoData: Data?
 }
 
 struct SessionBackup: Codable {
@@ -90,7 +91,8 @@ final class BackupService {
                 page:            $0.page,
                 emotionRawValue: $0.emotionRawValue,
                 memo:            $0.memo,
-                date:            $0.date
+                date:            $0.date,
+                markedPhotoData: $0.markedPhotoData
             )
         }
         let sessions = try modelContext.fetch(FetchDescriptor<ReadingSessionRecord>()).map {
@@ -164,7 +166,8 @@ final class BackupService {
                 page:     s.page,
                 emotion:  Emotion(rawValue: s.emotionRawValue) ?? .calm,
                 memo:     s.memo,
-                date:     s.date
+                date:     s.date,
+                markedPhotoData: s.markedPhotoData
             )
             modelContext.insert(SentenceRecord(from: sentence))
         }
