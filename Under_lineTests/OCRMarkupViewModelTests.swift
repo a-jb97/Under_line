@@ -1,6 +1,7 @@
 import XCTest
 import UIKit
 import Vision
+import SwiftData
 @testable import Under_line
 
 @MainActor
@@ -126,10 +127,27 @@ final class OCRMarkupViewModelTests: XCTestCase {
 
         try draw(on: photo, in: view, across: secondLine, y: 1 - secondLine.midY)
         var confirmedText: String?
-        controller.onConfirm = { confirmedText = $0 }
+        var confirmedPhotoData: Data?
+        controller.onConfirm = { text, photoData in
+            confirmedText = text
+            confirmedPhotoData = photoData
+        }
         try tap(confirm)
         try await waitUntil { confirmedText != nil }
         XCTAssertEqual(confirmedText, "Evening breeze")
+        let markedImage = try XCTUnwrap(UIImage(data: XCTUnwrap(confirmedPhotoData)))
+        XCTAssertEqual(markedImage.size, image.size)
+        let recognized = try XCTUnwrap(observations.last?.topCandidates(1).first)
+        let evening = try XCTUnwrap(recognized.string.range(of: "Evening"))
+        let breeze = try XCTUnwrap(recognized.string.range(of: "breeze"))
+        let eveningBounds = try XCTUnwrap(recognized.boundingBox(for: evening)).boundingBox
+        let breezeBounds = try XCTUnwrap(recognized.boundingBox(for: breeze)).boundingBox
+        let gapX = (eveningBounds.maxX + breezeBounds.minX) / 2
+        let markedPoint = CGPoint(x: gapX * image.size.width, y: (1 - secondLine.midY) * image.size.height)
+        let clearedPoint = CGPoint(x: firstLine.midX * image.size.width,
+                                   y: (1 - firstLine.minY + firstLine.height * 0.25) * image.size.height)
+        XCTAssertGreaterThan(try rgbDifference(between: image, and: markedImage, at: markedPoint), 30)
+        XCTAssertLessThan(try rgbDifference(between: image, and: markedImage, at: clearedPoint), 20)
 
         let reopenedDefaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
         let reopened = OCRMarkupViewController(image: image, defaults: reopenedDefaults)
@@ -145,6 +163,57 @@ final class OCRMarkupViewModelTests: XCTestCase {
         UIButton(configuration: .plain(), primaryAction: pen).sendActions(for: .primaryActionTriggered)
         XCTAssertEqual(reopenedPicker.accessibilityValue, "기본 펜")
         XCTAssertEqual(reopenedPicker.configuration?.image, penIcon)
+    }
+
+    func test_markedPhotoData_migratesExistingStoreAndSurvivesReloadAndEdit() async throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let config = ModelConfiguration(url: directory.appendingPathComponent("sentences.store"))
+        let photoData = try XCTUnwrap(makeImage(["Evening breeze"]).jpegData(compressionQuality: 0.92))
+        let sentence = Sentence(id: UUID(), bookISBN: "isbn", sentence: "Evening breeze",
+                                page: 13, emotion: .calm, memo: nil, date: Date(), markedPhotoData: photoData)
+        let legacyID = UUID()
+        do {
+            let container = try ModelContainer(for: LegacyStore.SentenceRecord.self, configurations: config)
+            container.mainContext.insert(LegacyStore.SentenceRecord(id: legacyID, bookISBN: sentence.bookISBN))
+            try container.mainContext.save()
+        }
+        do {
+            let container = try ModelContainer(for: SentenceRecord.self, configurations: config)
+            let repository = SentenceRepository(modelContext: container.mainContext)
+            try await repository.saveSentence(sentence)
+            let updated = Sentence(id: sentence.id, bookISBN: sentence.bookISBN, sentence: sentence.sentence,
+                                   page: 15, emotion: sentence.emotion, memo: "메모", date: sentence.date)
+            try await repository.updateSentence(updated)
+        }
+        let container = try ModelContainer(for: SentenceRecord.self, configurations: config)
+        let repository = SentenceRepository(modelContext: container.mainContext)
+        let sentences = try await repository.fetchSentences(for: sentence.bookISBN)
+        let reloaded = try XCTUnwrap(sentences.first { $0.id == sentence.id })
+        XCTAssertEqual(reloaded.page, 15)
+        XCTAssertEqual(reloaded.markedPhotoData, photoData)
+        let reloadedWithoutPhoto = try XCTUnwrap(sentences.first { $0.id == legacyID })
+        XCTAssertEqual(reloadedWithoutPhoto.sentence, "Morning sunlight")
+        XCTAssertNil(reloadedWithoutPhoto.markedPhotoData)
+    }
+
+    private func rgbDifference(between original: UIImage, and marked: UIImage, at point: CGPoint) throws -> Int {
+        func pixel(in image: UIImage) throws -> [UInt8] {
+            let rect = CGRect(x: point.x.rounded(.down), y: point.y.rounded(.down), width: 1, height: 1)
+            let sample = try XCTUnwrap(image.cgImage?.cropping(to: rect))
+            var bytes = [UInt8](repeating: 0, count: 4)
+            try bytes.withUnsafeMutableBytes { buffer in
+                let context = try XCTUnwrap(CGContext(data: buffer.baseAddress, width: 1, height: 1,
+                                                      bitsPerComponent: 8, bytesPerRow: 4,
+                                                      space: CGColorSpaceCreateDeviceRGB(),
+                                                      bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue))
+                context.draw(sample, in: CGRect(origin: .zero, size: rect.size))
+            }
+            return bytes
+        }
+        return try zip(pixel(in: original).prefix(3), pixel(in: marked).prefix(3))
+            .reduce(0) { $0 + abs(Int($1.0) - Int($1.1)) }
     }
 
     private func makeImage(_ lines: [String]) -> UIImage {
@@ -196,6 +265,28 @@ final class OCRMarkupViewModelTests: XCTestCase {
 
     private func stroke(_ tool: OCRMarkupStroke.Tool, from start: CGFloat, to end: CGFloat, y: CGFloat) -> OCRMarkupStroke {
         OCRMarkupStroke(tool: tool, points: [CGPoint(x: start, y: y), CGPoint(x: end, y: y)])
+    }
+}
+
+private enum LegacyStore {
+    @Model
+    final class SentenceRecord {
+        var id: UUID
+        var bookISBN: String
+        var sentence: String
+        var page: Int
+        var emotionRawValue: Int
+        var memo: String?
+        var date: Date
+
+        init(id: UUID, bookISBN: String) {
+            self.id = id
+            self.bookISBN = bookISBN
+            sentence = "Morning sunlight"
+            page = 14
+            emotionRawValue = Emotion.calm.rawValue
+            date = Date()
+        }
     }
 }
 

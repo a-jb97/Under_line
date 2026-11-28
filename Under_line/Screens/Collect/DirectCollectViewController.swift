@@ -11,6 +11,7 @@ import UIKit
 import SnapKit
 import RxSwift
 import RxCocoa
+import Toast
 
 final class DirectCollectViewController: AdaptiveViewController {
 
@@ -20,18 +21,21 @@ final class DirectCollectViewController: AdaptiveViewController {
     private let bookISBN: String
     private let initialSentence: String?
     private let editingSentence: Sentence?
+    private let markedPhotoData: Data?
     private lazy var viewModel    = DirectCollectViewModel(
         bookISBN:        bookISBN,
         repository:      AppContainer.shared.sentenceRepository,
-        editingSentence: editingSentence
+        editingSentence: editingSentence,
+        markedPhotoData: markedPhotoData
     )
 
     var onSaved: (() -> Void)?
 
-    init(bookISBN: String, initialSentence: String? = nil) {
+    init(bookISBN: String, initialSentence: String? = nil, markedPhotoData: Data? = nil) {
         self.bookISBN        = bookISBN
         self.initialSentence = initialSentence
         self.editingSentence = nil
+        self.markedPhotoData = markedPhotoData
         super.init(nibName: nil, bundle: nil)
     }
 
@@ -39,6 +43,7 @@ final class DirectCollectViewController: AdaptiveViewController {
         self.bookISBN        = sentence.bookISBN
         self.initialSentence = nil
         self.editingSentence = sentence
+        self.markedPhotoData = nil
         super.init(nibName: nil, bundle: nil)
     }
 
@@ -391,6 +396,12 @@ final class DirectCollectViewController: AdaptiveViewController {
                 let onSaved = self.onSaved
                 WidgetCacheService.shared.refreshCache()
                 self.dismiss(animated: true) { onSaved?() }
+            })
+            .disposed(by: disposeBag)
+
+        output.errorMessage
+            .emit(onNext: { [weak self] message in
+                self?.view.makeToast(message, position: .center)
             })
             .disposed(by: disposeBag)
 

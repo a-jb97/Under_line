@@ -6,7 +6,7 @@ import RxCocoa
 
 final class CameraCollectionViewController: AdaptiveViewController {
     var onDirectCollect: (() -> Void)?
-    var onOCRTextExtracted: ((String) -> Void)?
+    var onMarkupConfirmed: ((String, Data) -> Void)?
 
     private let disposeBag = DisposeBag()
     private let viewModel = CameraCollectionViewModel()
@@ -176,10 +176,10 @@ final class CameraCollectionViewController: AdaptiveViewController {
         output.photo.emit(onNext: { [weak self] data in
             guard let self, let image = UIImage(data: data), self.presentedViewController == nil else { return }
             let markup = OCRMarkupViewController(image: image)
-            markup.onConfirm = { [weak self] text in
+            markup.onConfirm = { [weak self] text, photoData in
                 guard let self else { return }
-                let callback = self.onOCRTextExtracted
-                (self.navigationController ?? self).dismiss(animated: true) { callback?(text) }
+                let callback = self.onMarkupConfirmed
+                (self.navigationController ?? self).dismiss(animated: true) { callback?(text, photoData) }
             }
             let navigation = UINavigationController(rootViewController: markup)
             SystemNavigationStyle.configure(navigation)

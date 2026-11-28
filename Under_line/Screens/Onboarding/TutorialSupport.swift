@@ -2,10 +2,12 @@ import UIKit
 
 @MainActor
 enum TutorialSupport {
+    static let markedPhotoCardKey = "tutorial.markedPhotoCard"
+    static let markedPhotoSaveKey = "tutorial.markedPhotoSave"
     static let keys = ["tutorial.bookshelf", "tutorial.bookDetail", "tutorial.readingRecord",
                        "tutorial.statistics", "tutorial.cardEditor", "tutorial.bookshelfWishlist",
                        "tutorial.searchWishlist", "tutorial.wishlist", "tutorial.purchaseSettings",
-                       "tutorial.bookshelfDrag"]
+                       "tutorial.bookshelfDrag", markedPhotoCardKey, markedPhotoSaveKey]
 
     static func show(on controller: UIViewController, key: String, steps: [TutorialStep], completion: (() -> Void)? = nil) {
         guard controller.viewIfLoaded?.window != nil, controller.presentedViewController == nil,
