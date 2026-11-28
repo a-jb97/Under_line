@@ -17,6 +17,7 @@ final class SentenceRecord {
     var emotionRawValue: Int
     var memo: String?
     var date: Date
+    @Attribute(.externalStorage) var markedPhotoData: Data?
 
     init(from sentence: Sentence) {
         self.id               = sentence.id
@@ -26,9 +27,10 @@ final class SentenceRecord {
         self.emotionRawValue  = sentence.emotion.rawValue
         self.memo             = sentence.memo
         self.date             = sentence.date
+        self.markedPhotoData  = sentence.markedPhotoData
     }
 
-    func toDomain() -> Sentence {
+    func toDomain(includesMarkedPhoto: Bool = true) -> Sentence {
         Sentence(
             id:       id,
             bookISBN: bookISBN,
@@ -36,7 +38,8 @@ final class SentenceRecord {
             page:     page,
             emotion:  Emotion(rawValue: emotionRawValue) ?? .calm,
             memo:     memo,
-            date:     date
+            date:     date,
+            markedPhotoData: includesMarkedPhoto ? markedPhotoData : nil
         )
     }
 }

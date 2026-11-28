@@ -29,8 +29,14 @@ final class SentenceRepository: SentenceRepositoryProtocol {
     }
 
     func saveSentence(_ sentence: Sentence) async throws {
-        modelContext.insert(SentenceRecord(from: sentence))
-        try modelContext.save()
+        let record = SentenceRecord(from: sentence)
+        modelContext.insert(record)
+        do {
+            try modelContext.save()
+        } catch {
+            modelContext.delete(record)
+            throw error
+        }
     }
 
     func updateSentence(_ sentence: Sentence) async throws {
@@ -70,6 +76,7 @@ final class SentenceRepository: SentenceRepositoryProtocol {
         let descriptor = FetchDescriptor<SentenceRecord>(
             sortBy: [SortDescriptor(\SentenceRecord.date, order: .reverse)]
         )
-        return try modelContext.fetch(descriptor).map { $0.toDomain() }
+        // 통계, 랜덤 밑줄, 위젯에서 모든 사진 데이터를 읽지 않도록 한다.
+        return try modelContext.fetch(descriptor).map { $0.toDomain(includesMarkedPhoto: false) }
     }
 }

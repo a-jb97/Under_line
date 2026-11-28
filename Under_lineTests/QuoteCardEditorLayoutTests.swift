@@ -231,6 +231,28 @@ final class QuoteCardEditorLayoutTests: XCTestCase {
         XCTAssertEqual(activity.popoverPresentationController?.sourceRect, controller.saveButton.bounds)
     }
 
+    func test_markedPhotoPreview_matchesCanvasAndShareButtonPosition() throws {
+        let image = UIGraphicsImageRenderer(size: CGSize(width: 240, height: 120)).image { context in
+            UIColor.white.setFill()
+            context.fill(CGRect(x: 0, y: 0, width: 240, height: 120))
+        }
+        let data = try XCTUnwrap(image.jpegData(compressionQuality: 0.92))
+        let preview = try XCTUnwrap(QuoteCardEditorViewController(markedPhotoData: data))
+        let editor = makeEditor()
+        for size in [CGSize(width: 375, height: 750), CGSize(width: 760, height: 300)] {
+            resize(preview, to: size)
+            resize(editor, to: size)
+            XCTAssertEqual(preview.cardView.bounds.size, editor.cardView.bounds.size)
+            XCTAssertEqual(preview.saveButton.convert(preview.saveButton.bounds, to: preview.view),
+                           editor.saveButton.convert(editor.saveButton.bounds, to: editor.view))
+            XCTAssertEqual(preview.saveButton.accessibilityLabel, "사진 저장")
+            XCTAssertEqual(preview.backgroundImageView.contentMode, .scaleAspectFit)
+            XCTAssertFalse(preview.backgroundImageView.isHidden)
+            XCTAssertTrue(preview.removeLogoButton.superview?.isHidden == true)
+            XCTAssertTrue(preview.backgroundButton.superview?.isHidden == true)
+        }
+    }
+
     func test_scaledPreview_keepsRenderedPixelsAtFullResolution() throws {
         let defaults = UserDefaults.standard
         let tutorial = defaults.object(forKey: "tutorial.cardEditor")

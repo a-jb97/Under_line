@@ -2,9 +2,10 @@ import UIKit
 import SnapKit
 import RxSwift
 import RxCocoa
+import Toast
 
 final class OCRMarkupViewController: AdaptiveViewController {
-    var onConfirm: ((String) -> Void)?
+    var onConfirm: ((String, Data) -> Void)?
 
     private static let drawingToolKey = "ocrMarkup.drawingTool"
     private let disposeBag = DisposeBag()
@@ -167,9 +168,14 @@ final class OCRMarkupViewController: AdaptiveViewController {
         clearItem.rx.tap.subscribe(onNext: { [weak self] in self?.drawingOverlay.clearAll() }).disposed(by: disposeBag)
         confirmItem.rx.tap.subscribe(onNext: { [weak self] in
             guard let self, !self.selectedText.isEmpty else { return }
+            guard let photoData = self.drawingOverlay.markedPhotoData(from: self.capturedImage) else {
+                self.view.makeToast("밑줄 사진을 만들지 못했어요. 다시 시도해주세요.", position: .center)
+                return
+            }
+            self.confirmItem.isEnabled = false
             let callback = self.onConfirm
             let text = self.selectedText
-            (self.navigationController ?? self).dismiss(animated: true) { callback?(text) }
+            (self.navigationController ?? self).dismiss(animated: true) { callback?(text, photoData) }
         }).disposed(by: disposeBag)
     }
 }
@@ -246,6 +252,24 @@ private final class DrawingOverlayView: UIView {
 
     override func draw(_ rect: CGRect) {
         guard !imageRect.isEmpty else { return }
+        drawStrokes(in: imageRect)
+    }
+
+    func markedPhotoData(from image: UIImage) -> Data? {
+        guard !imageRect.isEmpty else { return nil }
+        let bounds = CGRect(origin: .zero, size: image.size)
+        let scale = bounds.width / imageRect.width
+        let format = UIGraphicsImageRendererFormat(for: traitCollection)
+        format.scale = image.scale
+        format.opaque = true
+        return UIGraphicsImageRenderer(bounds: bounds, format: format).jpegData(withCompressionQuality: 0.92) { context in
+            image.draw(in: bounds)
+            context.cgContext.scaleBy(x: scale, y: scale)
+            drawStrokes(in: CGRect(origin: .zero, size: imageRect.size))
+        }
+    }
+
+    private func drawStrokes(in imageRect: CGRect) {
         for stroke in visibleStrokes {
             guard let first = stroke.points.first else { continue }
             let path = UIBezierPath()
@@ -254,7 +278,8 @@ private final class DrawingOverlayView: UIView {
             path.lineWidth = stroke.tool == .pen ? 6 : 18
             path.lineCapStyle = .round
             path.lineJoinStyle = .round
-            UIColor.appPrimary.withAlphaComponent(stroke.tool == .pen ? 1 : 0.3).setStroke()
+            UIColor.appPrimary.resolvedColor(with: traitCollection)
+                .withAlphaComponent(stroke.tool == .pen ? 1 : 0.3).setStroke()
             path.stroke()
         }
     }
